@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, AlertCircle } from 'lucide-react';
 import type { MyFieldItem, TabState } from '../../types/farmflate';
 import { BottomNavigation } from '../common/BottomNavigation';
 
@@ -28,23 +28,6 @@ export const MyFieldListView: React.FC<MyFieldListViewProps> = ({
           <h2 style={{ fontSize: '1.45rem', fontWeight: 900, color: '#191F28', margin: 0 }}>
             마이 팜
           </h2>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#1e2822', padding: 0, display: 'flex', alignItems: 'center' }}>
-              <img src="/svg-assets/ui-icons/bell.svg" alt="알림" style={{ width: 22, height: 22 }} />
-            </button>
-            <div style={{
-              width: 40, height: 40, borderRadius: '50%',
-              backgroundColor: '#E9F7EC', border: '1.5px solid #2FA86A',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              overflow: 'hidden'
-            }}>
-              <img
-                src="/svg-assets/brand/mascot/joy.svg"
-                alt="마이 팜 프로필"
-                style={{ width: 34, height: 34, objectFit: 'contain' }}
-              />
-            </div>
-          </div>
         </div>
 
         {/* Card 1: 상추밭 */}
@@ -92,7 +75,7 @@ export const MyFieldListView: React.FC<MyFieldListViewProps> = ({
             gap: 8,
             marginBottom: 12
           }}>
-            <span style={{ color: '#FF842F' }}>📌</span> 오늘 물주기 필요
+            <AlertCircle size={16} color="#FF842F" /> 오늘 물주기 필요
           </div>
 
           {/* Today's Report Banner */}
@@ -165,7 +148,7 @@ export const MyFieldListView: React.FC<MyFieldListViewProps> = ({
             gap: 8,
             marginBottom: 12
           }}>
-            <span style={{ color: '#0284C7' }}>📌</span> 서리 대비 덮개 점검 필요
+            <AlertCircle size={16} color="#0284C7" /> 서리 대비 덮개 점검 필요
           </div>
 
           <div style={{
@@ -203,7 +186,7 @@ export const MyFieldListView: React.FC<MyFieldListViewProps> = ({
         </motion.button>
 
         <div style={{ textAlign: 'center', marginTop: 14, fontSize: '0.74rem', color: '#8d9590', fontWeight: 600 }}>
-          🌱 오늘 06:00 자동 분석됨
+          오늘 06:00 자동 분석됨
         </div>
 
       </div>

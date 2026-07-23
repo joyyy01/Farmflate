@@ -2,14 +2,18 @@ import React from 'react';
 import { motion } from 'framer-motion';
 
 interface LandingViewProps {
-  onLogin: () => void;
+  onLogin?: () => void;
 }
 
-export const LandingView: React.FC<LandingViewProps> = ({ onLogin }) => {
+export const LandingView: React.FC<LandingViewProps> = () => {
+  const handleKakaoLogin = () => {
+    window.location.href = 'http://localhost:8080/oauth2/authorization/kakao';
+  };
+
   return (
     <div className="full-screen-view" style={{
       justifyContent: 'space-between',
-      padding: '24px 20px 28px 20px',
+      padding: '28px 20px 32px 20px',
       backgroundColor: '#FFFFFF',
       background: 'radial-gradient(circle at 50% 0%, #E9F7EC 0%, #FFFFFF 65%)'
     }}>
@@ -20,8 +24,7 @@ export const LandingView: React.FC<LandingViewProps> = ({ onLogin }) => {
           initial={{ scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ duration: 0.4 }}
-          style={{ position: 'relative', marginBottom: 10, cursor: 'pointer' }}
-          onClick={onLogin}
+          style={{ position: 'relative', marginBottom: 10 }}
         >
           {/* Sparkle decorative SVGs */}
           <img src="/svg-assets/ui-icons/star.svg" alt="" style={{ position: 'absolute', top: -6, left: -22, width: 16, height: 16, color: '#FFD95A' }} />
@@ -45,7 +48,7 @@ export const LandingView: React.FC<LandingViewProps> = ({ onLogin }) => {
         </motion.div>
 
         {/* Pure Vector Brand Wordmark Logo */}
-        <div style={{ marginBottom: 16, cursor: 'pointer' }} onClick={onLogin}>
+        <div style={{ marginBottom: 16 }}>
           <img
             src="/svg-assets/brand/wordmark.svg"
             alt="Farmflate"
@@ -72,8 +75,8 @@ export const LandingView: React.FC<LandingViewProps> = ({ onLogin }) => {
           lineHeight: 1.65,
           color: '#6F7772',
           fontWeight: 500,
-          marginBottom: 16,
-          margin: '6px 0 16px 0'
+          marginBottom: 20,
+          margin: '6px 0 20px 0'
         }}>
           지역과 작물을 선택하면 토양과 날씨를 분석해<br />재배 적합도와 위험 요소를 미리 알려드려요.
         </p>
@@ -95,7 +98,7 @@ export const LandingView: React.FC<LandingViewProps> = ({ onLogin }) => {
             alignItems: 'center',
             justifyContent: 'center',
             padding: 8,
-            marginBottom: 20,
+            marginBottom: 24,
             overflow: 'hidden',
             flexShrink: 1
           }}
@@ -117,7 +120,7 @@ export const LandingView: React.FC<LandingViewProps> = ({ onLogin }) => {
           alignItems: 'center',
           justifyContent: 'center',
           gap: 12,
-          marginBottom: 18,
+          marginBottom: 8,
           width: '100%'
         }}>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 76 }}>
@@ -146,21 +149,13 @@ export const LandingView: React.FC<LandingViewProps> = ({ onLogin }) => {
           </div>
         </div>
 
-        {/* Page Dots Indicator */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#2FA86A' }} />
-          <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#E1E8E4' }} />
-          <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#E1E8E4' }} />
-          <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#E1E8E4' }} />
-        </div>
-
       </div>
 
       {/* Single Green Kakao Button Action */}
       <div style={{ width: '100%' }}>
         <motion.button
           whileTap={{ scale: 0.97 }}
-          onClick={onLogin}
+          onClick={handleKakaoLogin}
           style={{
             width: '100%',
             height: 54,

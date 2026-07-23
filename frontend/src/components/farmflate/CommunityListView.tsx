@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { motion } from 'framer-motion';
 import { Plus, MessageSquare as MsgIcon, Heart } from 'lucide-react';
 import type { CommunityPost, TabState } from '../../types/farmflate';
 import { BottomNavigation } from '../common/BottomNavigation';
+import { CommunityPostDetailModal } from './CommunityPostDetailModal';
 
 interface CommunityListViewProps {
   posts: CommunityPost[];
@@ -9,6 +11,9 @@ interface CommunityListViewProps {
   onOpenWrite?: () => void;
   activeTab: TabState;
   onTabChange: (tab: TabState) => void;
+  onToggleLike: (postId: string) => void;
+  onToggleSave: (postId: string) => void;
+  onAddComment: (postId: string, commentText: string) => void;
 }
 
 export const CommunityListView: React.FC<CommunityListViewProps> = ({
@@ -16,78 +21,133 @@ export const CommunityListView: React.FC<CommunityListViewProps> = ({
   onOpenAIChat,
   onOpenWrite,
   activeTab,
-  onTabChange
+  onTabChange,
+  onToggleLike,
+  onToggleSave,
+  onAddComment
 }) => {
+  const [selectedPost, setSelectedPost] = useState<CommunityPost | null>(null);
+
+  const getTagBadgeStyle = (tagText: string, index: number) => {
+    if (tagText.includes('전북') || tagText.includes('고창') || index % 3 === 0) {
+      return { bg: '#E9F7EC', color: '#2FA86A' }; // Soft green pill
+    }
+    if (tagText.includes('경북') || tagText.includes('상주') || index % 3 === 1) {
+      return { bg: '#E0F2FE', color: '#0284C7' }; // Soft blue pill
+    }
+    return { bg: '#FFF4DC', color: '#FF842F' }; // Soft yellow/orange pill for 장터
+  };
+
+  // Active post detail reference
+  const activeDetailPost = selectedPost
+    ? posts.find(p => p.id === selectedPost.id) || selectedPost
+    : null;
+
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
-      <div className="full-screen-view" style={{ padding: '20px 20px 96px 20px' }}>
+      <div className="full-screen-view no-scrollbar" style={{ padding: '20px 20px 96px 20px', overflowY: 'auto' }}>
 
-        {/* Header: '커뮤니티' + '+ 글쓰기' pill button */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <h2 style={{ fontSize: '1.4rem', fontWeight: 900, color: '#191F28', margin: 0 }}>
+        {/* Top Header: '커뮤니티' + '+ 글쓰기' green pill button matching Figma 100% */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 900, color: '#191F28', margin: 0, letterSpacing: '-0.02em' }}>
             커뮤니티
           </h2>
-          <button onClick={onOpenWrite} style={{
-            backgroundColor: '#2E8B57', color: '#FFFFFF', border: 'none',
-            borderRadius: 20, padding: '8px 14px', fontSize: '0.82rem',
-            fontWeight: 800, cursor: 'pointer', display: 'flex',
-            alignItems: 'center', gap: 4
-          }}>
-            <Plus size={14} /> 글쓰기
-          </button>
+          <motion.button
+            whileTap={{ scale: 0.95 }}
+            onClick={onOpenWrite}
+            style={{
+              backgroundColor: '#2FA86A', color: '#FFFFFF', border: 'none',
+              borderRadius: 20, padding: '8px 16px', fontSize: '0.84rem',
+              fontWeight: 850, cursor: 'pointer', display: 'flex',
+              alignItems: 'center', gap: 4
+            }}
+          >
+            <Plus size={16} /> 글쓰기
+          </motion.button>
         </div>
 
-        {/* Post Cards - Design File 3 Screen 3 */}
+        {/* Thin divider line matching Figma */}
+        <div style={{ borderBottom: '1px solid #ECEFED', marginBottom: 20 }} />
+
+        {/* Post Cards List */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {posts.map(post => (
-            <div key={post.id} style={{
-              backgroundColor: '#FFFFFF', borderRadius: 18,
-              padding: '16px 18px', border: '1px solid #E5E8EB',
-              cursor: 'pointer'
-            }}>
-              {/* Tag + Time */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                <span style={{
-                  backgroundColor: '#EDF7ED', color: '#2E8B57',
-                  fontSize: '0.74rem', fontWeight: 800,
-                  padding: '4px 10px', borderRadius: 8
+          {posts.map((post, idx) => {
+            const tagText = post.tagLocation || post.category;
+            const badge = getTagBadgeStyle(tagText, idx);
+
+            return (
+              <motion.div
+                key={post.id}
+                whileTap={{ scale: 0.99 }}
+                onClick={() => setSelectedPost(post)}
+                style={{
+                  backgroundColor: '#F8FAF8', borderRadius: 20,
+                  padding: '18px 20px', border: '1px solid #EAEFEA',
+                  cursor: 'pointer', transition: 'all 0.2s ease'
+                }}
+              >
+                {/* Tag Pill + Time Ago */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <span style={{
+                    backgroundColor: badge.bg, color: badge.color,
+                    fontSize: '0.76rem', fontWeight: 800,
+                    padding: '4px 12px', borderRadius: 12
+                  }}>
+                    {tagText}
+                  </span>
+                  <span style={{ fontSize: '0.76rem', color: '#8E9892', fontWeight: 500 }}>
+                    {post.timeAgo}
+                  </span>
+                </div>
+
+                {/* Title */}
+                <h3 style={{
+                  fontSize: '1.05rem', fontWeight: 900, color: '#191F28',
+                  marginBottom: 6, lineHeight: 1.4, wordBreak: 'keep-all'
                 }}>
-                  {post.tagLocation || post.category}
-                </span>
-                <span style={{ fontSize: '0.74rem', color: '#B0B8C1', fontWeight: 500 }}>
-                  {post.timeAgo}
-                </span>
-              </div>
+                  {post.title}
+                </h3>
 
-              {/* Title */}
-              <h4 style={{ fontSize: '0.96rem', fontWeight: 900, color: '#191F28', marginBottom: 6, lineHeight: 1.4 }}>
-                {post.title}
-              </h4>
-              {/* Content preview */}
-              <p style={{ fontSize: '0.82rem', color: '#6B7280', lineHeight: 1.5, fontWeight: 500, marginBottom: 12 }}>
-                {post.content}
-              </p>
+                {/* Content Preview */}
+                <p style={{
+                  fontSize: '0.84rem', color: '#6E7671', lineHeight: 1.55,
+                  fontWeight: 500, marginBottom: 14, wordBreak: 'keep-all',
+                  display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden'
+                }}>
+                  {post.content}
+                </p>
 
-              {/* Comment + Like counts */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: '0.78rem', color: '#8B95A1', fontWeight: 600 }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <MsgIcon size={14} /> {post.commentCount}
-                </span>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <Heart size={14} /> {post.likeCount}
-                </span>
-              </div>
-            </div>
-          ))}
+                {/* Stats Row: Msg icon + count, Heart icon + count */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, fontSize: '0.78rem', color: '#8E9892', fontWeight: 700 }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <MsgIcon size={15} color="#8E9892" /> {post.comments?.length || post.commentCount}
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: post.isLiked ? '#FF4D4F' : '#8E9892' }}>
+                    <Heart size={15} fill={post.isLiked ? '#FF4D4F' : 'none'} color={post.isLiked ? '#FF4D4F' : '#8E9892'} /> {post.likeCount}
+                  </span>
+                </div>
+              </motion.div>
+            );
+          })}
         </div>
       </div>
 
-      {/* Floating AI Button */}
+      {/* Post Detail Modal */}
+      <CommunityPostDetailModal
+        post={activeDetailPost}
+        onClose={() => setSelectedPost(null)}
+        onToggleLike={onToggleLike}
+        onToggleSave={onToggleSave}
+        onAddComment={onAddComment}
+      />
+
+      {/* Floating AI Dark Green Button matching Figma 100% */}
       <button className="floating-ai-btn" onClick={onOpenAIChat} title="AI Assistant">
-        <img src="/svg-assets/ui-icons/ai-chat.svg" alt="AI 채팅" style={{ width: 26, height: 26, filter: 'brightness(0) invert(1)' }} />
+        <span style={{ color: '#FFFFFF', fontSize: '0.9rem', fontWeight: 900 }}>AI</span>
       </button>
 
-      {/* Exact Figma Vector SVG Bottom Navigation 1:1 */}
+      {/* Bottom Navigation */}
       <BottomNavigation
         activeTab={activeTab}
         onTabChange={onTabChange}

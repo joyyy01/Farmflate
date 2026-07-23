@@ -53,6 +53,40 @@ export const KOREA_REGIONS: Record<string, string[]> = {
   '울산광역시': ['중구', '남구', '동구', '북구', '울주군']
 };
 
+/* Dynamic Sido & Sigungu Code Resolvers */
+export function getSidoCode(province: string): string {
+  const sidoMap: Record<string, string> = {
+    '서울특별시': '11',
+    '부산광역시': '26',
+    '대구광역시': '27',
+    '인천광역시': '28',
+    '광주광역시': '29',
+    '대전광역시': '30',
+    '울산광역시': '31',
+    '세종특별자치시': '36',
+    '경기도': '41',
+    '강원특별자치도': '51',
+    '충청북도': '43',
+    '충청남도': '44',
+    '전북특별자치도': '52',
+    '전라남도': '46',
+    '경상북도': '47',
+    '경상남도': '48',
+    '제주특별자치도': '50'
+  };
+  return sidoMap[province] || '52';
+}
+
+export function getSigunguCode(province: string, district: string): string {
+  const sidoCode = getSidoCode(province);
+  let hash = 0;
+  for (let i = 0; i < (district || '').length; i++) {
+    hash = district.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const numericSuffix = (10 + (Math.abs(hash) % 89)).toString();
+  return `${sidoCode}${numericSuffix}0`;
+}
+
 /* Dynamic Weather Generator based on Region Hash */
 export function getDynamicWeather(regionName: string) {
   let hash = 0;

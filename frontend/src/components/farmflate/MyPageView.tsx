@@ -9,14 +9,18 @@ interface MyPageViewProps {
   onOpenAIChat: () => void;
   activeTab: TabState;
   onTabChange: (tab: TabState) => void;
+  onLogout?: () => void;
+  onGoToExplore?: () => void;
 }
 
 export const MyPageView: React.FC<MyPageViewProps> = ({
-  userName = '진우님',
+  userName = '사용자님',
   userRegion = '전북 고창군',
   onOpenAIChat,
   activeTab,
-  onTabChange
+  onTabChange,
+  onLogout,
+  onGoToExplore
 }) => {
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
@@ -53,7 +57,7 @@ export const MyPageView: React.FC<MyPageViewProps> = ({
             </div>
             <div>
               <h3 style={{ fontSize: '1.15rem', fontWeight: 900, color: '#191F28', margin: '0 0 2px 0' }}>
-                {userName}
+                {userName.endsWith('님') ? userName : `${userName}님`}
               </h3>
               <p style={{ fontSize: '0.82rem', color: '#6F7772', fontWeight: 600, margin: 0 }}>
                 {userRegion}
@@ -81,9 +85,9 @@ export const MyPageView: React.FC<MyPageViewProps> = ({
               <ChevronRight size={18} color="#CBD5E1" />
             </div>
 
-            <div style={{ padding: '16px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #F1F5F9', cursor: 'pointer' }}>
+            <div onClick={onGoToExplore} style={{ padding: '16px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #F1F5F9', cursor: 'pointer' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: '0.9rem', fontWeight: 700, color: '#202a24' }}>
-                <img src="/svg-assets/ui-icons/location.svg" alt="" style={{ width: 18, height: 18 }} /> 지역 수정
+                <img src="/svg-assets/ui-icons/location.svg" alt="" style={{ width: 18, height: 18 }} /> 지역 수정 / 선택
               </div>
               <ChevronRight size={18} color="#CBD5E1" />
             </div>
@@ -95,9 +99,9 @@ export const MyPageView: React.FC<MyPageViewProps> = ({
               <ChevronRight size={18} color="#CBD5E1" />
             </div>
 
-            <div style={{ padding: '16px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: '0.9rem', fontWeight: 700, color: '#202a24' }}>
-                <img src="/svg-assets/ui-icons/bell.svg" alt="" style={{ width: 18, height: 18 }} /> 알림 설정
+            <div onClick={onLogout} style={{ padding: '16px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: '0.9rem', fontWeight: 700, color: '#ef4444' }}>
+                <img src="/svg-assets/ui-icons/user.svg" alt="" style={{ width: 18, height: 18 }} /> 로그아웃
               </div>
               <ChevronRight size={18} color="#CBD5E1" />
             </div>

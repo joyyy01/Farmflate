@@ -1,30 +1,55 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Paperclip, Link as LinkIcon, Image as ImageIcon, X } from 'lucide-react';
+import { Folder, Link as LinkIcon, Image as ImageIcon, X } from 'lucide-react';
 
 interface CommunityCreatePostViewProps {
   onCancel: () => void;
-  onSubmitPost: (title: string, content: string) => void;
+  onSubmitPost: (title: string, content: string, category?: string, locationTag?: string, imageUrl?: string) => void;
+  userRegion?: string;
 }
 
 export const CommunityCreatePostView: React.FC<CommunityCreatePostViewProps> = ({
   onCancel,
-  onSubmitPost
+  onSubmitPost,
+  userRegion = '전북 고창군'
 }) => {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const [attachedFile, setAttachedFile] = useState<{ name: string; size: string } | null>({
+  const [attachedFile, setAttachedFile] = useState<{ name: string; size: string; url?: string } | null>({
     name: '2873278_IMG',
     size: '3.1MB'
   });
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setAttachedFile({
+          name: file.name,
+          size: `${(file.size / (1024 * 1024)).toFixed(1)}MB`,
+          url: reader.result as string
+        });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleSubmit = () => {
     if (!title.trim() || !content.trim()) return;
-    onSubmitPost(title, content);
+    onSubmitPost(
+      title.trim(),
+      content.trim(),
+      '농가 노하우',
+      userRegion,
+      attachedFile?.url
+    );
   };
 
   return (
-    <div className="full-screen-view" style={{ backgroundColor: '#FFFFFF', padding: '0 20px 40px 20px', justifyContent: 'space-between' }}>
+    <div className="full-screen-view" style={{ backgroundColor: '#FFFFFF', padding: '0 20px 40px 20px', justifyContent: 'space-between', flex: 1, overflowY: 'auto' }}>
       <div>
         {/* Header */}
         <div style={{
@@ -33,11 +58,11 @@ export const CommunityCreatePostView: React.FC<CommunityCreatePostViewProps> = (
           alignItems: 'center',
           height: 64,
           borderBottom: '1px solid #ECEFED',
-          marginBottom: 20
+          marginBottom: 24
         }}>
           <button
             onClick={onCancel}
-            style={{ background: 'none', border: 'none', fontSize: '0.92rem', color: '#6F7772', fontWeight: 600, cursor: 'pointer' }}
+            style={{ background: 'none', border: 'none', fontSize: '0.94rem', color: '#6F7772', fontWeight: 600, cursor: 'pointer' }}
           >
             취소
           </button>
@@ -49,16 +74,16 @@ export const CommunityCreatePostView: React.FC<CommunityCreatePostViewProps> = (
           <motion.button
             whileTap={{ scale: 0.95 }}
             onClick={handleSubmit}
+            disabled={!title.trim() || !content.trim()}
             style={{
-              padding: '8px 18px',
+              padding: '8px 20px',
               borderRadius: 20,
-              background: 'linear-gradient(135deg, #2FA86A, #258A55)',
+              backgroundColor: (!title.trim() || !content.trim()) ? '#C8D5CE' : '#2FA86A',
               color: '#FFFFFF',
-              fontSize: '0.88rem',
+              fontSize: '0.9rem',
               fontWeight: 850,
               border: 'none',
-              cursor: 'pointer',
-              boxShadow: '0 4px 12px rgba(47, 168, 106, 0.25)'
+              cursor: (!title.trim() || !content.trim()) ? 'default' : 'pointer'
             }}
           >
             게시
@@ -74,13 +99,13 @@ export const CommunityCreatePostView: React.FC<CommunityCreatePostViewProps> = (
             onChange={e => setTitle(e.target.value)}
             style={{
               width: '100%',
-              height: 52,
+              height: 54,
               borderRadius: 16,
               border: '1px solid #E1E8E4',
               backgroundColor: '#FFFFFF',
               padding: '0 16px',
               fontSize: '0.96rem',
-              fontWeight: 700,
+              fontWeight: 600,
               color: '#191F28',
               outline: 'none',
               boxSizing: 'border-box'
@@ -88,26 +113,25 @@ export const CommunityCreatePostView: React.FC<CommunityCreatePostViewProps> = (
           />
         </div>
 
-        {/* Content Textarea with Pure Pretendard Typography */}
+        {/* Content Textarea Container */}
         <div style={{
           borderRadius: 20,
           border: '1px solid #E1E8E4',
           backgroundColor: '#FFFFFF',
-          padding: '16px',
-          marginBottom: 16,
-          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.02)'
+          padding: '18px 16px 14px 16px',
+          marginBottom: 18
         }}>
           <textarea
-            placeholder="농사 경험, 밭 상태 질문 등 이웃 농부들과 공유할 내용을 자유롭게 적어보세요."
+            placeholder="내용을 입력하세요..."
             value={content}
             onChange={e => setContent(e.target.value)}
-            rows={8}
+            rows={10}
             style={{
               width: '100%',
               border: 'none',
               outline: 'none',
               resize: 'none',
-              fontSize: '0.92rem',
+              fontSize: '0.94rem',
               fontWeight: 500,
               fontFamily: "'Pretendard', sans-serif",
               lineHeight: 1.65,
@@ -117,42 +141,81 @@ export const CommunityCreatePostView: React.FC<CommunityCreatePostViewProps> = (
             }}
           />
 
-          {/* Bottom Toolbar inside Textarea Container */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16, paddingTop: 12, borderTop: '1px solid #F1F5F9', color: '#6F7772', fontSize: '0.82rem', fontWeight: 600 }}>
-            <button style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 4, color: '#6F7772', cursor: 'pointer', padding: 0 }}>
-              <Paperclip size={16} /> 파일
+          {/* Hidden File Input */}
+          <input
+            type="file"
+            accept="image/*"
+            ref={fileInputRef}
+            onChange={handleImageUpload}
+            style={{ display: 'none' }}
+          />
+
+          {/* Toolbar inside Content Box */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 18,
+            paddingTop: 14, borderTop: '1px solid #F1F5F9',
+            color: '#6F7772', fontSize: '0.84rem', fontWeight: 600
+          }}>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 6, color: '#6F7772', cursor: 'pointer', padding: 0 }}
+            >
+              <Folder size={16} /> 파일
             </button>
-            <button style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 4, color: '#6F7772', cursor: 'pointer', padding: 0 }}>
+
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 6, color: '#6F7772', cursor: 'pointer', padding: 0 }}
+            >
               <LinkIcon size={16} /> 링크
             </button>
-            <button style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 4, color: '#6F7772', cursor: 'pointer', padding: 0 }}>
+
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 6, color: '#6F7772', cursor: 'pointer', padding: 0 }}
+            >
               <ImageIcon size={16} /> 이미지
             </button>
           </div>
         </div>
 
-        {/* Attached File Preview Pill */}
+        {/* Attached File Pill Container */}
         {attachedFile && (
           <div style={{
             backgroundColor: '#F8FAF8',
             borderRadius: 16,
-            border: '1px solid #E1E8E4',
+            border: '1px solid #EAEFEA',
             padding: '12px 16px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: '#E9F7EC', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <ImageIcon size={20} color="#2FA86A" />
+              <div style={{
+                width: 36, height: 36, borderRadius: 10,
+                backgroundColor: '#FFFFFF', border: '1px solid #EAEFEA',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                overflow: 'hidden'
+              }}>
+                {attachedFile.url ? (
+                  <img src={attachedFile.url} alt="첨부 파일" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <ImageIcon size={18} color="#8E9892" />
+                )}
               </div>
               <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#191F28' }}>
                 {attachedFile.name}
               </span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: '0.76rem', color: '#9CA3AF', fontWeight: 600 }}>{attachedFile.size}</span>
-              <button onClick={() => setAttachedFile(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', padding: 2 }}>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: '0.78rem', color: '#8E9892', fontWeight: 600 }}>
+                {attachedFile.size}
+              </span>
+              <button
+                onClick={() => setAttachedFile(null)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', padding: 2, display: 'flex' }}
+              >
                 <X size={16} />
               </button>
             </div>

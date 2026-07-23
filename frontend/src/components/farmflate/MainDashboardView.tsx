@@ -1,15 +1,18 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, AlertTriangle } from 'lucide-react';
 import type { RecommendedCrop, TabState } from '../../types/farmflate';
 import { BottomNavigation } from '../common/BottomNavigation';
 import { getDynamicWeather } from '../../services/farmEngine';
+import type { HomeData } from '../../services/api';
 
 interface MainDashboardViewProps {
   userName?: string;
   analyzedRegion?: string;
   analyzedCropResult?: RecommendedCrop | null;
+  homeData?: HomeData | null;
   onGoToExplore: () => void;
+  onOpenReport?: () => void;
   onOpenAIChat: () => void;
   activeTab: TabState;
   onTabChange: (tab: TabState) => void;
@@ -17,24 +20,67 @@ interface MainDashboardViewProps {
 }
 
 export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
-  userName = '진우님',
+  userName = '사용자님',
   analyzedRegion = '전북 고창군',
   analyzedCropResult: _analyzedCropResult,
+  homeData,
   onGoToExplore,
+  onOpenReport,
   onOpenAIChat,
   activeTab,
   onTabChange,
   isNewUser = false
 }) => {
-  const weather = getDynamicWeather(analyzedRegion);
+  const regionName = homeData?.latestRegionAnalysis?.regionName || analyzedRegion;
+  const shortRegion = regionName.split(' ').pop() || regionName;
+  const dynamicWeather = getDynamicWeather(regionName);
+
+  // Weather parameters from Backend or Regional Dynamic Engine
+  const temp = homeData?.weather?.temperature ?? dynamicWeather.temp;
+  const minTemp = homeData?.weather?.minTemperature ?? (temp - 3);
+  const maxTemp = homeData?.weather?.maxTemperature ?? (temp + 4);
+  const rainProb = homeData?.weather?.precipitationProbability ?? dynamicWeather.rainProb;
+  const humidity = dynamicWeather.humidity;
+  const wind = dynamicWeather.wind;
+  
+  // Real-time matched weather state & forecast phrasing (eliminates contradictory text)
+  const weatherStateText = rainProb > 50 ? '비 소식' : dynamicWeather.weatherState;
+  const forecastText = rainProb > 50 ? '집중호우에 유의하세요' : dynamicWeather.forecast;
+
+  // Action / Risk parameters from Backend
+  const actionTitle = homeData?.todayAction?.title || '밭 주변 배수로 점검';
+  const actionReason = homeData?.todayAction?.reason || '집중호우에 대비해 물 빠짐을 점검해 주세요.';
+
+  // Latest Region Analysis & Recommended Crop from Backend
+  const topCropName = homeData?.latestRegionAnalysis?.topCrop?.cropName || '감자';
+  const topCropScore = homeData?.latestRegionAnalysis?.topCrop?.score || 91;
+  const topCropReason = homeData?.latestRegionAnalysis?.topCrop?.reason || '서늘한 기후와 배수가 우수한 토양 환경에 적합합니다.';
+
+  const getCropIcon = (cropName: string) => {
+    if (cropName.includes('상추')) return '/svg-assets/crops/lettuce.svg';
+    if (cropName.includes('사과')) return '/svg-assets/crops/apple.svg';
+    if (cropName.includes('배')) return '/svg-assets/crops/pear.svg';
+    if (cropName.includes('고추')) return '/svg-assets/crops/pepper.svg';
+    return '/svg-assets/crops/potato.svg';
+  };
+
+  const topCropIcon = getCropIcon(topCropName);
 
   const [tasks, setTasks] = useState([
-    { id: 1, title: '상추밭 물 주기', time: '오전 중', crop: 'lettuce', completed: false },
-    { id: 2, title: '감자밭 서리 대비 덮개 씌우기', time: '오후 전', crop: 'potato', completed: false }
+    { id: 1, title: `${shortRegion} 토양 수분 및 pH 점검`, time: '오전 중', completed: false, icon: '/svg-assets/crops/soil-sprout.svg' },
+    { id: 2, title: actionTitle, time: '오후 전', completed: false, icon: '/svg-assets/weather/rain.svg' }
   ]);
 
   const toggleTask = (id: number) => {
     setTasks(prev => prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
+  };
+
+  const handleReportViewClick = () => {
+    if (onOpenReport) {
+      onOpenReport();
+    } else {
+      onGoToExplore();
+    }
   };
 
   return (
@@ -50,23 +96,6 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
             style={{ height: 28 }}
             onClick={() => onTabChange('home')}
           />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <button style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <img src="/svg-assets/ui-icons/bell.svg" alt="알림" style={{ width: 22, height: 22 }} />
-            </button>
-            <div style={{
-              width: 40, height: 40, borderRadius: '50%',
-              backgroundColor: '#E9F7EC', border: '1.5px solid #2FA86A',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              overflow: 'hidden'
-            }}>
-              <img
-                src="/svg-assets/brand/mascot/hello.svg"
-                alt="사용자 프로필"
-                style={{ width: 34, height: 34, objectFit: 'contain' }}
-              />
-            </div>
-          </div>
         </div>
 
         {/* Dynamic User Greeting */}
@@ -75,41 +104,46 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
             안녕하세요, {userName.endsWith('님') ? userName : `${userName}님`}
           </h1>
           <p style={{ fontSize: '0.8rem', color: '#6f7772', margin: 0, fontWeight: 500 }}>
-            {isNewUser ? '오늘의 밭 상황을 확인해보세요.' : '오늘도 즐거운 농사 되세요!'}
+            {isNewUser ? '지역을 분석하고 맞춤형 농사 정보를 받아보세요.' : '오늘도 즐거운 농사 되세요!'}
           </p>
         </div>
 
-        {/* Weather Card */}
+        {/* Dynamic Real-Time Regional Weather Card */}
         {isNewUser ? (
           <div style={{ width: '100%', height: 60, borderRadius: 14, backgroundColor: '#C8E8FA', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 24, color: '#6B90A6', fontSize: '0.9rem', fontWeight: 700 }}>
-            날씨 데이터가 없어요
+            지역을 탐색하면 실시간 날씨가 표시됩니다
           </div>
         ) : (
           <div style={{
             position: 'relative', width: '100%', minHeight: 116, borderRadius: 14,
-            background: 'linear-gradient(135deg, #bde8ff, #b7e6ff)',
+            backgroundColor: '#E0F2FE', border: '1px solid #BAE6FD',
             padding: '16px 18px', marginBottom: 24, boxSizing: 'border-box',
-            boxShadow: 'inset 0 0 25px rgba(255, 255, 255, 0.22)',
             display: 'flex', justifyContent: 'space-between', alignItems: 'center'
           }}>
             <div>
-              <div style={{ fontSize: '0.72rem', color: '#668294', fontWeight: 600, marginBottom: 2 }}>{analyzedRegion}</div>
+              <div style={{ fontSize: '0.72rem', color: '#0369A1', fontWeight: 700, marginBottom: 2 }}>{regionName}</div>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '2px 0 4px 0' }}>
-                <span style={{ fontSize: '2.2rem', fontWeight: 600, color: '#202a24', letterSpacing: '-0.06em' }}>
-                  {weather.temp}<small style={{ fontSize: '1.1rem' }}>℃</small>
+                <span style={{ fontSize: '2.2rem', fontWeight: 800, color: '#0C4A6E', letterSpacing: '-0.06em' }}>
+                  {temp}<small style={{ fontSize: '1.1rem' }}>℃</small>
                 </span>
-                <span style={{ fontSize: '0.76rem', fontWeight: 700, color: '#52636b' }}>{weather.weatherState}</span>
+                <span style={{ fontSize: '0.76rem', fontWeight: 750, color: '#0284C7' }}>
+                  {weatherStateText}
+                </span>
               </div>
-              <div style={{ fontSize: '0.74rem', color: '#587281', fontWeight: 500 }}>
-                체감 {weather.feelsLike}℃ &nbsp;|&nbsp; 습도 {weather.humidity}% &nbsp;|&nbsp; 바람 {weather.wind}m/s
+              <div style={{ fontSize: '0.74rem', color: '#0369A1', fontWeight: 600 }}>
+                최저 {minTemp}℃ &nbsp;|&nbsp; 최고 {maxTemp}℃ &nbsp;|&nbsp; 습도 {humidity}% &nbsp;|&nbsp; 바람 {wind}m/s
               </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <img src="/svg-assets/weather/partly-cloudy.svg" alt="날씨" style={{ width: 68, height: 58, objectFit: 'contain' }} />
-              <div style={{ width: 1, height: 50, backgroundColor: 'rgba(88, 151, 181, 0.25)' }} />
-              <div style={{ fontSize: '0.76rem', lineHeight: 1.6, color: '#3d5964', textAlign: 'right' }}>
-                {weather.forecast}<br />
-                <strong style={{ fontWeight: 800 }}>강수확률 {weather.rainProb}%</strong>
+              <img
+                src={rainProb > 50 ? '/svg-assets/weather/rain.svg' : '/svg-assets/weather/partly-cloudy.svg'}
+                alt="날씨"
+                style={{ width: 68, height: 58, objectFit: 'contain' }}
+              />
+              <div style={{ width: 1, height: 50, backgroundColor: '#BAE6FD' }} />
+              <div style={{ fontSize: '0.76rem', lineHeight: 1.6, color: '#0C4A6E', textAlign: 'right' }}>
+                {forecastText}<br />
+                <strong style={{ fontWeight: 800 }}>강수확률 {rainProb}%</strong>
               </div>
             </div>
           </div>
@@ -139,7 +173,7 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
                   display: 'grid', gridTemplateColumns: '38px minmax(0, 1fr) 54px 28px', alignItems: 'center',
                   padding: '14px 14px', borderBottom: idx < tasks.length - 1 ? '1px solid #e6e9e7' : 'none', cursor: 'pointer', gap: '4px'
                 }}>
-                  <img src={task.crop === 'lettuce' ? '/svg-assets/crops/lettuce.svg' : '/svg-assets/crops/potato.svg'} alt={task.title} style={{ width: 28, height: 28, objectFit: 'contain' }} />
+                  <img src={task.icon} alt={task.title} style={{ width: 26, height: 26, objectFit: 'contain' }} />
                   <span style={{
                     fontSize: '0.9rem', fontWeight: 650, color: task.completed ? '#9CA3AF' : '#202a24',
                     textDecoration: task.completed ? 'line-through' : 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
@@ -162,7 +196,7 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
 
         {/* Central CTA or Warning Card */}
         {isNewUser ? (
-          <motion.div whileTap={{ scale: 0.98 }} onClick={onGoToExplore} style={{ position: 'relative', width: '100%', minHeight: 130, borderRadius: 20, background: 'linear-gradient(135deg, #d3efff, #f2f9ff)', padding: '24px 20px', marginBottom: 24, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: 'inset 0 0 20px rgba(255,255,255,0.4)' }}>
+          <motion.div whileTap={{ scale: 0.98 }} onClick={onGoToExplore} style={{ position: 'relative', width: '100%', minHeight: 130, borderRadius: 20, backgroundColor: '#F0F9FF', border: '1px solid #BAE6FD', padding: '24px 20px', marginBottom: 24, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div>
               <h2 style={{ fontSize: '1.25rem', fontWeight: 900, color: '#191F28', margin: '0 0 6px 0', lineHeight: 1.3 }}>
                 지역 입력하고<br />맞춤형 정보 받아보기
@@ -171,23 +205,23 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
                 재배 희망지역, 관심작물을 입력 후 필수 확인하기
               </p>
             </div>
-            <div style={{ width: 40, height: 40, borderRadius: '50%', backgroundColor: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', flexShrink: 0 }}>
+            <div style={{ width: 40, height: 40, borderRadius: '50%', backgroundColor: '#FFFFFF', border: '1px solid #BAE6FD', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <ChevronRight size={24} color="#191F28" />
             </div>
           </motion.div>
         ) : (
-          <div style={{ position: 'relative', width: '100%', minHeight: 160, border: '1px solid #ffe0a8', borderRadius: 14, background: 'linear-gradient(135deg, #fff8e8, #fff2d3)', padding: '18px 20px', marginBottom: 24, boxSizing: 'border-box', overflow: 'hidden' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7, color: '#ff7f2b', fontSize: '0.9rem', fontWeight: 850, marginBottom: 10 }}>
-              ⚠️ 오늘 주의해야 할 밭이 1개 있어요
+          <div style={{ position: 'relative', width: '100%', minHeight: 150, border: '1px solid #ffe0a8', borderRadius: 14, backgroundColor: '#FFF8E8', padding: '18px 20px', marginBottom: 24, boxSizing: 'border-box', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#ff7f2b', fontSize: '0.9rem', fontWeight: 850, marginBottom: 10 }}>
+              <AlertTriangle size={18} color="#FF7F2B" /> 오늘 조치사항 ({regionName})
             </div>
             <div style={{ fontSize: '0.86rem', lineHeight: 1.5, color: '#626a65', marginBottom: 14 }}>
               <strong style={{ display: 'block', color: '#29312c', fontSize: '0.94rem', marginBottom: 2, fontWeight: 800 }}>
-                상추밭 ({analyzedRegion})
+                {actionTitle}
               </strong>
-              {weather.warningText}
+              {actionReason}
             </div>
-            <button onClick={() => onTabChange('myfield')} style={{ height: 32, padding: '0 14px', border: '1px solid #ffcfb1', borderRadius: 18, backgroundColor: '#FFFFFF', color: '#ff7d31', fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer' }}>
-              대응법 보기 ›
+            <button onClick={handleReportViewClick} style={{ height: 32, padding: '0 14px', border: '1px solid #ffcfb1', borderRadius: 18, backgroundColor: '#FFFFFF', color: '#ff7d31', fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer' }}>
+              지역 리포트 보기 ›
             </button>
             <img src="/svg-assets/weather/water-drop-alert.svg" alt="물방울 캐릭터" style={{ position: 'absolute', right: 12, bottom: 4, width: 84, height: 120, objectFit: 'contain' }} />
           </div>
@@ -196,7 +230,7 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
         {/* Recommended Farming Advice */}
         <div>
           <h2 style={{ fontSize: '1.05rem', fontWeight: 850, color: '#202a24', marginBottom: 12 }}>
-            {isNewUser ? '내 땅에 맞는 추천 농사 정보' : '상추에 맞는 추천 농사 정보'}
+            {isNewUser ? '내 땅에 맞는 추천 농사 정보' : `${regionName} 추천 작물 정보`}
           </h2>
 
           {isNewUser ? (
@@ -204,12 +238,12 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
                아직 추천 정보가 없어요
              </div>
           ) : (
-            <motion.div whileTap={{ scale: 0.98 }} onClick={onGoToExplore} style={{ width: '100%', minHeight: 73, border: '1px solid #dbe6de', borderRadius: 14, background: 'linear-gradient(135deg, #fdfffd, #f7fbf8)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', boxSizing: 'border-box', cursor: 'pointer' }}>
+            <motion.div whileTap={{ scale: 0.98 }} onClick={handleReportViewClick} style={{ width: '100%', minHeight: 73, border: '1px solid #dbe6de', borderRadius: 14, backgroundColor: '#F8FAF8', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', boxSizing: 'border-box', cursor: 'pointer' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                <img src="/svg-assets/crops/lettuce.svg" alt="상추" style={{ width: 44, height: 44, objectFit: 'contain' }} />
+                <img src={topCropIcon} alt={topCropName} style={{ width: 44, height: 44, objectFit: 'contain' }} />
                 <div>
-                  <strong style={{ fontSize: '0.88rem', color: '#306847', fontWeight: 800 }}>장마철 상추 무름병 예방법</strong>
-                  <p style={{ margin: '3px 0 0 0', fontSize: '0.76rem', color: '#747b76' }}>습도 관리와 배수 개선이 중요해요.</p>
+                  <strong style={{ fontSize: '0.88rem', color: '#306847', fontWeight: 800 }}>TOP 1 추천: {topCropName} ({topCropScore}점)</strong>
+                  <p style={{ margin: '3px 0 0 0', fontSize: '0.76rem', color: '#747b76' }}>{topCropReason}</p>
                 </div>
               </div>
               <ChevronRight size={20} color="#24513a" />
@@ -221,10 +255,10 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
 
       {/* Floating AI Button */}
       <button className="floating-ai-btn" onClick={onOpenAIChat} title="AI Assistant">
-        <img src="/svg-assets/ui-icons/ai-chat.svg" alt="AI 채팅" style={{ width: 26, height: 26, filter: 'brightness(0) invert(1)' }} />
+        <span style={{ color: '#FFFFFF', fontSize: '0.9rem', fontWeight: 900 }}>AI</span>
       </button>
 
-      {/* 4-Tab Bottom Navigation */}
+      {/* Bottom Navigation */}
       <BottomNavigation
         activeTab={activeTab}
         onTabChange={onTabChange}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { ViewStep, TabState, CommunityPost, MyFieldItem } from './types/farmflate';
 import { SplashView } from './components/farmflate/SplashView';
 import { LandingView } from './components/farmflate/LandingView';
@@ -15,43 +15,129 @@ import { MyFieldListView } from './components/farmflate/MyFieldListView';
 import { CommunityListView } from './components/farmflate/CommunityListView';
 import { CommunityCreatePostView } from './components/farmflate/CommunityCreatePostView';
 import { MyPageView } from './components/farmflate/MyPageView';
-import { AIChatModal } from './components/farmflate/AIChatModal';
 import { MOCK_MY_FIELDS, MOCK_COMMUNITY_POSTS } from './data/mockData';
-import { analyzeCropSuitability, type DynamicAnalysisResult } from './services/farmEngine';
+import { analyzeCropSuitability, getSidoCode, getSigunguCode, type DynamicAnalysisResult } from './services/farmEngine';
+import { ApiService } from './services/api';
+import type { RegionReport, HomeData } from './services/api';
+import { AIChatModal } from './components/farmflate/AIChatModal';
 
 type ExtendedViewStep = ViewStep | 'splash';
 
 export function App() {
-  const [viewStep, setViewStep] = useState<ExtendedViewStep>('splash');
+  const checkHasToken = () => !!(localStorage.getItem('jwtToken') || localStorage.getItem('token'));
+  const [viewStep, setViewStep] = useState<ExtendedViewStep>(checkHasToken() ? 'dashboard' : 'landing');
   const [activeTab, setActiveTab] = useState<TabState>('home');
   const [isAIChatOpen, setIsAIChatOpen] = useState(false);
   const [isNewUser, setIsNewUser] = useState(true);
 
   /* User State & Selections */
-  const [userName, _setUserName] = useState('진우님');
+  const [userName, setUserName] = useState('사용자님');
   const [selectedProvince, setSelectedProvince] = useState('전북특별자치도');
   const [selectedDistrict, setSelectedDistrict] = useState('고창군');
   const [selectedCropName, setSelectedCropName] = useState('감자');
   const [analysisResult, setAnalysisResult] = useState<DynamicAnalysisResult>(
     analyzeCropSuitability('전북특별자치도', '고창군', '감자')
   );
+  const [apiReport, setApiReport] = useState<RegionReport | null>(null);
+  const [homeData, setHomeData] = useState<HomeData | null>(null);
+
+  // Strict Auth Guard Function
+  const safeSetViewStep = (targetStep: ExtendedViewStep) => {
+    const isAuth = checkHasToken();
+    if (!isAuth && targetStep !== 'landing' && targetStep !== 'splash') {
+      console.warn('Unauthenticated user attempt blocked for step:', targetStep);
+      setViewStep('landing');
+      return;
+    }
+    setViewStep(targetStep);
+  };
+
+  useEffect(() => {
+    // Read query params if redirected from OAuth
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    const targetView = params.get('view');
+    
+    if (token) {
+      localStorage.setItem('jwtToken', token);
+      // Clean query params after token saved
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
+    const isAuth = checkHasToken();
+    if (!isAuth) {
+      safeSetViewStep('landing');
+      return;
+    }
+
+    if (targetView && (targetView === 'dashboard' || targetView === 'landing' || targetView === 'explore')) {
+      safeSetViewStep(targetView as ExtendedViewStep);
+    }
+
+    // Sync with Spring Boot API for Kakao user info and region analysis status
+    ApiService.getHome()
+      .then(resData => {
+        setHomeData(resData);
+        if (resData?.user?.displayName) {
+          setUserName(resData.user.displayName);
+        }
+        if (resData?.latestRegionAnalysis) {
+          setIsNewUser(false);
+          ApiService.getRegionReport(resData.latestRegionAnalysis.analysisId)
+            .then(rep => {
+              setApiReport(rep);
+              if (rep.region?.sidoName && rep.region?.sigunguName) {
+                setSelectedProvince(rep.region.sidoName);
+                setSelectedDistrict(rep.region.sigunguName);
+              }
+            })
+            .catch(() => {});
+        } else {
+          setIsNewUser(true);
+        }
+      })
+      .catch(err => {
+        console.warn('Backend server offline or unauthenticated, using default new user state:', err);
+        setIsNewUser(true);
+      });
+  }, []);
 
   /* Dynamic Fields & Posts */
   const [myFields, setMyFields] = useState<MyFieldItem[]>(MOCK_MY_FIELDS);
   const [posts, setPosts] = useState<CommunityPost[]>(MOCK_COMMUNITY_POSTS);
 
   /* Region Analysis Handler */
-  const handleStartAnalysis = (province: string, district: string) => {
+  const handleStartAnalysis = async (province: string, district: string) => {
     setSelectedProvince(province);
     setSelectedDistrict(district);
-    const result = analyzeCropSuitability(province, district, selectedCropName);
-    setAnalysisResult(result);
-    setViewStep('analyzing');
+    safeSetViewStep('analyzing');
+
+    try {
+      // Call real Spring Boot backend for Region Analysis
+      const statusRes = await ApiService.createRegionAnalysis({
+        sidoCode: getSidoCode(province),
+        sigunguCode: getSigunguCode(province, district),
+        idempotencyKey: 'key_' + Date.now()
+      });
+
+      const rep = await ApiService.getRegionReport(statusRes.analysisId);
+      setApiReport(rep);
+      if (rep.region?.sidoName && rep.region?.sigunguName) {
+        setSelectedProvince(rep.region.sidoName);
+        setSelectedDistrict(rep.region.sigunguName);
+      }
+      setIsNewUser(false);
+    } catch (err) {
+      console.warn('Backend analysis call fallback to local engine:', err);
+    } finally {
+      const result = analyzeCropSuitability(province, district, selectedCropName);
+      setAnalysisResult(result);
+    }
   };
 
   /* Analysis Completion Handler */
   const handleAnalysisComplete = () => {
-    setViewStep('report_summary');
+    safeSetViewStep('report_summary');
   };
 
   /* Crop Input Handler */
@@ -59,7 +145,7 @@ export function App() {
     setSelectedCropName(cropName);
     const result = analyzeCropSuitability(selectedProvince, selectedDistrict, cropName);
     setAnalysisResult(result);
-    setViewStep('analyzing');
+    safeSetViewStep('analyzing');
   };
 
   /* Dynamic Add Field Handler */
@@ -76,59 +162,97 @@ export function App() {
       reportTime: '방금 전 자동 분석됨'
     };
     
-    // 신규 유저 상태 해제 및 데이터 삽입
     setIsNewUser(false);
-    
-    // 만약 기존에 MOCK_MY_FIELDS가 채워져 있었다면 초기화 후 새로 넣도록 설정
     setMyFields(prev => isNewUser ? [newField] : [newField, ...prev]);
-    setViewStep('myfield');
+    safeSetViewStep('myfield');
     setActiveTab('myfield');
   };
 
   /* Tab Navigation Handler */
   const handleTabChange = (tab: TabState) => {
     setActiveTab(tab);
-    if (tab === 'home') setViewStep('dashboard');
-    if (tab === 'myfield') setViewStep('myfield');
-    if (tab === 'community') setViewStep('community');
-    if (tab === 'settings') setViewStep('mypage');
+    if (tab === 'home') safeSetViewStep('dashboard');
+    if (tab === 'myfield') safeSetViewStep('myfield');
+    if (tab === 'community') safeSetViewStep('community');
+    if (tab === 'settings') safeSetViewStep('mypage');
   };
 
-  /* Community Create Handler */
-  const handleCreatePost = (title: string, content: string) => {
+  /* Community Handlers */
+  const handleToggleLike = (postId: string) => {
+    setPosts(prev => prev.map(p => {
+      if (p.id === postId) {
+        const isLiked = !p.isLiked;
+        return {
+          ...p,
+          isLiked,
+          likeCount: isLiked ? p.likeCount + 1 : Math.max(0, p.likeCount - 1)
+        };
+      }
+      return p;
+    }));
+  };
+
+  const handleToggleSave = (postId: string) => {
+    setPosts(prev => prev.map(p => p.id === postId ? { ...p, isSaved: !p.isSaved } : p));
+  };
+
+  const handleAddComment = (postId: string, commentText: string) => {
+    setPosts(prev => prev.map(p => {
+      if (p.id === postId) {
+        const newComment = {
+          id: 'comm_' + Date.now(),
+          author: userName,
+          content: commentText,
+          timeAgo: '방금 전'
+        };
+        const updatedComments = p.comments ? [...p.comments, newComment] : [newComment];
+        return {
+          ...p,
+          commentCount: updatedComments.length,
+          comments: updatedComments
+        };
+      }
+      return p;
+    }));
+  };
+
+  const handleCreatePost = (title: string, content: string, category?: string, locationTag?: string, imageUrl?: string) => {
     const newPost: CommunityPost = {
-      id: Date.now().toString(),
-      category: '재배 꿀팁',
-      tagLocation: `${selectedProvince} ${selectedDistrict}`,
+      id: 'post_' + Date.now(),
+      category: category || '농가 노하우',
+      tagLocation: locationTag || `${selectedProvince} ${selectedDistrict}`,
       title,
       content,
       author: userName,
       timeAgo: '방금 전',
       commentCount: 0,
       likeCount: 0,
-      isSaved: false
+      isLiked: false,
+      isSaved: false,
+      imageUrl,
+      comments: []
     };
     setPosts(prev => [newPost, ...prev]);
-    setViewStep('community');
+    safeSetViewStep('community');
     setActiveTab('community');
   };
 
   return (
-    <div className="mobile-wrapper">
+    <div className="mobile-wrapper min-h-screen bg-white">
       {/* 0. Splash Screen */}
       {viewStep === 'splash' && (
-        <SplashView onComplete={() => setViewStep('landing')} />
+        <SplashView onComplete={() => safeSetViewStep('landing')} />
       )}
 
-      {/* 1. Landing Screen */}
+      {/* 1. Landing Screen (Kakao OAuth Login) */}
       {viewStep === 'landing' && (
-        <LandingView onLogin={() => setViewStep('dashboard')} />
+        <LandingView onLogin={() => safeSetViewStep('dashboard')} />
       )}
 
       {/* 2. Region Search Screen */}
       {viewStep === 'explore' && (
         <RegionExploreView
-          onBack={() => setViewStep('dashboard')}
+          onBack={() => safeSetViewStep('dashboard')}
           onStartAnalysis={handleStartAnalysis}
         />
       )}
@@ -136,9 +260,9 @@ export function App() {
       {/* 3. Crop Condition Input Screen */}
       {viewStep === 'condition' && (
         <CropConditionInputView
-          onBack={() => setViewStep('dashboard')}
+          onBack={() => safeSetViewStep('dashboard')}
           onStartAnalysis={handleStartCropConditionAnalysis}
-          onOpenExplore={() => setViewStep('explore')}
+          onOpenExplore={() => safeSetViewStep('explore')}
           selectedRegionName={`${selectedProvince} ${selectedDistrict}`}
         />
       )}
@@ -154,8 +278,10 @@ export function App() {
       {/* 5. Region Report Summary Screen */}
       {viewStep === 'report_summary' && (
         <RegionReportSummaryView
-          regionName={`${selectedProvince} ${selectedDistrict}`}
-          onNext={() => setViewStep('report_risks')}
+          regionName={apiReport?.region?.sidoName && apiReport?.region?.sigunguName ? `${apiReport.region.sidoName} ${apiReport.region.sigunguName}` : `${selectedProvince} ${selectedDistrict}`}
+          report={apiReport}
+          onBack={() => safeSetViewStep('explore')}
+          onNext={() => safeSetViewStep('report_risks')}
           onOpenAIChat={() => setIsAIChatOpen(true)}
         />
       )}
@@ -163,8 +289,9 @@ export function App() {
       {/* 6. Region Risks Screen */}
       {viewStep === 'report_risks' && (
         <RegionRisksView
-          onBack={() => setViewStep('report_summary')}
-          onNext={() => setViewStep('report_tips')}
+          report={apiReport}
+          onBack={() => safeSetViewStep('report_summary')}
+          onNext={() => safeSetViewStep('report_tips')}
           onOpenAIChat={() => setIsAIChatOpen(true)}
         />
       )}
@@ -172,23 +299,26 @@ export function App() {
       {/* 7. Region Tips Screen */}
       {viewStep === 'report_tips' && (
         <RegionTipsView
-          districtName={selectedDistrict}
-          onGoToCreateField={() => setViewStep('crop_suitability_report')}
-          onGoToRecommendedCrops={() => setViewStep('recommended_crops')}
+          districtName={apiReport?.region?.sigunguName || selectedDistrict}
+          report={apiReport}
+          onBack={() => safeSetViewStep('report_risks')}
+          onGoToCreateField={() => handleTabChange('myfield')}
+          onOpenAIChat={() => setIsAIChatOpen(true)}
         />
       )}
 
       {/* 8. Recommended Crops Screen */}
       {viewStep === 'recommended_crops' && (
         <RecommendedCropsView
-          districtName={selectedDistrict}
-          onBack={() => setViewStep('report_tips')}
+          districtName={apiReport?.region?.sigunguName || selectedDistrict}
+          report={apiReport}
+          onBack={() => safeSetViewStep('report_tips')}
           onOpenAIChat={() => setIsAIChatOpen(true)}
           onSelectCrop={(cropName) => {
             setSelectedCropName(cropName);
             const result = analyzeCropSuitability(selectedProvince, selectedDistrict, cropName);
             setAnalysisResult(result);
-            setViewStep('crop_suitability_report');
+            safeSetViewStep('crop_suitability_report');
           }}
         />
       )}
@@ -198,7 +328,7 @@ export function App() {
         <CropSuitabilityReportView
           cropName={selectedCropName}
           score={analysisResult.score}
-          onBack={() => setViewStep('recommended_crops')}
+          onBack={() => safeSetViewStep('recommended_crops')}
           onRegisterCrop={handleAddField}
         />
       )}
@@ -207,9 +337,11 @@ export function App() {
       {viewStep === 'dashboard' && (
         <MainDashboardView
           userName={userName}
-          analyzedRegion={`${selectedProvince} ${selectedDistrict}`}
+          analyzedRegion={apiReport?.region?.sidoName && apiReport?.region?.sigunguName ? `${apiReport.region.sidoName} ${apiReport.region.sigunguName}` : `${selectedProvince} ${selectedDistrict}`}
           analyzedCropResult={null}
-          onGoToExplore={() => setViewStep('explore')}
+          homeData={homeData}
+          onGoToExplore={() => safeSetViewStep('explore')}
+          onOpenReport={() => safeSetViewStep('report_summary')}
           onOpenAIChat={() => setIsAIChatOpen(true)}
           activeTab={activeTab}
           onTabChange={handleTabChange}
@@ -221,7 +353,7 @@ export function App() {
       {viewStep === 'myfield' && (
         <MyFieldListView
           fields={isNewUser ? [] : myFields}
-          onAddField={() => setViewStep('explore')}
+          onAddField={() => safeSetViewStep('explore')}
           onOpenAIChat={() => setIsAIChatOpen(true)}
           activeTab={activeTab}
           onTabChange={handleTabChange}
@@ -233,16 +365,20 @@ export function App() {
         <CommunityListView
           posts={posts}
           onOpenAIChat={() => setIsAIChatOpen(true)}
-          onOpenWrite={() => setViewStep('community_create')}
+          onOpenWrite={() => safeSetViewStep('community_create')}
           activeTab={activeTab}
           onTabChange={handleTabChange}
+          onToggleLike={handleToggleLike}
+          onToggleSave={handleToggleSave}
+          onAddComment={handleAddComment}
         />
       )}
 
       {/* 13. Community Create Screen */}
       {viewStep === 'community_create' && (
         <CommunityCreatePostView
-          onCancel={() => setViewStep('community')}
+          userRegion={`${selectedProvince} ${selectedDistrict}`}
+          onCancel={() => safeSetViewStep('community')}
           onSubmitPost={handleCreatePost}
         />
       )}
@@ -251,10 +387,15 @@ export function App() {
       {viewStep === 'mypage' && (
         <MyPageView
           userName={userName}
-          userRegion={`${selectedProvince} ${selectedDistrict}`}
+          userRegion={apiReport?.region?.sidoName && apiReport?.region?.sigunguName ? `${apiReport.region.sidoName} ${apiReport.region.sigunguName}` : `${selectedProvince} ${selectedDistrict}`}
           onOpenAIChat={() => setIsAIChatOpen(true)}
           activeTab={activeTab}
           onTabChange={handleTabChange}
+          onGoToExplore={() => safeSetViewStep('explore')}
+          onLogout={() => {
+            localStorage.clear();
+            safeSetViewStep('landing');
+          }}
         />
       )}
 
