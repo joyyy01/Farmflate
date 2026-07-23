@@ -1,0 +1,177 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: 'Pretendard', 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans KR', sans-serif;
+  color: #191F28;
+  background-color: #F4F6F8; /* Light gray background for desktop boundaries */
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+/* Hide scrollbars gracefully for clean tag chips */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Flexible 100% Responsive Mobile Container */
+.mobile-wrapper {
+  width: 100%;
+  max-width: 480px;
+  min-height: 100vh;
+  margin: 0 auto;
+  background-color: #FFFFFF;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.04);
+}
+
+.full-screen-view {
+  width: 100%;
+  min-height: 100vh;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+.logo-wordmark {
+  height: 30px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 4px rgba(47, 168, 106, 0.1));
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.logo-wordmark:hover {
+  transform: scale(1.03);
+}
+
+.logo {
+  font-family: 'Outfit', 'Pretendard', sans-serif;
+  font-weight: 900;
+  font-style: italic;
+  color: #2FA86A;
+  letter-spacing: -0.05em;
+}
+
+/* Floating AI Button - Perfectly anchored above bottom navigation bar */
+.floating-ai-btn {
+  position: fixed;
+  bottom: 84px;
+  right: max(20px, calc(50vw - 215px));
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #2FA86A, #258A55);
+  color: #FFFFFF;
+  border: none;
+  box-shadow: 0 6px 20px rgba(47, 168, 106, 0.38);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 40;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  font-size: 1.35rem;
+}
+
+.floating-ai-btn:hover {
+  transform: scale(1.08);
+  box-shadow: 0 8px 24px rgba(47, 168, 106, 0.48);
+}
+
+/* Premium 4-Tab Bottom Navigation Bar */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 480px;
+  height: 64px;
+  background-color: #FFFFFF;
+  border-top: 1px solid #EAEFEA;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  align-items: center;
+  z-index: 50;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.05);
+}
+
+.nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  color: #8E9892;
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  height: 100%;
+  transition: color 0.15s ease;
+}
+
+.nav-item.active {
+  color: #2FA86A;
+  font-weight: 850;
+}
+
+.btn-farm-primary {
+  width: 100%;
+  height: 52px;
+  border-radius: 26px;
+  background: linear-gradient(135deg, #2FA86A, #258A55);
+  color: #FFFFFF;
+  font-size: 1rem;
+  font-weight: 850;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(47, 168, 106, 0.22);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-farm-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(47, 168, 106, 0.32);
+}
+
+.btn-dashed-register {
+  width: 100%;
+  height: 52px;
+  border-radius: 16px;
+  border: 2px dashed #A8DCC8;
+  background-color: #F8FAF8;
+  color: #2FA86A;
+  font-size: 0.94rem;
+  font-weight: 800;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.btn-dashed-register:hover {
+  background-color: #E9F7EC;
+  border-color: #2FA86A;
+}
