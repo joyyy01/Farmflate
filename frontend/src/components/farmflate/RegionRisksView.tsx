@@ -1,39 +1,36 @@
 import React from 'react';
 import { motion } from 'framer-motion';
+import type { RegionReport } from '../../services/api';
 
 interface RegionRisksViewProps {
+  report?: RegionReport | null;
   onBack: () => void;
   onNext: () => void;
   onOpenAIChat: () => void;
 }
 
 export const RegionRisksView: React.FC<RegionRisksViewProps> = ({
+  report,
   onBack,
   onNext
 }) => {
-  const risks = [
+  const rawRisks = report?.topRisks && report.topRisks.length > 0 ? report.topRisks : [
     {
-      number: 1,
-      title: '여름철 폭염',
-      desc: '7~8월 평균 최고기온이 높은 편이라\n한낮 고온 대비가 필요해요.',
-      links: ['농사로 공식자료', '원문 보기 →'],
-      icon: '/svg-assets/weather/sunny.svg'
-    },
-    {
-      number: 2,
-      title: '장마철 집중호우',
-      desc: '여름철 강수가 특정 시기에 몰려서\n배수 관리가 중요해요.',
-      links: ['농사로 공식자료', '원문 보기 →'],
-      icon: '/svg-assets/weather/rain.svg'
-    },
-    {
-      number: 3,
-      title: '일부 지역 배수 관리 필요',
-      desc: '토성에 따라 배수가 느린 구역이 있어\n장마 전 점검이 필요해요.',
-      links: ['농사로 공식자료', '원문 보기 →'],
-      icon: '/svg-assets/ui-icons/warning-triangle.svg'
+      rank: 1,
+      riskCode: 'HEAVY_RAIN',
+      title: '장마철 집중호우 대비',
+      description: '여름철 강수가 특정 시기에 몰려서 밭 주변 배수 관리가 중요해요.',
+      source: { sourceUrl: 'https://www.nongsaro.go.kr' }
     }
   ];
+
+  const dynamicRisks = rawRisks.map((r, idx) => ({
+    number: r.rank || (idx + 1),
+    title: r.title,
+    desc: r.description,
+    sourceUrl: r.source?.sourceUrl || 'https://www.nongsaro.go.kr',
+    icon: r.riskCode === 'HEAVY_RAIN' ? '/svg-assets/weather/rain.svg' : r.riskCode === 'HEAT' ? '/svg-assets/weather/sunny.svg' : '/svg-assets/ui-icons/warning-triangle.svg'
+  }));
 
   return (
     <div className="full-screen-view" style={{ backgroundColor: '#FFFFFF', display: 'flex', flexDirection: 'column', height: '100%', padding: 0 }}>
@@ -45,17 +42,17 @@ export const RegionRisksView: React.FC<RegionRisksViewProps> = ({
           <img src="/svg-assets/ui-icons/back.svg" alt="뒤로가기" style={{ width: 24, height: 24 }} />
         </button>
 
-        {/* Title with mascot */}
+        {/* Dynamic Title based on actual identified risks count */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 32 }}>
           <h2 style={{ fontSize: '1.6rem', fontWeight: 900, color: '#191F28', lineHeight: 1.35, margin: 0 }}>
-            이 지역의 핵심 환경<br />위험 <span style={{ color: '#2FA86A' }}>3가지</span>
+            이 지역의 핵심 환경<br />위험 <span style={{ color: '#2FA86A' }}>{dynamicRisks.length}가지</span>
           </h2>
           <img src="/svg-assets/brand/mascot/guide.svg" alt="마스코트" style={{ width: 56, height: 56, objectFit: 'contain', marginTop: -8 }} />
         </div>
 
-        {/* Premium Risk Cards */}
+        {/* Risk Cards */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {risks.map((risk, index) => (
+          {dynamicRisks.map((risk, index) => (
             <motion.div 
               key={risk.number}
               initial={{ opacity: 0, y: 15 }}
@@ -103,18 +100,32 @@ export const RegionRisksView: React.FC<RegionRisksViewProps> = ({
 
                   {/* Action links */}
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    {risk.links.map((link, i) => (
-                      <button key={i} style={{
-                        backgroundColor: i === 0 ? '#FFFFFF' : 'transparent',
-                        border: i === 0 ? '1px solid #D1DFD7' : 'none',
-                        borderRadius: 10, padding: i === 0 ? '7px 12px' : '7px 0',
+                    <button
+                      onClick={() => window.open('https://www.nongsaro.go.kr', '_blank')}
+                      style={{
+                        backgroundColor: '#FFFFFF',
+                        border: '1px solid #D1DFD7',
+                        borderRadius: 10, padding: '7px 12px',
                         fontSize: '0.78rem', fontWeight: 700,
-                        color: i === 0 ? '#191F28' : '#8E9892', cursor: 'pointer',
+                        color: '#191F28', cursor: 'pointer',
                         display: 'flex', alignItems: 'center', gap: 4
-                      }}>
-                        {link}
-                      </button>
-                    ))}
+                      }}
+                    >
+                      농사로 공식자료
+                    </button>
+                    <button
+                      onClick={() => window.open(risk.sourceUrl, '_blank')}
+                      style={{
+                        backgroundColor: 'transparent',
+                        border: 'none',
+                        borderRadius: 10, padding: '7px 0',
+                        fontSize: '0.78rem', fontWeight: 700,
+                        color: '#8E9892', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', gap: 4
+                      }}
+                    >
+                      원문 보기 →
+                    </button>
                   </div>
                 </div>
               </div>

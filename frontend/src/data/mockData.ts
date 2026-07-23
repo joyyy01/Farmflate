@@ -50,37 +50,46 @@ export const MOCK_MY_FIELDS: MyFieldItem[] = [
 ];
 
 export const MOCK_CROP_OPTIONS: CropOption[] = [
-  { id: 'apple', name: '사과', emoji: '🍎' },
-  { id: 'pear', name: '배', emoji: '🍐' },
-  { id: 'cucumber', name: '오이', emoji: '🥒' },
-  { id: 'potato', name: '감자', emoji: '🥔' },
-  { id: 'lettuce', name: '상추', emoji: '🥬' }
+  { id: 'apple', name: '사과' },
+  { id: 'pear', name: '배' },
+  { id: 'cucumber', name: '오이' },
+  { id: 'potato', name: '감자' },
+  { id: 'lettuce', name: '상추' }
 ];
 
 export const MOCK_COMMUNITY_POSTS: CommunityPost[] = [
   {
     id: 'post_1',
-    category: '질문있어요',
-    tagLocation: '전북 고창군 · 감자',
+    category: '질문/답변',
+    tagLocation: '전북 고창군',
     title: '감자 잎이 노랗게 변하는데 정상인가요?',
-    content: '이번에 처음 심었는데 아랫잎부터 노랗게 변해서 걱정이에요...',
+    content: '이번에 처음 심었는데 아랫잎부터 노랗게 변해서 걱정이예요...',
     commentCount: 12,
     likeCount: 8,
     author: '초보농부',
     timeAgo: '2시간 전',
-    isSaved: false
+    isLiked: false,
+    isSaved: false,
+    comments: [
+      { id: 'c1', author: '고창베테랑', content: '장마 후 배수로 수심 체크해보세요! 밭골에 물 고이면 아랫잎부터 습해 증상이 옵니다.', timeAgo: '1시간 전' },
+      { id: 'c2', author: '전주농업인', content: '토양 pH가 낮아도 칼슘 흡수가 저하돼요. 가까운 농업기술센터 무료 검정 받아보시길 추천합니다.', timeAgo: '30분 전' }
+    ]
   },
   {
     id: 'post_2',
-    category: '동네소식',
-    tagLocation: '동네소식',
-    title: '고창군 농업기술센터 무료 토양검정 신청받는대요',
+    category: '농가 노하우',
+    tagLocation: '경북 상주시',
+    title: '상주시 농업기술센터 무료 토양검정 신청받는대요',
     content: '이번 달 말까지 선착순으로 신청받는다고 하네요, 링크 공유합니다.',
     commentCount: 20,
     likeCount: 31,
-    author: '고창베테랑',
+    author: '상주포도농가',
     timeAgo: '5시간 전',
-    isSaved: false
+    isLiked: true,
+    isSaved: true,
+    comments: [
+      { id: 'c3', author: '익산농가', content: '좋은 정보 감사합니다! 올해 이대로 신청해 봐야겠네요.', timeAgo: '4시간 전' }
+    ]
   },
   {
     id: 'post_3',
@@ -92,7 +101,9 @@ export const MOCK_COMMUNITY_POSTS: CommunityPost[] = [
     likeCount: 15,
     author: '귀농인',
     timeAgo: '1일 전',
-    isSaved: false
+    isLiked: false,
+    isSaved: false,
+    comments: []
   }
 ];
 

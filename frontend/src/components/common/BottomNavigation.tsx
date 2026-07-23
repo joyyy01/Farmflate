@@ -1,5 +1,5 @@
 import React from 'react';
-
+import { Home, Sprout, MessageSquare, Settings } from 'lucide-react';
 import type { TabState } from '../../types/farmflate';
 
 interface BottomNavigationProps {
@@ -20,11 +20,9 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
         onClick={() => onTabChange('home')}
         className={`nav-item ${activeTab === 'home' ? 'active' : ''}`}
       >
-        <img
-          src={activeTab === 'home' ? '/svg-assets/ui-icons/nav-active/home.svg' : '/svg-assets/ui-icons/home.svg'}
-          alt="홈"
-          style={{ width: 22, height: 22, opacity: activeTab === 'home' ? 1 : 0.6 }}
-        />
+        <div style={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Home size={22} color={activeTab === 'home' ? '#2FA86A' : '#8E9892'} strokeWidth={activeTab === 'home' ? 2.5 : 2} />
+        </div>
         <span>홈</span>
       </button>
 
@@ -34,11 +32,9 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
         onClick={() => onTabChange('myfield')}
         className={`nav-item ${activeTab === 'myfield' ? 'active' : ''}`}
       >
-        <img
-          src={activeTab === 'myfield' ? '/svg-assets/ui-icons/nav-active/field.svg' : '/svg-assets/ui-icons/field.svg'}
-          alt="마이 팜"
-          style={{ width: 22, height: 22, opacity: activeTab === 'myfield' ? 1 : 0.6 }}
-        />
+        <div style={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Sprout size={22} color={activeTab === 'myfield' ? '#2FA86A' : '#8E9892'} strokeWidth={activeTab === 'myfield' ? 2.5 : 2} />
+        </div>
         <span>마이 팜</span>
       </button>
 
@@ -48,11 +44,9 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
         onClick={() => onTabChange('community')}
         className={`nav-item ${activeTab === 'community' ? 'active' : ''}`}
       >
-        <img
-          src={activeTab === 'community' ? '/svg-assets/ui-icons/nav-active/community.svg' : '/svg-assets/ui-icons/community.svg'}
-          alt="커뮤니티"
-          style={{ width: 22, height: 22, opacity: activeTab === 'community' ? 1 : 0.6 }}
-        />
+        <div style={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <MessageSquare size={22} color={activeTab === 'community' ? '#2FA86A' : '#8E9892'} strokeWidth={activeTab === 'community' ? 2.5 : 2} />
+        </div>
         <span>커뮤니티</span>
       </button>
 
@@ -62,11 +56,9 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
         onClick={() => onTabChange('settings')}
         className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`}
       >
-        <img
-          src={activeTab === 'settings' ? '/svg-assets/ui-icons/nav-active/settings.svg' : '/svg-assets/ui-icons/settings.svg'}
-          alt="설정"
-          style={{ width: 22, height: 22, opacity: activeTab === 'settings' ? 1 : 0.6 }}
-        />
+        <div style={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Settings size={22} color={activeTab === 'settings' ? '#2FA86A' : '#8E9892'} strokeWidth={activeTab === 'settings' ? 2.5 : 2} />
+        </div>
         <span>설정</span>
       </button>
     </nav>

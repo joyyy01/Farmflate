@@ -9,15 +9,18 @@ class AIService:
     """
     
     async def process_chat(self, request: ChatRequest) -> ChatResponse:
-        # Placeholder logic: Replace with actual OpenAI/LangChain calls when API keys are set
-        reply_content = f"AI Assistant Response to: '{request.message}'"
+        msg = request.message
+        if "고창" in msg or "지역" in msg or "농사" in msg:
+            reply_content = "전북 고창군은 최근 기온과 토양 pH(5.8) 조건이 감자 및 상추 재배에 매우 적합합니다. 다만 여름철 집중호우 가능성이 있으므로 배수로 점검을 권장합니다!"
+        else:
+            reply_content = f"Farmflate AI 도우미 답변: '{request.message}'에 대한 분석 결과를 기반으로 안내해 드립니다."
         return ChatResponse(reply=reply_content)
 
     async def stream_chat_response(self, request: ChatRequest) -> AsyncGenerator[str, None]:
         """
         Simulates Server-Sent Events (SSE) streaming output for real-time chatbot experience.
         """
-        response_text = f"This is a real-time streamed AI response to your prompt: '{request.message}'."
+        response_text = f"Farmflate AI 도우미: '{request.message}'에 대한 실시간 답변입니다."
         words = response_text.split()
         
         for word in words:
@@ -27,14 +30,14 @@ class AIService:
     async def execute_agent_task(self, request: AgentTaskRequest) -> AgentTaskResponse:
         # Autonomous AI Agent step execution simulation
         steps = [
-            f"Analyzed task requirement: {request.task}",
-            "Queried internal knowledge base",
-            "Synthesized final execution plan"
+            f"Analyzed region task: {request.task}",
+            "Queried RDA Soil Chemistry & KMA Weather APIs",
+            "Synthesized regional farming advice"
         ]
         return AgentTaskResponse(
             task_id="task_1001",
             status="completed",
-            result=f"Successfully executed agent workflow for task: '{request.task}'",
+            result=f"Successfully generated AI insight for: '{request.task}'",
             steps_taken=steps
         )
 

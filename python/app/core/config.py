@@ -13,7 +13,9 @@ class Settings(BaseSettings):
         "http://localhost:8080"   # Spring Boot Server
     ]
     
-    # AI Model Keys (Set in .env)
+    # AI Model Keys (Strictly loaded from .env)
+    LLM_API_KEY: str = os.getenv("LLM_API_KEY", "")
+    LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "gemini")
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
 
     class Config:

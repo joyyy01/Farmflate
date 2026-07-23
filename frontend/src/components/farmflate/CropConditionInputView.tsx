@@ -20,7 +20,9 @@ export const CropConditionInputView: React.FC<CropConditionInputViewProps> = ({
   const [selectedCrop, setSelectedCrop] = useState('감자');
   const [stage, setStage] = useState<'before' | 'growing'>('before');
   const [farmType, setFarmType] = useState<'outdoor' | 'indoor'>('outdoor');
-  const [startDate, _setStartDate] = useState('2026. 7. 23');
+  const [startDate, setStartDate] = useState(
+    new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
+  );
 
   /* Design File 5 Screen 3 - '농작물 등록' */
   const crops = [
