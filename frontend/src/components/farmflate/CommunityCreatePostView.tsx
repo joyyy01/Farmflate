@@ -49,12 +49,12 @@ export const CommunityCreatePostView: React.FC<CommunityCreatePostViewProps> = (
   };
 
   return (
-    <div className="full-screen-view" style={{ backgroundColor: '#FFFFFF', padding: '0 20px 40px 20px', justifyContent: 'space-between', flex: 1, overflowY: 'auto' }}>
+    <div className="full-screen-view" style={{ backgroundColor: '#FFFFFF', padding: '16px 20px 40px 20px', justifyContent: 'space-between', flex: 1, overflowY: 'auto' }}>
       <div>
-        {/* Header */}
+        {/* Header Grid - 100% Dead-Centered Title Alignment */}
         <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
+          display: 'grid',
+          gridTemplateColumns: '60px 1fr 60px',
           alignItems: 'center',
           height: 64,
           borderBottom: '1px solid #ECEFED',
@@ -62,32 +62,34 @@ export const CommunityCreatePostView: React.FC<CommunityCreatePostViewProps> = (
         }}>
           <button
             onClick={onCancel}
-            style={{ background: 'none', border: 'none', fontSize: '0.94rem', color: '#6F7772', fontWeight: 600, cursor: 'pointer' }}
+            style={{ justifySelf: 'start', background: 'none', border: 'none', fontSize: '0.94rem', color: '#6F7772', fontWeight: 600, cursor: 'pointer', padding: 0 }}
           >
             취소
           </button>
 
-          <h1 style={{ fontSize: '1.1rem', fontWeight: 850, color: '#191F28', margin: 0 }}>
+          <h1 style={{ fontSize: '1.1rem', fontWeight: 850, color: '#191F28', margin: 0, textAlign: 'center' }}>
             게시글 작성
           </h1>
 
-          <motion.button
-            whileTap={{ scale: 0.95 }}
-            onClick={handleSubmit}
-            disabled={!title.trim() || !content.trim()}
-            style={{
-              padding: '8px 20px',
-              borderRadius: 20,
-              backgroundColor: (!title.trim() || !content.trim()) ? '#C8D5CE' : '#2FA86A',
-              color: '#FFFFFF',
-              fontSize: '0.9rem',
-              fontWeight: 850,
-              border: 'none',
-              cursor: (!title.trim() || !content.trim()) ? 'default' : 'pointer'
-            }}
-          >
-            게시
-          </motion.button>
+          <div style={{ justifySelf: 'end' }}>
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              onClick={handleSubmit}
+              disabled={!title.trim() || !content.trim()}
+              style={{
+                padding: '8px 18px',
+                borderRadius: 20,
+                backgroundColor: (!title.trim() || !content.trim()) ? '#C8D5CE' : '#2FA86A',
+                color: '#FFFFFF',
+                fontSize: '0.88rem',
+                fontWeight: 850,
+                border: 'none',
+                cursor: (!title.trim() || !content.trim()) ? 'default' : 'pointer'
+              }}
+            >
+              게시
+            </motion.button>
+          </div>
         </div>
 
         {/* Title Input */}

@@ -13,7 +13,7 @@ export const LandingView: React.FC<LandingViewProps> = () => {
   return (
     <div className="full-screen-view" style={{
       justifyContent: 'space-between',
-      padding: '28px 20px 32px 20px',
+      padding: '40px 20px 36px 20px',
       backgroundColor: '#FFFFFF',
       background: 'radial-gradient(circle at 50% 0%, #E9F7EC 0%, #FFFFFF 65%)'
     }}>
@@ -24,25 +24,24 @@ export const LandingView: React.FC<LandingViewProps> = () => {
           initial={{ scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ duration: 0.4 }}
-          style={{ position: 'relative', marginBottom: 10 }}
+          style={{ position: 'relative', marginBottom: 14 }}
         >
           {/* Sparkle decorative SVGs */}
-          <img src="/svg-assets/ui-icons/star.svg" alt="" style={{ position: 'absolute', top: -6, left: -22, width: 16, height: 16, color: '#FFD95A' }} />
-          <img src="/svg-assets/ui-icons/star.svg" alt="" style={{ position: 'absolute', top: 12, right: -24, width: 14, height: 14, color: '#2FA86A' }} />
+          <img src="/svg-assets/ui-icons/star.svg" alt="" style={{ position: 'absolute', top: -6, left: -22, width: 16, height: 16 }} />
+          <img src="/svg-assets/ui-icons/star.svg" alt="" style={{ position: 'absolute', top: 12, right: -24, width: 14, height: 14 }} />
 
           {/* Joy Mascot Character Avatar */}
           <div style={{
-            width: 72, height: 72, borderRadius: '50%',
+            width: 76, height: 76, borderRadius: '50%',
             backgroundColor: '#FFFFFF',
             border: '2.5px solid #2FA86A',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 8px 20px rgba(47, 168, 106, 0.2)',
             overflow: 'hidden'
           }}>
             <img
               src="/svg-assets/brand/mascot/joy.svg"
               alt="Farmflate 마스코트"
-              style={{ width: 60, height: 60, objectFit: 'contain' }}
+              style={{ width: 64, height: 64, objectFit: 'contain' }}
             />
           </div>
         </motion.div>
@@ -75,8 +74,8 @@ export const LandingView: React.FC<LandingViewProps> = () => {
           lineHeight: 1.65,
           color: '#6F7772',
           fontWeight: 500,
-          marginBottom: 20,
-          margin: '6px 0 20px 0'
+          marginBottom: 24,
+          margin: '8px 0 24px 0'
         }}>
           지역과 작물을 선택하면 토양과 날씨를 분석해<br />재배 적합도와 위험 요소를 미리 알려드려요.
         </p>
@@ -93,7 +92,6 @@ export const LandingView: React.FC<LandingViewProps> = () => {
             backgroundColor: '#FFFFFF',
             borderRadius: 24,
             border: '1px solid #E1E8E4',
-            boxShadow: '0 12px 32px rgba(29, 64, 44, 0.08)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -120,11 +118,11 @@ export const LandingView: React.FC<LandingViewProps> = () => {
           alignItems: 'center',
           justifyContent: 'center',
           gap: 12,
-          marginBottom: 8,
+          marginBottom: 12,
           width: '100%'
         }}>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 76 }}>
-            <div style={{ width: 48, height: 48, borderRadius: '50%', backgroundColor: '#E9F7EC', border: '1px solid #A8DCC8', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 6, boxShadow: '0 3px 8px rgba(0,0,0,0.03)' }}>
+            <div style={{ width: 48, height: 48, borderRadius: '50%', backgroundColor: '#E9F7EC', border: '1px solid #A8DCC8', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 6 }}>
               <img src="/svg-assets/ui-icons/location.svg" alt="지역 선택" style={{ width: 24, height: 24 }} />
             </div>
             <span style={{ fontSize: '0.76rem', fontWeight: 750, color: '#154F36' }}>지역 선택</span>
@@ -133,7 +131,7 @@ export const LandingView: React.FC<LandingViewProps> = () => {
           <span style={{ color: '#A8DCC8', fontSize: '1.3rem', fontWeight: 800, marginBottom: 18 }}>›</span>
 
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 76 }}>
-            <div style={{ width: 48, height: 48, borderRadius: '50%', backgroundColor: '#E9F7EC', border: '1px solid #A8DCC8', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 6, boxShadow: '0 3px 8px rgba(0,0,0,0.03)' }}>
+            <div style={{ width: 48, height: 48, borderRadius: '50%', backgroundColor: '#E9F7EC', border: '1px solid #A8DCC8', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 6 }}>
               <img src="/svg-assets/crops/leaf.svg" alt="작물 선택" style={{ width: 24, height: 24 }} />
             </div>
             <span style={{ fontSize: '0.76rem', fontWeight: 750, color: '#154F36' }}>작물 선택</span>
@@ -142,7 +140,7 @@ export const LandingView: React.FC<LandingViewProps> = () => {
           <span style={{ color: '#A8DCC8', fontSize: '1.3rem', fontWeight: 800, marginBottom: 18 }}>›</span>
 
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 76 }}>
-            <div style={{ width: 48, height: 48, borderRadius: '50%', backgroundColor: '#E9F7EC', border: '1px solid #A8DCC8', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 6, boxShadow: '0 3px 8px rgba(0,0,0,0.03)' }}>
+            <div style={{ width: 48, height: 48, borderRadius: '50%', backgroundColor: '#E9F7EC', border: '1px solid #A8DCC8', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 6 }}>
               <img src="/svg-assets/brand/mascot/guide.svg" alt="분석 & 안내" style={{ width: 30, height: 30 }} />
             </div>
             <span style={{ fontSize: '0.76rem', fontWeight: 750, color: '#154F36' }}>분석 &amp; 안내</span>
@@ -151,7 +149,7 @@ export const LandingView: React.FC<LandingViewProps> = () => {
 
       </div>
 
-      {/* Single Green Kakao Button Action */}
+      {/* Official Kakao Brand Yellow (#FEE500) Button */}
       <div style={{ width: '100%' }}>
         <motion.button
           whileTap={{ scale: 0.97 }}
@@ -159,9 +157,9 @@ export const LandingView: React.FC<LandingViewProps> = () => {
           style={{
             width: '100%',
             height: 54,
-            borderRadius: 29,
-            background: 'linear-gradient(135deg, #2e9f5b, #38a766)',
-            color: '#FFFFFF',
+            borderRadius: 27,
+            backgroundColor: '#FEE500',
+            color: '#191F28',
             border: 'none',
             display: 'flex',
             alignItems: 'center',
@@ -169,11 +167,10 @@ export const LandingView: React.FC<LandingViewProps> = () => {
             gap: 10,
             fontSize: '1.02rem',
             fontWeight: 850,
-            cursor: 'pointer',
-            boxShadow: '0 9px 19px rgba(44, 151, 86, 0.22)'
+            cursor: 'pointer'
           }}
         >
-          <svg style={{ width: 22, height: 22, fill: '#FFFFFF' }} viewBox="0 0 24 24">
+          <svg style={{ width: 22, height: 22, fill: '#191F28' }} viewBox="0 0 24 24">
             <path d="M12 3c-4.97 0-9 3.185-9 7.115 0 2.557 1.707 4.8 4.27 6.09-.188.707-.68 2.564-.778 2.956-.123.493.18.487.38.354.157-.105 2.502-1.7 3.513-2.388.528.077 1.066.118 1.615.118 4.97 0 9-3.185 9-7.115S16.97 3 12 3z"/>
           </svg>
           카카오로 시작하기
