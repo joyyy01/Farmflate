@@ -1,3 +1,5 @@
+@import "tailwindcss";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -5,7 +7,7 @@
 body {
   font-family: 'Pretendard', 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans KR', sans-serif;
   color: #191F28;
-  background-color: #F4F6F8; /* Light gray background for desktop boundaries */
+  background-color: #F4F6F8;
   margin: 0;
   padding: 0;
   -webkit-font-smoothing: antialiased;
@@ -16,7 +18,7 @@ body {
   box-sizing: border-box;
 }
 
-/* Hide scrollbars gracefully for clean tag chips */
+/* Hide scrollbars gracefully */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
@@ -25,7 +27,7 @@ body {
   scrollbar-width: none;
 }
 
-/* Flexible 100% Responsive Mobile Container */
+/* Clean Mobile Container */
 .mobile-wrapper {
   width: 100%;
   max-width: 480px;
@@ -35,7 +37,6 @@ body {
   position: relative;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 0 30px rgba(0, 0, 0, 0.04);
 }
 
 .full-screen-view {
@@ -49,7 +50,6 @@ body {
 .logo-wordmark {
   height: 30px;
   object-fit: contain;
-  filter: drop-shadow(0 2px 4px rgba(47, 168, 106, 0.1));
   cursor: pointer;
   transition: transform 0.2s ease;
 }
@@ -66,7 +66,7 @@ body {
   letter-spacing: -0.05em;
 }
 
-/* Floating AI Button - Perfectly anchored above bottom navigation bar */
+/* Floating AI Button */
 .floating-ai-btn {
   position: fixed;
   bottom: 84px;
@@ -74,25 +74,23 @@ body {
   width: 52px;
   height: 52px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #2FA86A, #258A55);
+  background: #1E4D36;
   color: #FFFFFF;
   border: none;
-  box-shadow: 0 6px 20px rgba(47, 168, 106, 0.38);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   z-index: 40;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: transform 0.2s ease;
   font-size: 1.35rem;
 }
 
 .floating-ai-btn:hover {
   transform: scale(1.08);
-  box-shadow: 0 8px 24px rgba(47, 168, 106, 0.48);
 }
 
-/* Premium 4-Tab Bottom Navigation Bar */
+/* Clean 4-Tab Bottom Navigation Bar */
 .bottom-nav {
   position: fixed;
   bottom: 0;
@@ -107,7 +105,6 @@ body {
   grid-template-columns: repeat(4, 1fr);
   align-items: center;
   z-index: 50;
-  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.05);
 }
 
 .nav-item {
@@ -136,14 +133,13 @@ body {
   width: 100%;
   height: 52px;
   border-radius: 26px;
-  background: linear-gradient(135deg, #2FA86A, #258A55);
+  background: #2FA86A;
   color: #FFFFFF;
   font-size: 1rem;
   font-weight: 850;
   border: none;
   cursor: pointer;
-  box-shadow: 0 8px 20px rgba(47, 168, 106, 0.22);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition: transform 0.15s ease;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -151,7 +147,6 @@ body {
 
 .btn-farm-primary:hover {
   transform: translateY(-1px);
-  box-shadow: 0 10px 24px rgba(47, 168, 106, 0.32);
 }
 
 .btn-dashed-register {

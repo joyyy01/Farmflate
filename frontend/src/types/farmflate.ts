@@ -47,6 +47,13 @@ export interface MyFieldItem {
   reportTime: string;
 }
 
+export interface PostComment {
+  id: string;
+  author: string;
+  content: string;
+  timeAgo: string;
+}
+
 export interface CommunityPost {
   id: string;
   category: string;
@@ -57,7 +64,10 @@ export interface CommunityPost {
   timeAgo: string;
   commentCount: number;
   likeCount: number;
+  isLiked?: boolean;
   isSaved?: boolean;
+  imageUrl?: string;
+  comments?: PostComment[];
 }
 
 export interface CropOption {
