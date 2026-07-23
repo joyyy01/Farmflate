@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="230" viewBox="0 0 720 230" role="img" aria-label="Rolling farm hills"><title>Rolling farm hills</title><defs>
+<linearGradient id="gGreen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4CC48B"/><stop offset="1" stop-color="#1E5E3E"/></linearGradient>
+<linearGradient id="gMint" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#F6FFF8"/><stop offset="1" stop-color="#E9F7EC"/></linearGradient>
+<linearGradient id="gBlue" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#DDF6FF"/><stop offset="1" stop-color="#8ED7F4"/></linearGradient>
+<linearGradient id="gYellow" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFF8D8"/><stop offset="1" stop-color="#FFE1A4"/></linearGradient>
+<filter id="shadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#103A26" flood-opacity=".11"/></filter>
+<filter id="shadowSmall" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#103A26" flood-opacity=".09"/></filter>
+</defs><path d="M0 190 C110 72 210 157 302 91 C390 28 470 139 560 74 C626 27 686 63 720 120 L720 230 L0 230Z" fill="#A8E2C3" stroke="none" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" opacity="1"/><path d="M0 205 C95 115 181 183 260 132 C344 77 421 181 511 111 C585 53 653 106 720 140 L720 230 L0 230Z" fill="#71C994" stroke="none" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" opacity="1"/><path d="M0 218 C80 151 146 201 216 166 C306 120 372 210 474 157 C560 110 639 168 720 183 L720 230 L0 230Z" fill="#49AD73" stroke="none" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" opacity="1"/></svg>
