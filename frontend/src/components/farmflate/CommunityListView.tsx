@@ -45,9 +45,9 @@ export const CommunityListView: React.FC<CommunityListViewProps> = ({
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
-      <div className="full-screen-view no-scrollbar" style={{ padding: '20px 20px 96px 20px', overflowY: 'auto' }}>
+      <div className="full-screen-view no-scrollbar" style={{ padding: '32px 20px 96px 20px', overflowY: 'auto' }}>
 
-        {/* Top Header: '커뮤니티' + '+ 글쓰기' green pill button matching Figma 100% */}
+        {/* Top Header: '커뮤니티' + '+ 글쓰기' green pill button */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <h2 style={{ fontSize: '1.5rem', fontWeight: 900, color: '#191F28', margin: 0, letterSpacing: '-0.02em' }}>
             커뮤니티
@@ -142,9 +142,9 @@ export const CommunityListView: React.FC<CommunityListViewProps> = ({
         onAddComment={onAddComment}
       />
 
-      {/* Floating AI Dark Green Button matching Figma 100% */}
+      {/* Floating AI Button matching all other screens 100% */}
       <button className="floating-ai-btn" onClick={onOpenAIChat} title="AI Assistant">
-        <span style={{ color: '#FFFFFF', fontSize: '0.9rem', fontWeight: 900 }}>AI</span>
+        <img src="/svg-assets/ui-icons/ai-chat.svg" alt="AI 채팅" style={{ width: 26, height: 26, filter: 'brightness(0) invert(1)' }} />
       </button>
 
       {/* Bottom Navigation */}
