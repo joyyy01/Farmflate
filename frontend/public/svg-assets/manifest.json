@@ -1,0 +1,1878 @@
+[
+  {
+    "category": "brand",
+    "name": "wordmark",
+    "path": "brand/wordmark.svg",
+    "width": 360,
+    "height": 110,
+    "tags": [
+      "brand",
+      "logo",
+      "outlined-text"
+    ]
+  },
+  {
+    "category": "brand",
+    "name": "mark",
+    "path": "brand/mark.svg",
+    "width": 120,
+    "height": 120,
+    "tags": [
+      "brand",
+      "app-icon"
+    ]
+  },
+  {
+    "category": "brand/mascot",
+    "name": "basic",
+    "path": "brand/mascot/basic.svg",
+    "width": 320,
+    "height": 350,
+    "tags": [
+      "mascot",
+      "basic",
+      "native-vector"
+    ]
+  },
+  {
+    "category": "brand/mascot",
+    "name": "hello",
+    "path": "brand/mascot/hello.svg",
+    "width": 320,
+    "height": 350,
+    "tags": [
+      "mascot",
+      "hello",
+      "native-vector"
+    ]
+  },
+  {
+    "category": "brand/mascot",
+    "name": "thinking",
+    "path": "brand/mascot/thinking.svg",
+    "width": 320,
+    "height": 350,
+    "tags": [
+      "mascot",
+      "thinking",
+      "native-vector"
+    ]
+  },
+  {
+    "category": "brand/mascot",
+    "name": "joy",
+    "path": "brand/mascot/joy.svg",
+    "width": 320,
+    "height": 350,
+    "tags": [
+      "mascot",
+      "joy",
+      "native-vector"
+    ]
+  },
+  {
+    "category": "brand/mascot",
+    "name": "cheer",
+    "path": "brand/mascot/cheer.svg",
+    "width": 320,
+    "height": 350,
+    "tags": [
+      "mascot",
+      "cheer",
+      "native-vector"
+    ]
+  },
+  {
+    "category": "brand/mascot",
+    "name": "guide",
+    "path": "brand/mascot/guide.svg",
+    "width": 320,
+    "height": 350,
+    "tags": [
+      "mascot",
+      "guide",
+      "native-vector"
+    ]
+  },
+  {
+    "category": "brand/mascot",
+    "name": "laugh",
+    "path": "brand/mascot/laugh.svg",
+    "width": 320,
+    "height": 350,
+    "tags": [
+      "mascot",
+      "laugh",
+      "native-vector"
+    ]
+  },
+  {
+    "category": "brand/mascot",
+    "name": "analysis",
+    "path": "brand/mascot/analysis.svg",
+    "width": 320,
+    "height": 350,
+    "tags": [
+      "mascot",
+      "analysis",
+      "native-vector"
+    ]
+  },
+  {
+    "category": "brand/mascot-faces",
+    "name": "basic",
+    "path": "brand/mascot-faces/basic.svg",
+    "width": 120,
+    "height": 120,
+    "tags": [
+      "mascot",
+      "face",
+      "basic"
+    ]
+  },
+  {
+    "category": "brand/mascot-faces",
+    "name": "happy",
+    "path": "brand/mascot-faces/happy.svg",
+    "width": 120,
+    "height": 120,
+    "tags": [
+      "mascot",
+      "face",
+      "happy"
+    ]
+  },
+  {
+    "category": "brand/mascot-faces",
+    "name": "laugh",
+    "path": "brand/mascot-faces/laugh.svg",
+    "width": 120,
+    "height": 120,
+    "tags": [
+      "mascot",
+      "face",
+      "laugh"
+    ]
+  },
+  {
+    "category": "brand/mascot-faces",
+    "name": "surprised",
+    "path": "brand/mascot-faces/surprised.svg",
+    "width": 120,
+    "height": 120,
+    "tags": [
+      "mascot",
+      "face",
+      "surprised"
+    ]
+  },
+  {
+    "category": "brand/mascot-faces",
+    "name": "worried",
+    "path": "brand/mascot-faces/worried.svg",
+    "width": 120,
+    "height": 120,
+    "tags": [
+      "mascot",
+      "face",
+      "worried"
+    ]
+  },
+  {
+    "category": "illustrations/landing",
+    "name": "phone",
+    "path": "illustrations/landing/phone.svg",
+    "width": 250,
+    "height": 380,
+    "tags": [
+      "landing",
+      "phone",
+      "native-vector"
+    ]
+  },
+  {
+    "category": "illustrations/landing",
+    "name": "hand",
+    "path": "illustrations/landing/hand.svg",
+    "width": 280,
+    "height": 330,
+    "tags": [
+      "landing",
+      "hand"
+    ]
+  },
+  {
+    "category": "illustrations/landing",
+    "name": "hills-back",
+    "path": "illustrations/landing/hills-back.svg",
+    "width": 720,
+    "height": 210,
+    "tags": [
+      "landing",
+      "landscape"
+    ]
+  },
+  {
+    "category": "illustrations/landing",
+    "name": "hills-mid",
+    "path": "illustrations/landing/hills-mid.svg",
+    "width": 720,
+    "height": 210,
+    "tags": [
+      "landing",
+      "landscape"
+    ]
+  },
+  {
+    "category": "illustrations/landing",
+    "name": "hills-front",
+    "path": "illustrations/landing/hills-front.svg",
+    "width": 720,
+    "height": 210,
+    "tags": [
+      "landing",
+      "landscape"
+    ]
+  },
+  {
+    "category": "illustrations/landing",
+    "name": "clouds",
+    "path": "illustrations/landing/clouds.svg",
+    "width": 220,
+    "height": 140,
+    "tags": [
+      "landing",
+      "clouds"
+    ]
+  },
+  {
+    "category": "illustrations/landing",
+    "name": "sun",
+    "path": "illustrations/landing/sun.svg",
+    "width": 160,
+    "height": 160,
+    "tags": [
+      "sun"
+    ]
+  },
+  {
+    "category": "illustrations/landing",
+    "name": "house-and-trees",
+    "path": "illustrations/landing/house-and-trees.svg",
+    "width": 260,
+    "height": 170,
+    "tags": [
+      "house",
+      "tree"
+    ]
+  },
+  {
+    "category": "illustrations/landing",
+    "name": "sprout-soil",
+    "path": "illustrations/landing/sprout-soil.svg",
+    "width": 180,
+    "height": 170,
+    "tags": [
+      "sprout",
+      "soil"
+    ]
+  },
+  {
+    "category": "illustrations/landing",
+    "name": "hero-full",
+    "path": "illustrations/landing/hero-full.svg",
+    "width": 760,
+    "height": 480,
+    "tags": [
+      "landing",
+      "hero",
+      "complete"
+    ]
+  },
+  {
+    "category": "weather",
+    "name": "sunny",
+    "path": "weather/sunny.svg",
+    "width": 160,
+    "height": 160,
+    "tags": [
+      "weather",
+      "sunny"
+    ]
+  },
+  {
+    "category": "weather",
+    "name": "partly-cloudy",
+    "path": "weather/partly-cloudy.svg",
+    "width": 180,
+    "height": 150,
+    "tags": [
+      "weather",
+      "cloud"
+    ]
+  },
+  {
+    "category": "weather",
+    "name": "rain",
+    "path": "weather/rain.svg",
+    "width": 180,
+    "height": 160,
+    "tags": [
+      "weather",
+      "rain"
+    ]
+  },
+  {
+    "category": "weather",
+    "name": "snow",
+    "path": "weather/snow.svg",
+    "width": 180,
+    "height": 160,
+    "tags": [
+      "weather",
+      "snow"
+    ]
+  },
+  {
+    "category": "weather",
+    "name": "water-drop",
+    "path": "weather/water-drop.svg",
+    "width": 220,
+    "height": 240,
+    "tags": [
+      "character",
+      "water"
+    ]
+  },
+  {
+    "category": "weather",
+    "name": "water-drop-alert",
+    "path": "weather/water-drop-alert.svg",
+    "width": 220,
+    "height": 240,
+    "tags": [
+      "character",
+      "water"
+    ]
+  },
+  {
+    "category": "weather",
+    "name": "water-drop-cheer",
+    "path": "weather/water-drop-cheer.svg",
+    "width": 220,
+    "height": 240,
+    "tags": [
+      "character",
+      "water"
+    ]
+  },
+  {
+    "category": "crops",
+    "name": "lettuce",
+    "path": "crops/lettuce.svg",
+    "width": 170,
+    "height": 170,
+    "tags": [
+      "crop",
+      "lettuce"
+    ]
+  },
+  {
+    "category": "crops",
+    "name": "potato",
+    "path": "crops/potato.svg",
+    "width": 170,
+    "height": 170,
+    "tags": [
+      "crop",
+      "potato"
+    ]
+  },
+  {
+    "category": "crops",
+    "name": "cabbage",
+    "path": "crops/cabbage.svg",
+    "width": 170,
+    "height": 170,
+    "tags": [
+      "crop",
+      "cabbage"
+    ]
+  },
+  {
+    "category": "crops",
+    "name": "tomato",
+    "path": "crops/tomato.svg",
+    "width": 170,
+    "height": 170,
+    "tags": [
+      "crop",
+      "tomato"
+    ]
+  },
+  {
+    "category": "crops",
+    "name": "pepper",
+    "path": "crops/pepper.svg",
+    "width": 170,
+    "height": 170,
+    "tags": [
+      "crop",
+      "pepper"
+    ]
+  },
+  {
+    "category": "crops",
+    "name": "pear",
+    "path": "crops/pear.svg",
+    "width": 170,
+    "height": 170,
+    "tags": [
+      "crop",
+      "pear"
+    ]
+  },
+  {
+    "category": "crops",
+    "name": "cucumber",
+    "path": "crops/cucumber.svg",
+    "width": 170,
+    "height": 170,
+    "tags": [
+      "crop",
+      "cucumber"
+    ]
+  },
+  {
+    "category": "crops",
+    "name": "sprout",
+    "path": "crops/sprout.svg",
+    "width": 170,
+    "height": 170,
+    "tags": [
+      "crop",
+      "sprout"
+    ]
+  },
+  {
+    "category": "crops",
+    "name": "soil-sprout",
+    "path": "crops/soil-sprout.svg",
+    "width": 170,
+    "height": 170,
+    "tags": [
+      "crop",
+      "soil"
+    ]
+  },
+  {
+    "category": "crops",
+    "name": "leaf",
+    "path": "crops/leaf.svg",
+    "width": 170,
+    "height": 170,
+    "tags": [
+      "crop",
+      "leaf"
+    ]
+  },
+  {
+    "category": "crops",
+    "name": "apple",
+    "path": "crops/apple.svg",
+    "width": 170,
+    "height": 170,
+    "tags": [
+      "crop",
+      "apple"
+    ]
+  },
+  {
+    "category": "crops",
+    "name": "mulch-pot",
+    "path": "crops/mulch-pot.svg",
+    "width": 170,
+    "height": 170,
+    "tags": [
+      "crop",
+      "prep"
+    ]
+  },
+  {
+    "category": "crops",
+    "name": "seed-potato",
+    "path": "crops/seed-potato.svg",
+    "width": 170,
+    "height": 170,
+    "tags": [
+      "crop",
+      "seed"
+    ]
+  },
+  {
+    "category": "ai/faq-icons",
+    "name": "state-question",
+    "path": "ai/faq-icons/state-question.svg",
+    "width": 110,
+    "height": 110,
+    "tags": [
+      "ai",
+      "faq",
+      "chat"
+    ]
+  },
+  {
+    "category": "ai/faq-icons",
+    "name": "crop-question",
+    "path": "ai/faq-icons/crop-question.svg",
+    "width": 110,
+    "height": 110,
+    "tags": [
+      "ai",
+      "faq",
+      "sprout"
+    ]
+  },
+  {
+    "category": "ai/faq-icons",
+    "name": "season-question",
+    "path": "ai/faq-icons/season-question.svg",
+    "width": 110,
+    "height": 110,
+    "tags": [
+      "ai",
+      "faq",
+      "globe"
+    ]
+  },
+  {
+    "category": "ai/faq-icons",
+    "name": "term-question",
+    "path": "ai/faq-icons/term-question.svg",
+    "width": 110,
+    "height": 110,
+    "tags": [
+      "ai",
+      "faq",
+      "leaf"
+    ]
+  },
+  {
+    "category": "report/category",
+    "name": "climate",
+    "path": "report/category/climate.svg",
+    "width": 120,
+    "height": 120,
+    "tags": [
+      "report",
+      "category",
+      "climate"
+    ]
+  },
+  {
+    "category": "report/category",
+    "name": "soil",
+    "path": "report/category/soil.svg",
+    "width": 120,
+    "height": 120,
+    "tags": [
+      "report",
+      "category",
+      "soil"
+    ]
+  },
+  {
+    "category": "report/category",
+    "name": "greenhouse",
+    "path": "report/category/greenhouse.svg",
+    "width": 120,
+    "height": 120,
+    "tags": [
+      "report",
+      "category",
+      "greenhouse"
+    ]
+  },
+  {
+    "category": "report/category",
+    "name": "risk",
+    "path": "report/category/risk.svg",
+    "width": 120,
+    "height": 120,
+    "tags": [
+      "report",
+      "category",
+      "risk"
+    ]
+  },
+  {
+    "category": "report/prep",
+    "name": "seed-potato",
+    "path": "report/prep/seed-potato.svg",
+    "width": 110,
+    "height": 110,
+    "tags": [
+      "report",
+      "prep",
+      "seed-potato"
+    ]
+  },
+  {
+    "category": "report/prep",
+    "name": "field-preparation",
+    "path": "report/prep/field-preparation.svg",
+    "width": 110,
+    "height": 110,
+    "tags": [
+      "report",
+      "prep",
+      "field-preparation"
+    ]
+  },
+  {
+    "category": "report/prep",
+    "name": "fertilizer",
+    "path": "report/prep/fertilizer.svg",
+    "width": 110,
+    "height": 110,
+    "tags": [
+      "report",
+      "prep",
+      "fertilizer"
+    ]
+  },
+  {
+    "category": "report/prep",
+    "name": "water-check",
+    "path": "report/prep/water-check.svg",
+    "width": 110,
+    "height": 110,
+    "tags": [
+      "report",
+      "prep",
+      "water-check"
+    ]
+  },
+  {
+    "category": "ui-icons",
+    "name": "home",
+    "path": "ui-icons/home.svg",
+    "width": 24,
+    "height": 24,
+    "tags": [
+      "ui",
+      "icon",
+      "home"
+    ]
+  },
+  {
+    "category": "ui-icons",
+    "name": "user",
+    "path": "ui-icons/user.svg",
+    "width": 24,
+    "height": 24,
+    "tags": [
+      "ui",
+      "icon",
+      "user"
+    ]
+  },
+  {
+    "category": "ui-icons",
+    "name": "chat",
+    "path": "ui-icons/chat.svg",
+    "width": 24,
+    "height": 24,
+    "tags": [
+      "ui",
+      "icon",
+      "chat"
+    ]
+  },
+  {
+    "category": "ui-icons",
+    "name": "ai-chat",
+    "path": "ui-icons/ai-chat.svg",
+    "width": 24,
+    "height": 24,
+    "tags": [
+      "ui",
+      "icon",
+      "ai-chat"
+    ]
+  },
+  {
+    "category": "ui-icons",
+    "name": "settings",
+    "path": "ui-icons/settings.svg",
+    "width": 24,
+    "height": 24,
+    "tags": [
+      "ui",
+      "icon",
+      "settings"
+    ]
+  },
+  {
+    "category": "ui-icons",
+    "name": "bell",
+    "path": "ui-icons/bell.svg",
+    "width": 24,
+    "height": 24,
+    "tags": [
+      "ui",
+      "icon",
+      "bell"
+    ]
+  },
+  {
+    "category": "ui-icons",
+    "name": "location",
+    "path": "ui-icons/location.svg",
+    "width": 24,
+    "height": 24,
+    "tags": [
+      "ui",
+      "icon",
+      "location"
+    ]
+  },
+  {
+    "category": "ui-icons",
+    "name": "back",
+    "path": "ui-icons/back.svg",
+    "width": 24,
+    "height": 24,
+    "tags": [
+      "ui",
+      "icon",
+      "back"
+    ]
+  },
+  {
+    "category": "ui-icons",
+    "name": "chevron-right",
+    "path": "ui-icons/chevron-right.svg",
+    "width": 24,
+    "height": 24,
+    "tags": [
+      "ui",
+      "icon",
+      "chevron-right"
+    ]
+  },
+  {
+    "category": "ui-icons",
+    "name": "chevron-left",
+    "path": "ui-icons/chevron-left.svg",
+    "width": 24,
+    "height": 24,
+    "tags": [
+      "ui",
+      "icon",
+      "chevron-left"
+    ]
+  },
+  {
+    "category": "ui-icons",
+    "name": "chevron-down",
+    "path": "ui-icons/chevron-down.svg",
+    "width": 24,
+    "height": 24,
+    "tags": [
+      "ui",
+      "icon",
+      "chevron-down"
+    ]
+  },
+  {
+    "category": "ui-icons",
+    "name": "chevron-up",
+    "path": "ui-icons/chevron-up.svg",
+    "width": 24,
+    "height": 24,
+    "tags": [
+      "ui",
+      "icon",
+      "chevron-up"
+    ]
+  },
+  {
+    "category": "ui-icons",
+    "name": "check-circle",
+    "path": "ui-icons/check-circle.svg",
+    "width": 24,
+    "height": 24,
+    "tags": [
+      "ui",
+      "icon",
+      "check-circle"
+    ]
+  },
+  {
+    "category": "ui-icons",
+    "name": "check",
+    "path": "ui-icons/check.svg",
+    "width": 24,
+    "height": 24,
+    "tags": [
+      "ui",
+      "icon",
+      "check"
+    ]
+  },
+  {
+    "category": "ui-icons",
+    "name": "warning-triangle",
+    "path": "ui-icons/warning-triangle.svg",
+    "width": 24,
+    "height": 24,
+    "tags": [
+      "ui",
+      "icon",
+      "warning-triangle"
+    ]
+  },
+  {
+    "category": "ui-icons",
+    "name": "calendar",
+    "path": "ui-icons/calendar.svg",
+    "width": 24,
+    "height": 24,
+    "tags": [
+      "ui",
+      "icon",
+      "calendar"
+    ]
+  },
+  {
+    "category": "ui-icons",
+    "name": "search",
+    "path": "ui-icons/search.svg",
+    "width": 24,
+    "height": 24,
+    "tags": [
+      "ui",
+      "icon",
+      "search"
+    ]
+  },
+  {
+    "category": "ui-icons",
+    "name": "leaf",
+    "path": "ui-icons/leaf.svg",
+    "width": 24,
+    "height": 24,
+    "tags": [
+      "ui",
+      "icon",
+      "leaf"
+    ]
+  },
+  {
+    "category": "ui-icons",
+    "name": "share",
+    "path": "ui-icons/share.svg",
+    "width": 24,
+    "height": 24,
+    "tags": [
+      "ui",
+      "icon",
+      "share"
+    ]
+  },
+  {
+    "category": "ui-icons",
+    "name": "plus",
+    "path": "ui-icons/plus.svg",
+    "width": 24,
+    "height": 24,
+    "tags": [
+      "ui",
+      "icon",
+      "plus"
+    ]
+  },
+  {
+    "category": "ui-icons",
+    "name": "info",
+    "path": "ui-icons/info.svg",
+    "width": 24,
+    "height": 24,
+    "tags": [
+      "ui",
+      "icon",
+      "info"
+    ]
+  },
+  {
+    "category": "ui-icons",
+    "name": "circle",
+    "path": "ui-icons/circle.svg",
+    "width": 24,
+    "height": 24,
+    "tags": [
+      "ui",
+      "icon",
+      "circle"
+    ]
+  },
+  {
+    "category": "ui-icons",
+    "name": "selected-circle",
+    "path": "ui-icons/selected-circle.svg",
+    "width": 24,
+    "height": 24,
+    "tags": [
+      "ui",
+      "icon",
+      "selected-circle"
+    ]
+  },
+  {
+    "category": "ui-icons",
+    "name": "droplet",
+    "path": "ui-icons/droplet.svg",
+    "width": 24,
+    "height": 24,
+    "tags": [
+      "ui",
+      "icon",
+      "droplet"
+    ]
+  },
+  {
+    "category": "ui-icons",
+    "name": "thermometer",
+    "path": "ui-icons/thermometer.svg",
+    "width": 24,
+    "height": 24,
+    "tags": [
+      "ui",
+      "icon",
+      "thermometer"
+    ]
+  },
+  {
+    "category": "ui-icons",
+    "name": "wind",
+    "path": "ui-icons/wind.svg",
+    "width": 24,
+    "height": 24,
+    "tags": [
+      "ui",
+      "icon",
+      "wind"
+    ]
+  },
+  {
+    "category": "ui-icons",
+    "name": "send",
+    "path": "ui-icons/send.svg",
+    "width": 24,
+    "height": 24,
+    "tags": [
+      "ui",
+      "icon",
+      "send"
+    ]
+  },
+  {
+    "category": "ui-icons",
+    "name": "star",
+    "path": "ui-icons/star.svg",
+    "width": 24,
+    "height": 24,
+    "tags": [
+      "ui",
+      "icon",
+      "star"
+    ]
+  },
+  {
+    "category": "ui-icons",
+    "name": "menu",
+    "path": "ui-icons/menu.svg",
+    "width": 24,
+    "height": 24,
+    "tags": [
+      "ui",
+      "icon",
+      "menu"
+    ]
+  },
+  {
+    "category": "ui-icons",
+    "name": "filter",
+    "path": "ui-icons/filter.svg",
+    "width": 24,
+    "height": 24,
+    "tags": [
+      "ui",
+      "icon",
+      "filter"
+    ]
+  },
+  {
+    "category": "ui-icons",
+    "name": "logout",
+    "path": "ui-icons/logout.svg",
+    "width": 24,
+    "height": 24,
+    "tags": [
+      "ui",
+      "icon",
+      "logout"
+    ]
+  },
+  {
+    "category": "ui-icons",
+    "name": "field",
+    "path": "ui-icons/field.svg",
+    "width": 24,
+    "height": 24,
+    "tags": [
+      "ui",
+      "icon",
+      "field"
+    ]
+  },
+  {
+    "category": "ui-icons",
+    "name": "community",
+    "path": "ui-icons/community.svg",
+    "width": 24,
+    "height": 24,
+    "tags": [
+      "ui",
+      "icon",
+      "community"
+    ]
+  },
+  {
+    "category": "ui-icons/nav-active",
+    "name": "home",
+    "path": "ui-icons/nav-active/home.svg",
+    "width": 32,
+    "height": 32,
+    "tags": [
+      "ui",
+      "nav",
+      "active"
+    ]
+  },
+  {
+    "category": "ui-icons/nav-active",
+    "name": "field",
+    "path": "ui-icons/nav-active/field.svg",
+    "width": 32,
+    "height": 32,
+    "tags": [
+      "ui",
+      "nav",
+      "active"
+    ]
+  },
+  {
+    "category": "ui-icons/nav-active",
+    "name": "ai-chat",
+    "path": "ui-icons/nav-active/ai-chat.svg",
+    "width": 32,
+    "height": 32,
+    "tags": [
+      "ui",
+      "nav",
+      "active"
+    ]
+  },
+  {
+    "category": "ui-icons/nav-active",
+    "name": "community",
+    "path": "ui-icons/nav-active/community.svg",
+    "width": 32,
+    "height": 32,
+    "tags": [
+      "ui",
+      "nav",
+      "active"
+    ]
+  },
+  {
+    "category": "ui-icons/nav-active",
+    "name": "settings",
+    "path": "ui-icons/nav-active/settings.svg",
+    "width": 32,
+    "height": 32,
+    "tags": [
+      "ui",
+      "nav",
+      "active"
+    ]
+  },
+  {
+    "category": "decorative",
+    "name": "sparkle-yellow",
+    "path": "decorative/sparkle-yellow.svg",
+    "width": 64,
+    "height": 64,
+    "tags": [
+      "decoration",
+      "sparkle"
+    ]
+  },
+  {
+    "category": "decorative",
+    "name": "sparkle-green",
+    "path": "decorative/sparkle-green.svg",
+    "width": 64,
+    "height": 64,
+    "tags": [
+      "decoration",
+      "sparkle"
+    ]
+  },
+  {
+    "category": "decorative",
+    "name": "sparkle-blue",
+    "path": "decorative/sparkle-blue.svg",
+    "width": 64,
+    "height": 64,
+    "tags": [
+      "decoration",
+      "sparkle"
+    ]
+  },
+  {
+    "category": "decorative",
+    "name": "sparkle-pink",
+    "path": "decorative/sparkle-pink.svg",
+    "width": 64,
+    "height": 64,
+    "tags": [
+      "decoration",
+      "sparkle"
+    ]
+  },
+  {
+    "category": "decorative",
+    "name": "heart",
+    "path": "decorative/heart.svg",
+    "width": 64,
+    "height": 64,
+    "tags": [
+      "heart"
+    ]
+  },
+  {
+    "category": "decorative",
+    "name": "gradient-blob-green",
+    "path": "decorative/gradient-blob-green.svg",
+    "width": 120,
+    "height": 120,
+    "tags": [
+      "blob",
+      "gradient"
+    ]
+  },
+  {
+    "category": "decorative",
+    "name": "gradient-blob-mint",
+    "path": "decorative/gradient-blob-mint.svg",
+    "width": 120,
+    "height": 120,
+    "tags": [
+      "blob",
+      "gradient"
+    ]
+  },
+  {
+    "category": "decorative",
+    "name": "gradient-blob-blue",
+    "path": "decorative/gradient-blob-blue.svg",
+    "width": 120,
+    "height": 120,
+    "tags": [
+      "blob",
+      "gradient"
+    ]
+  },
+  {
+    "category": "decorative",
+    "name": "gradient-blob-yellow",
+    "path": "decorative/gradient-blob-yellow.svg",
+    "width": 120,
+    "height": 120,
+    "tags": [
+      "blob",
+      "gradient"
+    ]
+  },
+  {
+    "category": "decorative",
+    "name": "pagination-dots",
+    "path": "decorative/pagination-dots.svg",
+    "width": 150,
+    "height": 36,
+    "tags": [
+      "pagination"
+    ]
+  },
+  {
+    "category": "decorative",
+    "name": "location-pin",
+    "path": "decorative/location-pin.svg",
+    "width": 80,
+    "height": 80,
+    "tags": [
+      "location"
+    ]
+  },
+  {
+    "category": "decorative",
+    "name": "sparkle-group",
+    "path": "decorative/sparkle-group.svg",
+    "width": 160,
+    "height": 80,
+    "tags": [
+      "sparkle"
+    ]
+  },
+  {
+    "category": "components/buttons",
+    "name": "primary",
+    "path": "components/buttons/primary.svg",
+    "width": 360,
+    "height": 72,
+    "tags": [
+      "component",
+      "button",
+      "primary"
+    ]
+  },
+  {
+    "category": "components/buttons",
+    "name": "outline",
+    "path": "components/buttons/outline.svg",
+    "width": 360,
+    "height": 72,
+    "tags": [
+      "component",
+      "button",
+      "outline"
+    ]
+  },
+  {
+    "category": "components/buttons",
+    "name": "pale",
+    "path": "components/buttons/pale.svg",
+    "width": 360,
+    "height": 72,
+    "tags": [
+      "component",
+      "button",
+      "pale"
+    ]
+  },
+  {
+    "category": "components/buttons",
+    "name": "kakao",
+    "path": "components/buttons/kakao.svg",
+    "width": 360,
+    "height": 72,
+    "tags": [
+      "component",
+      "button",
+      "kakao"
+    ]
+  },
+  {
+    "category": "components/chips",
+    "name": "all",
+    "path": "components/chips/all.svg",
+    "width": 100,
+    "height": 48,
+    "tags": [
+      "component",
+      "chip"
+    ]
+  },
+  {
+    "category": "components/chips",
+    "name": "crop",
+    "path": "components/chips/crop.svg",
+    "width": 100,
+    "height": 48,
+    "tags": [
+      "component",
+      "chip"
+    ]
+  },
+  {
+    "category": "components/chips",
+    "name": "soil",
+    "path": "components/chips/soil.svg",
+    "width": 100,
+    "height": 48,
+    "tags": [
+      "component",
+      "chip"
+    ]
+  },
+  {
+    "category": "components/chips",
+    "name": "equipment",
+    "path": "components/chips/equipment.svg",
+    "width": 100,
+    "height": 48,
+    "tags": [
+      "component",
+      "chip"
+    ]
+  },
+  {
+    "category": "components/chips",
+    "name": "good",
+    "path": "components/chips/good.svg",
+    "width": 100,
+    "height": 48,
+    "tags": [
+      "component",
+      "chip"
+    ]
+  },
+  {
+    "category": "components/chips",
+    "name": "normal",
+    "path": "components/chips/normal.svg",
+    "width": 100,
+    "height": 48,
+    "tags": [
+      "component",
+      "chip"
+    ]
+  },
+  {
+    "category": "components/chips",
+    "name": "warning",
+    "path": "components/chips/warning.svg",
+    "width": 100,
+    "height": 48,
+    "tags": [
+      "component",
+      "chip"
+    ]
+  },
+  {
+    "category": "components/chips",
+    "name": "danger",
+    "path": "components/chips/danger.svg",
+    "width": 100,
+    "height": 48,
+    "tags": [
+      "component",
+      "chip"
+    ]
+  },
+  {
+    "category": "components/badges",
+    "name": "complete",
+    "path": "components/badges/complete.svg",
+    "width": 90,
+    "height": 42,
+    "tags": [
+      "component",
+      "badge"
+    ]
+  },
+  {
+    "category": "components/badges",
+    "name": "progress",
+    "path": "components/badges/progress.svg",
+    "width": 90,
+    "height": 42,
+    "tags": [
+      "component",
+      "badge"
+    ]
+  },
+  {
+    "category": "components/badges",
+    "name": "scheduled",
+    "path": "components/badges/scheduled.svg",
+    "width": 90,
+    "height": 42,
+    "tags": [
+      "component",
+      "badge"
+    ]
+  },
+  {
+    "category": "components/badges",
+    "name": "recommended",
+    "path": "components/badges/recommended.svg",
+    "width": 90,
+    "height": 42,
+    "tags": [
+      "component",
+      "badge"
+    ]
+  },
+  {
+    "category": "components/badges",
+    "name": "new",
+    "path": "components/badges/new.svg",
+    "width": 90,
+    "height": 42,
+    "tags": [
+      "component",
+      "badge"
+    ]
+  },
+  {
+    "category": "components/badges",
+    "name": "ai",
+    "path": "components/badges/ai.svg",
+    "width": 90,
+    "height": 42,
+    "tags": [
+      "component",
+      "badge"
+    ]
+  },
+  {
+    "category": "components/badges",
+    "name": "important",
+    "path": "components/badges/important.svg",
+    "width": 90,
+    "height": 42,
+    "tags": [
+      "component",
+      "badge"
+    ]
+  },
+  {
+    "category": "components/badges",
+    "name": "direct",
+    "path": "components/badges/direct.svg",
+    "width": 90,
+    "height": 42,
+    "tags": [
+      "component",
+      "badge"
+    ]
+  },
+  {
+    "category": "components/inputs",
+    "name": "text",
+    "path": "components/inputs/text.svg",
+    "width": 390,
+    "height": 66,
+    "tags": [
+      "component",
+      "input"
+    ]
+  },
+  {
+    "category": "components/inputs",
+    "name": "location",
+    "path": "components/inputs/location.svg",
+    "width": 390,
+    "height": 66,
+    "tags": [
+      "component",
+      "input"
+    ]
+  },
+  {
+    "category": "components/inputs",
+    "name": "crop",
+    "path": "components/inputs/crop.svg",
+    "width": 390,
+    "height": 66,
+    "tags": [
+      "component",
+      "input"
+    ]
+  },
+  {
+    "category": "components/cards",
+    "name": "weather-summary",
+    "path": "components/cards/weather-summary.svg",
+    "width": 430,
+    "height": 170,
+    "tags": [
+      "component",
+      "card",
+      "weather"
+    ]
+  },
+  {
+    "category": "components/cards",
+    "name": "todo-checklist",
+    "path": "components/cards/todo-checklist.svg",
+    "width": 430,
+    "height": 140,
+    "tags": [
+      "component",
+      "card",
+      "todo"
+    ]
+  },
+  {
+    "category": "components/cards",
+    "name": "warning-alert",
+    "path": "components/cards/warning-alert.svg",
+    "width": 430,
+    "height": 190,
+    "tags": [
+      "component",
+      "card",
+      "warning"
+    ]
+  },
+  {
+    "category": "components/cards",
+    "name": "recommendation",
+    "path": "components/cards/recommendation.svg",
+    "width": 430,
+    "height": 100,
+    "tags": [
+      "component",
+      "card",
+      "recommendation"
+    ]
+  },
+  {
+    "category": "components/cards",
+    "name": "stat-climate",
+    "path": "components/cards/stat-climate.svg",
+    "width": 190,
+    "height": 110,
+    "tags": [
+      "component",
+      "card",
+      "stat"
+    ]
+  },
+  {
+    "category": "components/cards",
+    "name": "stat-soil",
+    "path": "components/cards/stat-soil.svg",
+    "width": 190,
+    "height": 110,
+    "tags": [
+      "component",
+      "card",
+      "stat"
+    ]
+  },
+  {
+    "category": "components/cards",
+    "name": "stat-environment",
+    "path": "components/cards/stat-environment.svg",
+    "width": 190,
+    "height": 110,
+    "tags": [
+      "component",
+      "card",
+      "stat"
+    ]
+  },
+  {
+    "category": "components/cards",
+    "name": "stat-risk",
+    "path": "components/cards/stat-risk.svg",
+    "width": 190,
+    "height": 110,
+    "tags": [
+      "component",
+      "card",
+      "stat"
+    ]
+  },
+  {
+    "category": "components/cards",
+    "name": "ai-question",
+    "path": "components/cards/ai-question.svg",
+    "width": 430,
+    "height": 88,
+    "tags": [
+      "component",
+      "card",
+      "ai"
+    ]
+  },
+  {
+    "category": "components/charts",
+    "name": "score-ring-86",
+    "path": "components/charts/score-ring-86.svg",
+    "width": 280,
+    "height": 280,
+    "tags": [
+      "component",
+      "chart",
+      "score"
+    ]
+  },
+  {
+    "category": "components/charts",
+    "name": "score-ring-82",
+    "path": "components/charts/score-ring-82.svg",
+    "width": 280,
+    "height": 280,
+    "tags": [
+      "component",
+      "chart",
+      "score"
+    ]
+  },
+  {
+    "category": "components/navigation",
+    "name": "bottom-home",
+    "path": "components/navigation/bottom-home.svg",
+    "width": 430,
+    "height": 88,
+    "tags": [
+      "component",
+      "navigation",
+      "home"
+    ]
+  },
+  {
+    "category": "components/navigation",
+    "name": "bottom-field",
+    "path": "components/navigation/bottom-field.svg",
+    "width": 430,
+    "height": 88,
+    "tags": [
+      "component",
+      "navigation",
+      "field"
+    ]
+  },
+  {
+    "category": "components/navigation",
+    "name": "bottom-ai",
+    "path": "components/navigation/bottom-ai.svg",
+    "width": 430,
+    "height": 88,
+    "tags": [
+      "component",
+      "navigation",
+      "ai"
+    ]
+  },
+  {
+    "category": "components/navigation",
+    "name": "bottom-community",
+    "path": "components/navigation/bottom-community.svg",
+    "width": 430,
+    "height": 88,
+    "tags": [
+      "component",
+      "navigation",
+      "community"
+    ]
+  },
+  {
+    "category": "components/navigation",
+    "name": "bottom-settings",
+    "path": "components/navigation/bottom-settings.svg",
+    "width": 430,
+    "height": 88,
+    "tags": [
+      "component",
+      "navigation",
+      "settings"
+    ]
+  },
+  {
+    "category": "components/navigation",
+    "name": "floating-ai",
+    "path": "components/navigation/floating-ai.svg",
+    "width": 96,
+    "height": 96,
+    "tags": [
+      "component",
+      "button",
+      "ai"
+    ]
+  },
+  {
+    "category": "components/rows",
+    "name": "todo-plant",
+    "path": "components/rows/todo-plant.svg",
+    "width": 430,
+    "height": 68,
+    "tags": [
+      "component",
+      "row"
+    ]
+  },
+  {
+    "category": "components/rows",
+    "name": "todo-potato",
+    "path": "components/rows/todo-potato.svg",
+    "width": 430,
+    "height": 68,
+    "tags": [
+      "component",
+      "row"
+    ]
+  },
+  {
+    "category": "components/rows",
+    "name": "todo-complete",
+    "path": "components/rows/todo-complete.svg",
+    "width": 430,
+    "height": 68,
+    "tags": [
+      "component",
+      "row"
+    ]
+  },
+  {
+    "category": "screens",
+    "name": "landing",
+    "path": "screens/landing.svg",
+    "width": 390,
+    "height": 844,
+    "tags": [
+      "screen",
+      "landing",
+      "text-outlined"
+    ]
+  },
+  {
+    "category": "screens",
+    "name": "home",
+    "path": "screens/home.svg",
+    "width": 390,
+    "height": 844,
+    "tags": [
+      "screen",
+      "home"
+    ]
+  },
+  {
+    "category": "screens",
+    "name": "report",
+    "path": "screens/report.svg",
+    "width": 390,
+    "height": 844,
+    "tags": [
+      "screen",
+      "report"
+    ]
+  },
+  {
+    "category": "screens",
+    "name": "ai-consultation",
+    "path": "screens/ai-consultation.svg",
+    "width": 390,
+    "height": 844,
+    "tags": [
+      "screen",
+      "ai"
+    ]
+  },
+  {
+    "category": "screens",
+    "name": "location-select",
+    "path": "screens/location-select.svg",
+    "width": 390,
+    "height": 844,
+    "tags": [
+      "screen",
+      "location"
+    ]
+  },
+  {
+    "category": "screens",
+    "name": "crop-registration",
+    "path": "screens/crop-registration.svg",
+    "width": 390,
+    "height": 844,
+    "tags": [
+      "screen",
+      "form"
+    ]
+  },
+  {
+    "category": "screens",
+    "name": "analysis-loading",
+    "path": "screens/analysis-loading.svg",
+    "width": 390,
+    "height": 844,
+    "tags": [
+      "screen",
+      "loading"
+    ]
+  },
+  {
+    "category": "screens",
+    "name": "my-farm",
+    "path": "screens/my-farm.svg",
+    "width": 390,
+    "height": 844,
+    "tags": [
+      "screen",
+      "my-farm"
+    ]
+  },
+  {
+    "category": "screens",
+    "name": "community",
+    "path": "screens/community.svg",
+    "width": 390,
+    "height": 844,
+    "tags": [
+      "screen",
+      "community"
+    ]
+  },
+  {
+    "category": "screens",
+    "name": "settings",
+    "path": "screens/settings.svg",
+    "width": 390,
+    "height": 844,
+    "tags": [
+      "screen",
+      "settings"
+    ]
+  },
+  {
+    "category": "tokens",
+    "name": "color-palette",
+    "path": "tokens/color-palette.svg",
+    "width": 720,
+    "height": 220,
+    "tags": [
+      "token",
+      "color"
+    ]
+  },
+  {
+    "category": "tokens",
+    "name": "spacing-scale",
+    "path": "tokens/spacing-scale.svg",
+    "width": 560,
+    "height": 130,
+    "tags": [
+      "token",
+      "spacing"
+    ]
+  },
+  {
+    "category": "tokens",
+    "name": "radius-scale",
+    "path": "tokens/radius-scale.svg",
+    "width": 580,
+    "height": 130,
+    "tags": [
+      "token",
+      "radius"
+    ]
+  }
+]

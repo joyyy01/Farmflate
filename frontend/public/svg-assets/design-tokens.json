@@ -1,0 +1,49 @@
+{
+  "colors": {
+    "brand": "#1E5E3E",
+    "green": "#2FA86A",
+    "green2": "#4CC48B",
+    "green3": "#76D49A",
+    "mint": "#A8DCC8",
+    "mint_light": "#E9F7EC",
+    "mint_pale": "#F5FBF7",
+    "yellow": "#FFD84D",
+    "yellow_light": "#FFF2C6",
+    "orange": "#FFB04D",
+    "orange2": "#FF7A45",
+    "blue": "#7ED7F2",
+    "blue_light": "#DDF6FF",
+    "sky": "#BDEBFF",
+    "ink": "#1F2937",
+    "muted": "#6B7280",
+    "muted2": "#9AA4AD",
+    "border": "#E1E8E4",
+    "surface": "#FFFFFF",
+    "surface2": "#F5F8F6",
+    "soil": "#8B5A33",
+    "soil2": "#B77A45",
+    "skin": "#FFD8BF",
+    "blush": "#FF9E99",
+    "red": "#FF6B5F"
+  },
+  "spacing": [
+    4,
+    8,
+    12,
+    16,
+    20,
+    24,
+    32,
+    40
+  ],
+  "radii": [
+    4,
+    8,
+    12,
+    16,
+    20,
+    24,
+    28,
+    40
+  ]
+}
