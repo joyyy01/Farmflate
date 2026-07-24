@@ -27,19 +27,50 @@ export function App() {
   const [viewStep, setViewStep] = useState<ExtendedViewStep>(checkHasToken() ? 'dashboard' : 'landing');
   const [activeTab, setActiveTab] = useState<TabState>('home');
   const [isAIChatOpen, setIsAIChatOpen] = useState(false);
-  const [isNewUser, setIsNewUser] = useState(true);
 
-  /* User State & Selections */
-  const [userName, setUserName] = useState('사용자님');
-  const [userEmail, setUserEmail] = useState('user@farmflate.com');
-  const [selectedProvince, setSelectedProvince] = useState('전북특별자치도');
-  const [selectedDistrict, setSelectedDistrict] = useState('고창군');
-  const [selectedCropName, setSelectedCropName] = useState('감자');
+  /* Instant Cache Initialization to Prevent 1-Second Flash on Page Refresh */
+  const [isNewUser, setIsNewUser] = useState<boolean>(() => {
+    const cached = localStorage.getItem('farmflate_is_new_user');
+    return cached !== null ? JSON.parse(cached) : false; // Default existing user if logged in
+  });
+
+  const [userName, setUserName] = useState<string>(() => {
+    return localStorage.getItem('farmflate_user_name') || '최민수님';
+  });
+
+  const [userEmail, setUserEmail] = useState<string>(() => {
+    return localStorage.getItem('farmflate_user_email') || 'user@farmflate.com';
+  });
+
+  const [selectedProvince, setSelectedProvince] = useState<string>(() => {
+    return localStorage.getItem('farmflate_province') || '전북특별자치도';
+  });
+
+  const [selectedDistrict, setSelectedDistrict] = useState<string>(() => {
+    return localStorage.getItem('farmflate_district') || '고창군';
+  });
+
+  const [selectedCropName, setSelectedCropName] = useState<string>('감자');
+
   const [analysisResult, setAnalysisResult] = useState<DynamicAnalysisResult>(
-    analyzeCropSuitability('전북특별자치도', '고창군', '감자')
+    analyzeCropSuitability(selectedProvince, selectedDistrict, '감자')
   );
-  const [apiReport, setApiReport] = useState<RegionReport | null>(null);
-  const [homeData, setHomeData] = useState<HomeData | null>(null);
+
+  const [apiReport, setApiReport] = useState<RegionReport | null>(() => {
+    const cached = localStorage.getItem('farmflate_region_report');
+    if (cached) {
+      try { return JSON.parse(cached); } catch {}
+    }
+    return null;
+  });
+
+  const [homeData, setHomeData] = useState<HomeData | null>(() => {
+    const cached = localStorage.getItem('farmflate_home_data');
+    if (cached) {
+      try { return JSON.parse(cached); } catch {}
+    }
+    return null;
+  });
 
   // Strict Auth Guard Function
   const safeSetViewStep = (targetStep: ExtendedViewStep) => {
@@ -78,33 +109,46 @@ export function App() {
     ApiService.getHome()
       .then(resData => {
         setHomeData(resData);
+        localStorage.setItem('farmflate_home_data', JSON.stringify(resData));
+
         if (resData?.user?.displayName) {
           setUserName(resData.user.displayName);
+          localStorage.setItem('farmflate_user_name', resData.user.displayName);
         }
         if (resData?.user?.email) {
           setUserEmail(resData.user.email);
+          localStorage.setItem('farmflate_user_email', resData.user.email);
         }
         if (resData?.latestRegionAnalysis) {
           setIsNewUser(false);
+          localStorage.setItem('farmflate_is_new_user', 'false');
+
           ApiService.getRegionReport(resData.latestRegionAnalysis.analysisId)
             .then(rep => {
               setApiReport(rep);
+              localStorage.setItem('farmflate_region_report', JSON.stringify(rep));
               if (rep.region?.sidoName && rep.region?.sigunguName) {
                 setSelectedProvince(rep.region.sidoName);
                 setSelectedDistrict(rep.region.sigunguName);
+                localStorage.setItem('farmflate_province', rep.region.sidoName);
+                localStorage.setItem('farmflate_district', rep.region.sigunguName);
               }
             })
             .catch(() => {});
         } else {
-          setIsNewUser(true);
+          // Keep cached isNewUser or set appropriately
+          const hasCache = !!localStorage.getItem('farmflate_home_data');
+          if (!hasCache) {
+            setIsNewUser(true);
+            localStorage.setItem('farmflate_is_new_user', 'true');
+          }
         }
       })
       .catch(err => {
-        console.warn('Backend server offline or unauthenticated, using default new user state:', err);
-        setIsNewUser(true);
+        console.warn('Backend server offline or unauthenticated, using cached user state:', err);
       });
 
-    // Fetch real community posts from Spring Boot Backend for Logged in Users (NO MOCK DATA)
+    // Fetch real community posts from Spring Boot Backend for Logged in Users
     ApiService.getCommunityPosts()
       .then(data => {
         if (Array.isArray(data) && data.length > 0) {
@@ -159,6 +203,8 @@ export function App() {
   const handleStartAnalysis = async (province: string, district: string) => {
     setSelectedProvince(province);
     setSelectedDistrict(district);
+    localStorage.setItem('farmflate_province', province);
+    localStorage.setItem('farmflate_district', district);
     safeSetViewStep('analyzing');
 
     try {
@@ -171,11 +217,13 @@ export function App() {
 
       const rep = await ApiService.getRegionReport(statusRes.analysisId);
       setApiReport(rep);
+      localStorage.setItem('farmflate_region_report', JSON.stringify(rep));
       if (rep.region?.sidoName && rep.region?.sigunguName) {
         setSelectedProvince(rep.region.sidoName);
         setSelectedDistrict(rep.region.sigunguName);
       }
       setIsNewUser(false);
+      localStorage.setItem('farmflate_is_new_user', 'false');
     } catch (err) {
       console.warn('Backend analysis call fallback to local engine:', err);
     } finally {
@@ -220,6 +268,7 @@ export function App() {
       };
       
       setIsNewUser(false);
+      localStorage.setItem('farmflate_is_new_user', 'false');
       setMyFields(prev => [newField, ...prev]);
     } catch (err) {
       console.warn('Farm creation fallback:', err);
