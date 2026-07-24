@@ -72,14 +72,20 @@ export function App() {
     return null;
   });
 
-  // Strict Auth Guard Function
+  // =========================================================================
+  // [TEMP DEV FALLBACK - REMOVE IN PRODUCTION]
+  // Flexible Navigation Guard: Allows full screen switching during local UI dev/testing
+  // To restore strict production token enforcement, uncomment the block below.
+  // =========================================================================
   const safeSetViewStep = (targetStep: ExtendedViewStep) => {
+    /*
     const isAuth = checkHasToken();
     if (!isAuth && targetStep !== 'landing' && targetStep !== 'splash') {
       console.warn('Unauthenticated user attempt blocked for step:', targetStep);
       setViewStep('landing');
       return;
     }
+    */
     setViewStep(targetStep);
   };
 
@@ -93,12 +99,6 @@ export function App() {
       localStorage.setItem('jwtToken', token);
       // Clean query params after token saved
       window.history.replaceState({}, document.title, window.location.pathname);
-    }
-
-    const isAuth = checkHasToken();
-    if (!isAuth) {
-      safeSetViewStep('landing');
-      return;
     }
 
     if (targetView && (targetView === 'dashboard' || targetView === 'landing' || targetView === 'explore')) {
@@ -145,10 +145,12 @@ export function App() {
         }
       })
       .catch(err => {
-        console.warn('Backend server offline or unauthenticated, using cached user state:', err);
+        // [TEMP DEV FALLBACK - REMOVE IN PRODUCTION]
+        // Graceful local engine fallback when backend is offline
+        console.warn('Backend server offline, using local client state:', err);
       });
 
-    // Fetch real community posts from Spring Boot Backend for Logged in Users
+    // Fetch real community posts from Spring Boot Backend
     ApiService.getCommunityPosts()
       .then(data => {
         if (Array.isArray(data) && data.length > 0) {
@@ -225,6 +227,7 @@ export function App() {
       setIsNewUser(false);
       localStorage.setItem('farmflate_is_new_user', 'false');
     } catch (err) {
+      // [TEMP DEV FALLBACK - REMOVE IN PRODUCTION] Local engine fallback when backend is offline
       console.warn('Backend analysis call fallback to local engine:', err);
     } finally {
       const result = analyzeCropSuitability(province, district, selectedCropName);
@@ -256,11 +259,11 @@ export function App() {
       });
 
       const newField: MyFieldItem = {
-        id: String(savedFarm.id || Date.now()),
-        fieldName: savedFarm.fieldName || `${selectedCropName}밭`,
-        cropName: savedFarm.cropName || selectedCropName,
-        daysPlanted: savedFarm.daysPlanted || 1,
-        stage: savedFarm.stage || '생장 초기',
+        id: String(savedFarm?.id || Date.now()),
+        fieldName: savedFarm?.fieldName || `${selectedCropName}밭`,
+        cropName: savedFarm?.cropName || selectedCropName,
+        daysPlanted: savedFarm?.daysPlanted || 1,
+        stage: savedFarm?.stage || '생장 초기',
         statusBadge: '물주기 필요',
         statusBadgeColor: 'yellow',
         todayTask: `${selectedCropName}밭 토양 수분 체크 및 물주기`,
@@ -271,7 +274,21 @@ export function App() {
       localStorage.setItem('farmflate_is_new_user', 'false');
       setMyFields(prev => [newField, ...prev]);
     } catch (err) {
-      console.warn('Farm creation fallback:', err);
+      // [TEMP DEV FALLBACK - REMOVE IN PRODUCTION] Local state fallback when backend is offline
+      const newField: MyFieldItem = {
+        id: 'field_' + Date.now(),
+        fieldName: `${selectedCropName}밭`,
+        cropName: selectedCropName,
+        daysPlanted: 1,
+        stage: '생장 초기',
+        statusBadge: '물주기 필요',
+        statusBadgeColor: 'yellow',
+        todayTask: `${selectedCropName}밭 토양 수분 체크 및 물주기`,
+        reportTime: '방금 전 자동 분석됨'
+      };
+      setIsNewUser(false);
+      localStorage.setItem('farmflate_is_new_user', 'false');
+      setMyFields(prev => [newField, ...prev]);
     } finally {
       safeSetViewStep('myfield');
       setActiveTab('myfield');
@@ -353,23 +370,39 @@ export function App() {
       });
 
       const newPost: CommunityPost = {
-        id: String(savedPost.id || Date.now()),
-        category: savedPost.category || category || '농가 노하우',
-        tagLocation: savedPost.tagLocation || locationTag || `${selectedProvince} ${selectedDistrict}`,
-        title: savedPost.title || title,
-        content: savedPost.content || content,
-        author: savedPost.author || userName,
+        id: String(savedPost?.id || Date.now()),
+        category: savedPost?.category || category || '농가 노하우',
+        tagLocation: savedPost?.tagLocation || locationTag || `${selectedProvince} ${selectedDistrict}`,
+        title: savedPost?.title || title,
+        content: savedPost?.content || content,
+        author: savedPost?.author || userName,
         timeAgo: '방금 전',
         commentCount: 0,
         likeCount: 0,
         isLiked: false,
         isSaved: false,
-        imageUrl: savedPost.imageUrl || imageUrl,
+        imageUrl: savedPost?.imageUrl || imageUrl,
         comments: []
       };
       setPosts(prev => [newPost, ...prev]);
     } catch (err) {
-      console.warn('Post creation fallback:', err);
+      // [TEMP DEV FALLBACK - REMOVE IN PRODUCTION] Local state fallback when backend is offline
+      const newPost: CommunityPost = {
+        id: 'post_' + Date.now(),
+        category: category || '농가 노하우',
+        tagLocation: locationTag || `${selectedProvince} ${selectedDistrict}`,
+        title,
+        content,
+        author: userName,
+        timeAgo: '방금 전',
+        commentCount: 0,
+        likeCount: 0,
+        isLiked: false,
+        isSaved: false,
+        imageUrl,
+        comments: []
+      };
+      setPosts(prev => [newPost, ...prev]);
     } finally {
       safeSetViewStep('community');
       setActiveTab('community');
