@@ -88,7 +88,7 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
       <div className="full-screen-view no-scrollbar" style={{ backgroundColor: '#FFFFFF', padding: '32px 20px 96px 20px', overflowY: 'auto' }}>
         
         {/* Top Wordmark Logo */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <img
             src="/svg-assets/brand/wordmark.svg"
             alt="Farmflate"
@@ -108,13 +108,13 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
           </p>
         </div>
 
-        {/* Weather Card - Micro-polished Solid Sky Blue */}
+        {/* Weather Card - Solid Light Sky Blue (No Routing / No Divider) */}
         {isNewUser ? (
           <div
             style={{
               backgroundColor: '#C5EAFA', borderRadius: 20,
               border: '1px solid rgba(255, 255, 255, 0.4)',
-              height: 62, width: '100%', marginBottom: 22, cursor: 'default',
+              height: 62, width: '100%', marginBottom: 20, cursor: 'default',
               display: 'flex', alignItems: 'center', justifyContent: 'center'
             }}
           >
@@ -127,7 +127,7 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
             position: 'relative', width: '100%', minHeight: 116, borderRadius: 20,
             background: 'linear-gradient(135deg, #F0F9FF 0%, #E0F2FE 100%)',
             border: '1px solid #BAE6FD',
-            padding: '18px 20px', marginBottom: 22, boxSizing: 'border-box',
+            padding: '18px 20px', marginBottom: 20, boxSizing: 'border-box',
             display: 'flex', justifyContent: 'space-between', alignItems: 'center'
           }}>
             <div>
@@ -159,11 +159,8 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
           </div>
         )}
 
-        {/* Thin Micro-Divider */}
-        <div style={{ borderBottom: '1px solid #F1F4F3', margin: '22px 0' }} />
-
         {/* Today's Tasks Section */}
-        <div style={{ marginBottom: 22 }}>
+        <div style={{ marginBottom: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <h2 style={{ fontSize: '1.12rem', fontWeight: 900, color: '#191F28', margin: 0, letterSpacing: '-0.02em' }}>
               오늘 해야 할 일
@@ -212,10 +209,7 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
           )}
         </div>
 
-        {/* Thin Micro-Divider */}
-        <div style={{ borderBottom: '1px solid #F1F4F3', margin: '22px 0' }} />
-
-        {/* EXCLUSIVE REGION SETTING CLICKABLE CARD - Ultra-sleek Gradient & Circular Arrow Backdrop */}
+        {/* EXCLUSIVE REGION SETTING CLICKABLE CARD - Ultra-sleek Gradient */}
         {isNewUser ? (
           <motion.div
             whileTap={{ scale: 0.98 }}
@@ -224,7 +218,7 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
               position: 'relative', width: '100%', borderRadius: 26,
               background: 'linear-gradient(135deg, #FFFFFF 0%, #F1F9FE 45%, #D2F0FF 100%)',
               border: '1px solid #C4E9FC',
-              padding: '28px 24px 24px 24px', marginBottom: 22, cursor: 'pointer',
+              padding: '28px 24px 24px 24px', marginBottom: 20, cursor: 'pointer',
               boxSizing: 'border-box'
             }}
           >
@@ -248,7 +242,7 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
             </div>
           </motion.div>
         ) : (
-          <div style={{ position: 'relative', width: '100%', minHeight: 150, border: '1px solid #FFE0A8', borderRadius: 20, backgroundColor: '#FFF8E8', padding: '20px', marginBottom: 22, boxSizing: 'border-box', overflow: 'hidden' }}>
+          <div style={{ position: 'relative', width: '100%', minHeight: 150, border: '1px solid #FFE0A8', borderRadius: 20, backgroundColor: '#FFF8E8', padding: '20px', marginBottom: 20, boxSizing: 'border-box', overflow: 'hidden' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#FF7F2B', fontSize: '0.88rem', fontWeight: 850, marginBottom: 10 }}>
               <AlertTriangle size={18} color="#FF7F2B" /> 오늘 조치사항 ({regionName})
             </div>
@@ -265,10 +259,7 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
           </div>
         )}
 
-        {/* Thin Micro-Divider */}
-        <div style={{ borderBottom: '1px solid #F1F4F3', margin: '22px 0' }} />
-
-        {/* Recommended Farming Advice Section - Micro-polished Soft Green */}
+        {/* Recommended Farming Advice Section */}
         <div style={{ marginBottom: 16 }}>
           <h2 style={{ fontSize: '1.12rem', fontWeight: 900, color: '#191F28', marginBottom: 12, letterSpacing: '-0.02em' }}>
             {isNewUser ? '내 밭에 맞는 추천 농사 정보' : `${regionName} 추천 작물 정보`}
@@ -303,24 +294,9 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
 
       </div>
 
-      {/* Floating AI Button */}
-      <button
-        className="floating-ai-btn"
-        onClick={onOpenAIChat}
-        title="AI Assistant"
-        style={{
-          backgroundColor: '#1B4D36',
-          width: 54,
-          height: 54,
-          borderRadius: '50%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          border: 'none',
-          cursor: 'pointer'
-        }}
-      >
-        <span style={{ color: '#FFFFFF', fontSize: '0.92rem', fontWeight: 900 }}>AI</span>
+      {/* Floating AI Button - 100% UNIFIED VECTOR SVG ICON (SAME ON ALL SCREENS) */}
+      <button className="floating-ai-btn" onClick={onOpenAIChat} title="AI Assistant">
+        <img src="/svg-assets/ui-icons/ai-chat.svg" alt="AI 채팅" style={{ width: 26, height: 26, filter: 'brightness(0) invert(1)' }} />
       </button>
 
       {/* Bottom Navigation */}
