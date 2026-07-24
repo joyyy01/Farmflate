@@ -48,8 +48,8 @@ export const CommunityListView: React.FC<CommunityListViewProps> = ({
       <div className="full-screen-view no-scrollbar" style={{ padding: '32px 20px 96px 20px', overflowY: 'auto' }}>
 
         {/* Top Header: '커뮤니티' + '+ 글쓰기' green pill button */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 900, color: '#191F28', margin: 0, letterSpacing: '-0.02em' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 900, color: '#191F28', margin: 0, letterSpacing: '-0.03em' }}>
             커뮤니티
           </h2>
           <motion.button
@@ -65,9 +65,6 @@ export const CommunityListView: React.FC<CommunityListViewProps> = ({
             <Plus size={16} /> 글쓰기
           </motion.button>
         </div>
-
-        {/* Thin divider line matching Figma */}
-        <div style={{ borderBottom: '1px solid #ECEFED', marginBottom: 20 }} />
 
         {/* Post Cards List or Empty State */}
         {posts.length === 0 ? (
@@ -113,7 +110,7 @@ export const CommunityListView: React.FC<CommunityListViewProps> = ({
                   {/* Title */}
                   <h3 style={{
                     fontSize: '1.05rem', fontWeight: 900, color: '#191F28',
-                    marginBottom: 6, lineHeight: 1.4, wordBreak: 'keep-all'
+                    marginBottom: 6, lineHeight: 1.4, wordBreak: 'keep-all', letterSpacing: '-0.02em'
                   }}>
                     {post.title}
                   </h3>
