@@ -25,7 +25,7 @@ public class UserApiController {
 
     @GetMapping("/me")
     public ResponseEntity<UserProfileResponse> getCurrentUser(@AuthenticationPrincipal UserPrincipal userPrincipal) {
-        String email = userPrincipal != null ? userPrincipal.getEmail() : "user@farmflate.com";
+        String email = userPrincipal != null && userPrincipal.getEmail() != null ? userPrincipal.getEmail() : "user@farmflate.com";
         
         User user = userRepository.findByEmail(email)
                 .orElse(User.builder()
@@ -35,11 +35,15 @@ public class UserApiController {
                         .providerId("local_dev_id")
                         .build());
 
+        String displayName = (user.getNickname() != null && !user.getNickname().isBlank()) ? user.getNickname() : "사용자님";
+        String provider = user.getProvider() != null ? user.getProvider() : "kakao";
+        String role = user.getRole() != null ? user.getRole().name() : "USER";
+
         UserProfileResponse response = new UserProfileResponse(
-                user.getEmail(),
-                user.getNickname(),
-                user.getProvider(),
-                user.getRole() != null ? user.getRole().name() : "USER"
+                user.getEmail() != null ? user.getEmail() : email,
+                displayName,
+                provider,
+                role
         );
 
         return ResponseEntity.ok(response);
@@ -50,11 +54,11 @@ public class UserApiController {
             @AuthenticationPrincipal UserPrincipal userPrincipal,
             @RequestBody InquiryRequestDto request) {
 
-        String email = userPrincipal != null ? userPrincipal.getEmail() : "user@farmflate.com";
+        String email = userPrincipal != null && userPrincipal.getEmail() != null ? userPrincipal.getEmail() : "user@farmflate.com";
 
         InquiryEntity inquiry = InquiryEntity.builder()
                 .userEmail(email)
-                .inquiryText(request.getInquiryText())
+                .inquiryText(request.getInquiryText() != null ? request.getInquiryText() : "")
                 .category(request.getCategory() != null ? request.getCategory() : "GENERAL")
                 .status("PENDING")
                 .build();
@@ -63,7 +67,7 @@ public class UserApiController {
 
         Map<String, Object> result = new HashMap<>();
         result.put("status", "SUCCESS");
-        result.put("inquiryId", saved.getId().toString());
+        result.put("inquiryId", saved.getId() != null ? saved.getId().toString() : "inq_1");
         result.put("createdAt", saved.getCreatedAt() != null ? saved.getCreatedAt().toString() : "");
 
         return ResponseEntity.ok(result);
@@ -71,7 +75,7 @@ public class UserApiController {
 
     @GetMapping("/inquiries")
     public ResponseEntity<List<InquiryEntity>> getUserInquiries(@AuthenticationPrincipal UserPrincipal userPrincipal) {
-        String email = userPrincipal != null ? userPrincipal.getEmail() : "user@farmflate.com";
+        String email = userPrincipal != null && userPrincipal.getEmail() != null ? userPrincipal.getEmail() : "user@farmflate.com";
         List<InquiryEntity> list = inquiryRepository.findByUserEmailOrderByCreatedAtDesc(email);
         return ResponseEntity.ok(list);
     }
