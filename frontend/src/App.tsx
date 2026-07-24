@@ -28,6 +28,9 @@ export function App() {
   const [activeTab, setActiveTab] = useState<TabState>('home');
   const [isAIChatOpen, setIsAIChatOpen] = useState(false);
 
+  /* Target Report View Destination (Region Summary vs Crop Suitability) */
+  const [targetViewAfterAnalysis, setTargetViewAfterAnalysis] = useState<'report_summary' | 'crop_suitability_report'>('report_summary');
+
   /* Clean Unauthenticated Default States (No Hardcoded Private Names) */
   const [isNewUser, setIsNewUser] = useState<boolean>(() => {
     if (!checkHasToken()) return true;
@@ -232,6 +235,7 @@ export function App() {
 
   /* Region Analysis Handler */
   const handleStartAnalysis = async (province: string, district: string) => {
+    setTargetViewAfterAnalysis('report_summary');
     setSelectedProvince(province);
     setSelectedDistrict(district);
     localStorage.setItem('farmflate_province', province);
@@ -266,11 +270,12 @@ export function App() {
 
   /* Analysis Completion Handler */
   const handleAnalysisComplete = () => {
-    safeSetViewStep('report_summary');
+    safeSetViewStep(targetViewAfterAnalysis);
   };
 
   /* Crop Input Handler */
   const handleStartCropConditionAnalysis = (cropName: string, _stage: string, _mode: string) => {
+    setTargetViewAfterAnalysis('crop_suitability_report');
     setSelectedCropName(cropName);
     const result = analyzeCropSuitability(selectedProvince, selectedDistrict, cropName);
     setAnalysisResult(result);
@@ -524,12 +529,12 @@ export function App() {
         />
       )}
 
-      {/* 9. Crop Suitability Report Screen */}
+      {/* 9. Crop Suitability Report Screen (농작물 적합도 리포트) */}
       {viewStep === 'crop_suitability_report' && (
         <CropSuitabilityReportView
           cropName={selectedCropName}
           score={analysisResult.score}
-          onBack={() => safeSetViewStep('recommended_crops')}
+          onBack={() => safeSetViewStep('condition')}
           onRegisterCrop={handleAddField}
         />
       )}
