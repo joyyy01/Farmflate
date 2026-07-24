@@ -508,6 +508,11 @@ export function App() {
           districtName={apiReport?.region?.sigunguName || selectedDistrict}
           report={apiReport}
           onBack={() => safeSetViewStep('report_risks')}
+          onSave={() => {
+            setIsNewUser(false);
+            localStorage.setItem('farmflate_is_new_user', 'false');
+            handleTabChange('home');
+          }}
           onGoToCreateField={() => safeSetViewStep('condition')}
           onOpenAIChat={() => setIsAIChatOpen(true)}
         />
