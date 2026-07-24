@@ -19,6 +19,7 @@ import { ApiError, ApiService } from './services/api';
 import type { FieldProfile, HomeData, RegionAnalysisRequest, RegionReport } from './services/api';
 import { canOpenReport, stateFromAnalysisStatus, type AnalysisState } from './services/reportLifecycle';
 import { AIChatModal } from './components/farmflate/AIChatModal';
+import { useDailyRefresh } from './hooks/useDailyRefresh';
 
 type ExtendedViewStep = ViewStep | 'splash';
 
@@ -52,7 +53,7 @@ const normalizeCommunityPosts = (data: unknown): CommunityPost[] => {
 
 export function App() {
   const checkHasToken = () => !!(localStorage.getItem('jwtToken') || localStorage.getItem('token'));
-  const [viewStep, setViewStep] = useState<ExtendedViewStep>('landing');
+  const [viewStep, setViewStep] = useState<ExtendedViewStep>('splash');
   const [activeTab, setActiveTab] = useState<TabState>('home');
   const [isAIChatOpen, setIsAIChatOpen] = useState(false);
   const [isPreviewMode, setIsPreviewMode] = useState(false);
@@ -294,6 +295,45 @@ export function App() {
     };
   }, []);
 
+  /* Refreshes the home summary (weather, today's action, latest analysis) in the
+     background without touching viewStep/routing. Used by the daily 6am refresh
+     below; the initial session bootstrap above has its own richer version. */
+  const refreshHomeReport = async () => {
+    if (!checkHasToken() || previewModeRef.current) return;
+    try {
+      const resData = await ApiService.getHome();
+      if (previewModeRef.current) return;
+      setHomeData(resData);
+      setHomeLoadError(null);
+      if (resData.user?.displayName) {
+        setUserName(resData.user.displayName);
+        localStorage.setItem('farmflate_user_name', resData.user.displayName);
+      }
+      if (resData.user?.email) {
+        setUserEmail(resData.user.email);
+        localStorage.setItem('farmflate_user_email', resData.user.email);
+      }
+      if (resData.latestRegionAnalysis?.analysisId) {
+        const report = await ApiService.getRegionReport(resData.latestRegionAnalysis.analysisId, 'COMPLETED');
+        if (previewModeRef.current) return;
+        setApiReport(report);
+        setAnalysisState(stateFromAnalysisStatus({ analysisId: resData.latestRegionAnalysis.analysisId, status: report.status || 'COMPLETED' }, report));
+      }
+      setIsNewUser(!resData.latestRegionAnalysis);
+    } catch (error) {
+      console.warn('Failed to refresh home report:', error);
+    }
+  };
+
+  // Bumped once per day at 6am; passed as MainDashboardView's `key` so its
+  // local "today's tasks" completion state resets for the new day.
+  const [dailyKey, setDailyKey] = useState(() => new Date().toDateString());
+
+  useDailyRefresh(() => {
+    void refreshHomeReport();
+    setDailyKey(new Date().toDateString());
+  }, 6);
+
   const setAnalysisFailure = (error: unknown, pendingAction: 'ANALYSIS' | 'FIELD' = 'ANALYSIS') => {
     if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
       setAnalysisState({ kind: 'UNAUTHORIZED', message: error.message, pendingAction });
@@ -314,6 +354,7 @@ export function App() {
       return;
     }
     setReportReturnStep(sourceStep);
+    const previousAnalysisState = analysisState;
     try {
       setAnalysisState({ kind: 'SUBMITTING' });
       setViewStep('analyzing');
@@ -326,6 +367,11 @@ export function App() {
       setViewStep('report_summary');
     } catch (err) {
       console.warn('Failed to load confirmed report:', err);
+      // Restore whatever analysis state existed before this attempt so a transient
+      // failure here doesn't leave analysisState stuck at SUBMITTING (which would
+      // otherwise block canOpenReport() from ever passing again) or wrongly
+      // invalidate an already-valid, previously-loaded report.
+      setAnalysisState(previousAnalysisState);
       if (sourceStep !== 'explore') {
         safeSetViewStep(sourceStep);
       } else {
@@ -641,6 +687,7 @@ export function App() {
       {/* 10. Main Dashboard Screen */}
       {viewStep === 'dashboard' && (
         <MainDashboardView
+          key={dailyKey}
           userName={userName}
           analyzedRegion={apiReport?.region?.sidoName && apiReport?.region?.sigunguName ? `${apiReport.region.sidoName} ${apiReport.region.sigunguName}` : undefined}
           homeData={homeData}

@@ -17,7 +17,7 @@ export interface LocationResolution {
   spatialLevel?: string | null;
   precisionBadge?: string | null;
   evidenceLevel?: string | null;
-  sourceRefs?: SourceReference[];
+  sourceRefs?: string[];
   transformations?: string[];
   validationFlags?: string[];
 }

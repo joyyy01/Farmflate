@@ -43,7 +43,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(CorsUtils::isPreFlightRequest).permitAll()
                 .requestMatchers("/api/fields/**").authenticated()
-                .requestMatchers("/", "/oauth2/**", "/login/**", "/api/auth/**", "/api/public/**",
+                .requestMatchers("/", "/oauth2/**", "/login/**", "/api/public/**", "/api/health",
                         "/api/regions/sidos", "/api/regions/sidos/**", "/api/regions/analysis", "/api/regions/analysis/**",
                         "/api/regions/reports/**", "/api/home", "/api/community/**", "/api/users/**", "/error", "/favicon.ico").permitAll()
                 .anyRequest().authenticated()

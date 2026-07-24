@@ -60,7 +60,7 @@ const normalizeLocation = (input: unknown): LocationResolution | null => {
     spatialLevel: asString(input.spatialLevel),
     precisionBadge: asString(input.precisionBadge),
     evidenceLevel: asString(input.evidenceLevel),
-    sourceRefs: asRecordArray(input.sourceRefs).map(normalizeSource),
+    sourceRefs: asStringArray(input.sourceRefs),
     transformations: asStringArray(input.transformations),
     validationFlags: asStringArray(input.validationFlags)
   };
