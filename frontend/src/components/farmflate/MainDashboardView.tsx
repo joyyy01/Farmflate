@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { ChevronRight, AlertTriangle } from 'lucide-react';
+import { ChevronRight, AlertTriangle, Compass, CalendarCheck, Sparkles } from 'lucide-react';
 import type { RecommendedCrop, TabState } from '../../types/farmflate';
 import { BottomNavigation } from '../common/BottomNavigation';
 import { getDynamicWeather } from '../../services/farmEngine';
@@ -43,7 +43,7 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
   const humidity = dynamicWeather.humidity;
   const wind = dynamicWeather.wind;
   
-  // Real-time matched weather state & forecast phrasing (eliminates contradictory text)
+  // Real-time matched weather state & forecast phrasing
   const weatherStateText = rainProb > 50 ? '비 소식' : dynamicWeather.weatherState;
   const forecastText = rainProb > 50 ? '집중호우에 유의하세요' : dynamicWeather.forecast;
 
@@ -85,7 +85,7 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
-      <div className="full-screen-view no-scrollbar" style={{ backgroundColor: '#FFFFFF', padding: '24px 20px 96px 20px', overflowY: 'auto' }}>
+      <div className="full-screen-view no-scrollbar" style={{ backgroundColor: '#FFFFFF', padding: '32px 20px 96px 20px', overflowY: 'auto' }}>
         
         {/* Top Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
@@ -93,35 +93,52 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
             src="/svg-assets/brand/wordmark.svg"
             alt="Farmflate"
             className="logo-wordmark"
-            style={{ height: 28 }}
+            style={{ height: 28, cursor: 'pointer' }}
             onClick={() => onTabChange('home')}
           />
         </div>
 
         {/* Dynamic User Greeting */}
-        <div style={{ marginBottom: 18 }}>
-          <h1 style={{ fontSize: '1.35rem', fontWeight: 850, color: '#202a24', lineHeight: 1.2, margin: '0 0 4px 0' }}>
+        <div style={{ marginBottom: 20 }}>
+          <h1 style={{ fontSize: '1.4rem', fontWeight: 900, color: '#191F28', lineHeight: 1.2, margin: '0 0 4px 0' }}>
             안녕하세요, {userName.endsWith('님') ? userName : `${userName}님`}
           </h1>
-          <p style={{ fontSize: '0.8rem', color: '#6f7772', margin: 0, fontWeight: 500 }}>
+          <p style={{ fontSize: '0.84rem', color: '#6F7772', margin: 0, fontWeight: 500 }}>
             {isNewUser ? '지역을 분석하고 맞춤형 농사 정보를 받아보세요.' : '오늘도 즐거운 농사 되세요!'}
           </p>
         </div>
 
-        {/* Dynamic Real-Time Regional Weather Card */}
+        {/* Dynamic Weather Card */}
         {isNewUser ? (
-          <div style={{ width: '100%', height: 60, borderRadius: 14, backgroundColor: '#C8E8FA', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 24, color: '#6B90A6', fontSize: '0.9rem', fontWeight: 700 }}>
-            지역을 탐색하면 실시간 날씨가 표시됩니다
+          <div
+            onClick={onGoToExplore}
+            style={{
+              backgroundColor: '#F8FAF8', borderRadius: 20, border: '1px solid #EAEFEA',
+              padding: '18px 20px', marginBottom: 24, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: '#E0F2FE', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <img src="/svg-assets/weather/partly-cloudy.svg" alt="날씨" style={{ width: 28, height: 28, objectFit: 'contain' }} />
+              </div>
+              <div>
+                <div style={{ fontSize: '0.9rem', fontWeight: 850, color: '#191F28', marginBottom: 2 }}>실시간 기상 정보</div>
+                <div style={{ fontSize: '0.78rem', color: '#6E7671', fontWeight: 500 }}>지역을 탐색하고 맞춤 날씨 예보를 확인해보세요.</div>
+              </div>
+            </div>
+            <ChevronRight size={18} color="#9CA3AF" />
           </div>
         ) : (
           <div style={{
-            position: 'relative', width: '100%', minHeight: 116, borderRadius: 14,
+            position: 'relative', width: '100%', minHeight: 116, borderRadius: 20,
             backgroundColor: '#E0F2FE', border: '1px solid #BAE6FD',
-            padding: '16px 18px', marginBottom: 24, boxSizing: 'border-box',
+            padding: '18px 20px', marginBottom: 24, boxSizing: 'border-box',
             display: 'flex', justifyContent: 'space-between', alignItems: 'center'
           }}>
             <div>
-              <div style={{ fontSize: '0.72rem', color: '#0369A1', fontWeight: 700, marginBottom: 2 }}>{regionName}</div>
+              <div style={{ fontSize: '0.74rem', color: '#0369A1', fontWeight: 700, marginBottom: 2 }}>{regionName}</div>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '2px 0 4px 0' }}>
                 <span style={{ fontSize: '2.2rem', fontWeight: 800, color: '#0C4A6E', letterSpacing: '-0.06em' }}>
                   {temp}<small style={{ fontSize: '1.1rem' }}>℃</small>
@@ -149,42 +166,51 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
           </div>
         )}
 
-        {/* Tasks Section */}
+        {/* Today's Tasks Section */}
         <div style={{ marginBottom: 24 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <h2 style={{ fontSize: '1.1rem', fontWeight: 850, color: '#202a24', margin: 0 }}>
+            <h2 style={{ fontSize: '1.1rem', fontWeight: 850, color: '#191F28', margin: 0 }}>
               오늘 해야 할 일
             </h2>
             {!isNewUser && (
-              <span style={{ fontSize: '0.74rem', color: '#2FA86A', fontWeight: 700 }}>
+              <span style={{ fontSize: '0.76rem', color: '#2FA86A', fontWeight: 800 }}>
                 {tasks.filter(t => t.completed).length} / {tasks.length} 완료
               </span>
             )}
           </div>
 
           {isNewUser ? (
-             <div style={{ width: '100%', height: 48, borderRadius: 12, backgroundColor: '#f2f4f3', display: 'flex', alignItems: 'center', padding: '0 16px', color: '#8e9691', fontSize: '0.85rem', fontWeight: 600 }}>
-               오늘 해야 할 일이 없어요
+             <div style={{
+               backgroundColor: '#F8FAF8', borderRadius: 20, border: '1px solid #EAEFEA',
+               padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 14
+             }}>
+               <div style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: '#EDF7ED', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                 <CalendarCheck size={20} color="#2FA86A" />
+               </div>
+               <div>
+                 <div style={{ fontSize: '0.88rem', fontWeight: 850, color: '#191F28', marginBottom: 2 }}>아직 할 일이 없습니다</div>
+                 <div style={{ fontSize: '0.78rem', color: '#6E7671', fontWeight: 500 }}>지역 분석 등록 시 일별 농가 조치 사항이 자동 생성됩니다.</div>
+               </div>
              </div>
           ) : (
-            <div style={{ border: '1px solid #dfe4e1', borderRadius: 14, overflow: 'hidden', backgroundColor: '#FFFFFF', boxSizing: 'border-box' }}>
+            <div style={{ border: '1px solid #E5E8EB', borderRadius: 20, overflow: 'hidden', backgroundColor: '#FFFFFF', boxSizing: 'border-box' }}>
               {tasks.map((task, idx) => (
                 <div key={task.id} onClick={() => toggleTask(task.id)} style={{
                   display: 'grid', gridTemplateColumns: '38px minmax(0, 1fr) 54px 28px', alignItems: 'center',
-                  padding: '14px 14px', borderBottom: idx < tasks.length - 1 ? '1px solid #e6e9e7' : 'none', cursor: 'pointer', gap: '4px'
+                  padding: '16px 18px', borderBottom: idx < tasks.length - 1 ? '1px solid #F1F5F9' : 'none', cursor: 'pointer', gap: '4px'
                 }}>
                   <img src={task.icon} alt={task.title} style={{ width: 26, height: 26, objectFit: 'contain' }} />
                   <span style={{
-                    fontSize: '0.9rem', fontWeight: 650, color: task.completed ? '#9CA3AF' : '#202a24',
+                    fontSize: '0.9rem', fontWeight: 700, color: task.completed ? '#9CA3AF' : '#191F28',
                     textDecoration: task.completed ? 'line-through' : 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
                   }}>
                     {task.title}
                   </span>
-                  <span style={{ fontSize: '0.74rem', color: '#969c98' }}>{task.time}</span>
+                  <span style={{ fontSize: '0.74rem', color: '#8E9892', fontWeight: 600 }}>{task.time}</span>
                   <div style={{
-                    width: 21, height: 21, borderRadius: '50%', border: task.completed ? 'none' : '1.6px solid #9ea7a1',
-                    backgroundColor: task.completed ? '#2e9f5b' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    color: '#FFF', fontSize: '0.7rem'
+                    width: 22, height: 22, borderRadius: '50%', border: task.completed ? 'none' : '1.8px solid #CBD5E1',
+                    backgroundColor: task.completed ? '#2FA86A' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: '#FFF', fontSize: '0.75rem', fontWeight: 900
                   }}>
                     {task.completed && '✓'}
                   </div>
@@ -194,33 +220,46 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
           )}
         </div>
 
-        {/* Central CTA or Warning Card */}
+        {/* Primary Action Banner Card */}
         {isNewUser ? (
-          <motion.div whileTap={{ scale: 0.98 }} onClick={onGoToExplore} style={{ position: 'relative', width: '100%', minHeight: 130, borderRadius: 20, backgroundColor: '#F0F9FF', border: '1px solid #BAE6FD', padding: '24px 20px', marginBottom: 24, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <motion.div
+            whileTap={{ scale: 0.98 }}
+            onClick={onGoToExplore}
+            style={{
+              position: 'relative', width: '100%', borderRadius: 22,
+              backgroundColor: '#EDF7ED', border: '1px solid #D4EDDA',
+              padding: '22px 20px', marginBottom: 24, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              boxSizing: 'border-box'
+            }}
+          >
             <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#2FA86A', fontSize: '0.78rem', fontWeight: 850, marginBottom: 4 }}>
+                <Compass size={16} /> 맞춤 토양 분석
+              </div>
               <h2 style={{ fontSize: '1.25rem', fontWeight: 900, color: '#191F28', margin: '0 0 6px 0', lineHeight: 1.3 }}>
                 지역 입력하고<br />맞춤형 정보 받아보기
               </h2>
-              <p style={{ fontSize: '0.8rem', color: '#668294', margin: 0, fontWeight: 500 }}>
+              <p style={{ fontSize: '0.78rem', color: '#556E5D', margin: 0, fontWeight: 500 }}>
                 재배 희망지역, 관심작물을 입력 후 필수 확인하기
               </p>
             </div>
-            <div style={{ width: 40, height: 40, borderRadius: '50%', backgroundColor: '#FFFFFF', border: '1px solid #BAE6FD', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <ChevronRight size={24} color="#191F28" />
+            <div style={{ width: 44, height: 44, borderRadius: '50%', backgroundColor: '#FFFFFF', border: '1px solid #D4EDDA', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <ChevronRight size={24} color="#2FA86A" />
             </div>
           </motion.div>
         ) : (
-          <div style={{ position: 'relative', width: '100%', minHeight: 150, border: '1px solid #ffe0a8', borderRadius: 14, backgroundColor: '#FFF8E8', padding: '18px 20px', marginBottom: 24, boxSizing: 'border-box', overflow: 'hidden' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#ff7f2b', fontSize: '0.9rem', fontWeight: 850, marginBottom: 10 }}>
+          <div style={{ position: 'relative', width: '100%', minHeight: 150, border: '1px solid #FFE0A8', borderRadius: 20, backgroundColor: '#FFF8E8', padding: '20px', marginBottom: 24, boxSizing: 'border-box', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#FF7F2B', fontSize: '0.88rem', fontWeight: 850, marginBottom: 10 }}>
               <AlertTriangle size={18} color="#FF7F2B" /> 오늘 조치사항 ({regionName})
             </div>
-            <div style={{ fontSize: '0.86rem', lineHeight: 1.5, color: '#626a65', marginBottom: 14 }}>
-              <strong style={{ display: 'block', color: '#29312c', fontSize: '0.94rem', marginBottom: 2, fontWeight: 800 }}>
+            <div style={{ fontSize: '0.86rem', lineHeight: 1.5, color: '#626A65', marginBottom: 14 }}>
+              <strong style={{ display: 'block', color: '#191F28', fontSize: '0.94rem', marginBottom: 2, fontWeight: 850 }}>
                 {actionTitle}
               </strong>
               {actionReason}
             </div>
-            <button onClick={handleReportViewClick} style={{ height: 32, padding: '0 14px', border: '1px solid #ffcfb1', borderRadius: 18, backgroundColor: '#FFFFFF', color: '#ff7d31', fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer' }}>
+            <button onClick={handleReportViewClick} style={{ height: 34, padding: '0 16px', border: '1px solid #FFCFB1', borderRadius: 18, backgroundColor: '#FFFFFF', color: '#FF7D31', fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer' }}>
               지역 리포트 보기 ›
             </button>
             <img src="/svg-assets/weather/water-drop-alert.svg" alt="물방울 캐릭터" style={{ position: 'absolute', right: 12, bottom: 4, width: 84, height: 120, objectFit: 'contain' }} />
@@ -228,34 +267,50 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
         )}
 
         {/* Recommended Farming Advice */}
-        <div>
-          <h2 style={{ fontSize: '1.05rem', fontWeight: 850, color: '#202a24', marginBottom: 12 }}>
+        <div style={{ marginBottom: 16 }}>
+          <h2 style={{ fontSize: '1.1rem', fontWeight: 850, color: '#191F28', marginBottom: 12 }}>
             {isNewUser ? '내 땅에 맞는 추천 농사 정보' : `${regionName} 추천 작물 정보`}
           </h2>
 
           {isNewUser ? (
-             <div style={{ width: '100%', height: 60, borderRadius: 14, backgroundColor: '#e2f4e8', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#468661', fontSize: '0.88rem', fontWeight: 700 }}>
-               아직 추천 정보가 없어요
+             <div
+               onClick={onGoToExplore}
+               style={{
+                 backgroundColor: '#F8FAF8', borderRadius: 20, border: '1px solid #EAEFEA',
+                 padding: '18px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                 cursor: 'pointer'
+               }}
+             >
+               <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                 <div style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: '#E9F7EC', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                   <Sparkles size={20} color="#2FA86A" />
+                 </div>
+                 <div>
+                   <div style={{ fontSize: '0.88rem', fontWeight: 850, color: '#191F28', marginBottom: 2 }}>추천 정보 준비 중</div>
+                   <div style={{ fontSize: '0.78rem', color: '#6E7671', fontWeight: 500 }}>지역 탐색을 시작하시면 흙과 기후 맞춤 작물이 추천됩니다.</div>
+                 </div>
+               </div>
+               <ChevronRight size={18} color="#9CA3AF" />
              </div>
           ) : (
-            <motion.div whileTap={{ scale: 0.98 }} onClick={handleReportViewClick} style={{ width: '100%', minHeight: 73, border: '1px solid #dbe6de', borderRadius: 14, backgroundColor: '#F8FAF8', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', boxSizing: 'border-box', cursor: 'pointer' }}>
+            <motion.div whileTap={{ scale: 0.98 }} onClick={handleReportViewClick} style={{ width: '100%', border: '1px solid #E5E8EB', borderRadius: 20, backgroundColor: '#F8FAF8', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 18px', boxSizing: 'border-box', cursor: 'pointer' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                 <img src={topCropIcon} alt={topCropName} style={{ width: 44, height: 44, objectFit: 'contain' }} />
                 <div>
-                  <strong style={{ fontSize: '0.88rem', color: '#306847', fontWeight: 800 }}>TOP 1 추천: {topCropName} ({topCropScore}점)</strong>
-                  <p style={{ margin: '3px 0 0 0', fontSize: '0.76rem', color: '#747b76' }}>{topCropReason}</p>
+                  <strong style={{ fontSize: '0.9rem', color: '#154F36', fontWeight: 850 }}>TOP 1 추천: {topCropName} ({topCropScore}점)</strong>
+                  <p style={{ margin: '3px 0 0 0', fontSize: '0.78rem', color: '#6E7671', fontWeight: 500 }}>{topCropReason}</p>
                 </div>
               </div>
-              <ChevronRight size={20} color="#24513a" />
+              <ChevronRight size={20} color="#154F36" />
             </motion.div>
           )}
         </div>
 
       </div>
 
-      {/* Floating AI Button */}
+      {/* Floating AI Button - Standardized 100% vector SVG icon design across all screens */}
       <button className="floating-ai-btn" onClick={onOpenAIChat} title="AI Assistant">
-        <span style={{ color: '#FFFFFF', fontSize: '0.9rem', fontWeight: 900 }}>AI</span>
+        <img src="/svg-assets/ui-icons/ai-chat.svg" alt="AI 채팅" style={{ width: 26, height: 26, filter: 'brightness(0) invert(1)' }} />
       </button>
 
       {/* Bottom Navigation */}
