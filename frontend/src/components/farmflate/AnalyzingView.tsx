@@ -83,52 +83,68 @@ export const AnalyzingView: React.FC<AnalyzingViewProps> = ({
           {subtitle}
         </p>
 
-        {/* Animated Steps */}
-        <div style={{ width: '100%', maxWidth: 280, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {steps.map((text, idx) => {
-            const isCompleted = completedSteps.includes(text) || (isWorking && idx < activeStep);
-            const isCurrent = isWorking && idx === activeStep;
+        {/* Animated Steps List */}
+        <div style={{
+          width: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxSizing: 'border-box',
+          margin: '12px 0 20px 0'
+        }}>
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 14,
+            width: 'fit-content'
+          }}>
+            {steps.map((text, idx) => {
+              const isCompleted = completedSteps.includes(text) || (isWorking && idx < activeStep);
+              const isCurrent = isWorking && idx === activeStep;
 
-            return (
-              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                {/* Status icon */}
-                <div style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  {isCompleted ? (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                      <circle cx="12" cy="12" r="9.25" fill="#2FA35A" />
-                      <path d="M8 12.3l2.6 2.6L16.3 9" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  ) : isCurrent ? (
-                    <motion.svg
-                      width="20"
-                      height="20"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      animate={{ rotate: 360 }}
-                      transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
-                    >
-                      <circle cx="12" cy="12" r="9.25" stroke="#D7ECDD" strokeWidth="2.2" />
-                      <path d="M21.25 12A9.25 9.25 0 0 0 12 2.75" stroke="#2FA35A" strokeWidth="2.2" strokeLinecap="round" />
-                    </motion.svg>
-                  ) : (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                      <circle cx="12" cy="12" r="9.25" stroke="#D7DEDA" strokeWidth="1.6" />
-                    </svg>
-                  )}
+              return (
+                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  {/* Status icon */}
+                  <div style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    {isCompleted ? (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                        <circle cx="12" cy="12" r="9.25" fill="#2FA35A" />
+                        <path d="M8 12.3l2.6 2.6L16.3 9" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    ) : isCurrent ? (
+                      <motion.svg
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        animate={{ rotate: 360 }}
+                        transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
+                      >
+                        <circle cx="12" cy="12" r="9.25" stroke="#D7ECDD" strokeWidth="2.2" />
+                        <path d="M21.25 12A9.25 9.25 0 0 0 12 2.75" stroke="#2FA35A" strokeWidth="2.2" strokeLinecap="round" />
+                      </motion.svg>
+                    ) : (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                        <circle cx="12" cy="12" r="9.25" stroke="#D7DEDA" strokeWidth="1.6" />
+                      </svg>
+                    )}
+                  </div>
+
+                  {/* Step label */}
+                  <span style={{
+                    fontSize: '0.88rem',
+                    fontWeight: isCurrent ? 800 : isCompleted ? 700 : 500,
+                    color: isCurrent ? '#154F36' : isCompleted ? '#202A24' : '#9CA3AF',
+                    lineHeight: 1.4,
+                    whiteSpace: 'nowrap'
+                  }}>
+                    {text}
+                  </span>
                 </div>
-
-                {/* Step label */}
-                <span style={{
-                  fontSize: '0.88rem',
-                  fontWeight: isCurrent ? 800 : isCompleted ? 700 : 500,
-                  color: isCurrent ? '#154F36' : isCompleted ? '#202A24' : '#9CA3AF',
-                  lineHeight: 1.4
-                }}>
-                  {text}
-                </span>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
 
         {/* Footer info text */}

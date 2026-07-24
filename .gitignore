@@ -5,6 +5,7 @@
 
 # Gradle & Spring build files
 .gradle/
+**/.gradle/
 **/build/
 *.lock
 *.bin
@@ -16,7 +17,9 @@ dist/
 
 # Python
 __pycache__/
+**/__pycache__/
 *.pyc
+**/*.pyc
 
 # IDE & OS
 .idea/
