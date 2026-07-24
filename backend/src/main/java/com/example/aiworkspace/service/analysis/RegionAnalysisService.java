@@ -151,25 +151,30 @@ public class RegionAnalysisService {
 
         // Step 1: 기상청 단기예보 (향후 3일)
         log.info("[1/4] Fetching short forecast for nx={}, ny={}", region.getKmaNx(), region.getKmaNy());
-        List<ShortForecastAdapter.DailyForecast> forecasts = shortForecastAdapter.getForecast3Days(
+        ExternalResult<List<ShortForecastAdapter.DailyForecast>> forecastResult = shortForecastAdapter.getForecast3Days(
                 region.getKmaNx(), region.getKmaNy());
-        log.info("[1/4] Short forecast: {} days fetched", forecasts.size());
+        List<ShortForecastAdapter.DailyForecast> forecasts = forecastResult.valueOr(List.of());
+        log.info("[1/4] Short forecast: status={}, {} days fetched", forecastResult.status(), forecasts.size());
 
         // Step 2: ASOS 최근 30일 집계
         log.info("[2/4] Fetching ASOS 30-day summary for station={}", region.getAsosStationId());
-        AsosAdapter.Asos30DaySummary asos = asosAdapter.get30DaySummary(region.getAsosStationId());
-        log.info("[2/4] ASOS: meanTemp={}, totalPrecip={}, dataPoints={}",
-                asos.meanTemperature30d, asos.totalPrecipitation30d, asos.dataPointCount);
+        ExternalResult<AsosAdapter.Asos30DaySummary> asosResult = asosAdapter.get30DaySummary(region.getAsosStationId());
+        AsosAdapter.Asos30DaySummary asos = asosResult.valueOr(new AsosAdapter.Asos30DaySummary());
+        log.info("[2/4] ASOS: status={}, meanTemp={}, totalPrecip={}, dataPoints={}",
+                asosResult.status(), asos.meanTemperature30d, asos.totalPrecipitation30d, asos.dataPointCount);
 
         // Step 3: 토양 데이터
         log.info("[3/4] Fetching soil data for sigungu={}", region.getSigunguCode());
-        SoilChemistryAdapter.SoilChemistryResult soilChem = soilChemistryAdapter.getSoilChemistry(
+        ExternalResult<SoilChemistryAdapter.SoilChemistryResult> soilChemResult = soilChemistryAdapter.getSoilChemistry(
                 region.getSigunguCode(), region.getSidoName(), region.getSigunguName());
-        log.info("[3/4] Soil chemistry: pH={}, spatialLevel={}", soilChem.ph, soilChem.spatialLevel);
+        SoilChemistryAdapter.SoilChemistryResult soilChem = soilChemResult.valueOr(new SoilChemistryAdapter.SoilChemistryResult());
+        log.info("[3/4] Soil chemistry: status={}, pH={}, spatialLevel={}",
+                soilChemResult.status(), soilChem.ph, soilChem.spatialLevel);
 
-        Map<String, SoilSuitabilityAdapter.SoilSuitabilityResult> suitability =
+        ExternalResult<Map<String, SoilSuitabilityAdapter.SoilSuitabilityResult>> suitabilityResult =
                 soilSuitabilityAdapter.getSoilSuitability(region.getSigunguCode(), region.getSidoName(), region.getSigunguName());
-        log.info("[3/4] Soil suitability: {} crops evaluated", suitability.size());
+        Map<String, SoilSuitabilityAdapter.SoilSuitabilityResult> suitability = suitabilityResult.valueOr(Map.of());
+        log.info("[3/4] Soil suitability: status={}, {} crops evaluated", suitabilityResult.status(), suitability.size());
 
         // Step 4: 점수 계산
         log.info("[4/4] Calculating scores...");

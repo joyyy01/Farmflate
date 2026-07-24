@@ -46,5 +46,17 @@ app:
       api-key: ${VWORLD_API_KEY:local_vworld_key}
     nongsaro:
       api-key: ${NONGSARO_API_KEY:local_nongsaro_key}
+  data-mode: ${DATA_MODE:LIVE}
+  external-api:
+    timeout-ms: ${EXTERNAL_API_TIMEOUT_MS:8000}
+    retry-count: ${EXTERNAL_API_RETRY_COUNT:1}
+  cache:
+    region-analysis-hours: ${REGION_ANALYSIS_CACHE_HOURS:6}
+    short-forecast-minutes: ${SHORT_FORECAST_CACHE_MINUTES:30}
+    asos-hours: ${ASOS_CACHE_HOURS:24}
+    soil-chemistry-days: ${SOIL_CHEMISTRY_CACHE_DAYS:30}
+    soil-suitability-days: ${SOIL_SUITABILITY_CACHE_DAYS:90}
+    legal-district-days: ${LEGAL_DISTRICT_CACHE_DAYS:30}
+    crop-code-days: ${CROP_CODE_CACHE_DAYS:90}
   python-server:
     url: ${PYTHON_SERVER_URL:http://localhost:8000}

@@ -1,0 +1,187 @@
+package com.example.aiworkspace.service.external;
+
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+
+/** Administrative Safety Ministry legal-dong provider normalizer. */
+@Slf4j
+@Component
+public class LegalDistrictAdapter {
+
+    private static final String BASE_URL = "http://apis.data.go.kr/1741000/StanReginCd/getStanReginCdList";
+    private static final String PROVIDER = "MOIS";
+    private static final String SERVICE = "StanReginCd";
+
+    private final RestTemplate restTemplate;
+    private final String serviceKey;
+    private final int cacheDays;
+    private final boolean replay;
+    private final Map<String, CachedDistrict> cache = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, CompletableFuture<ExternalResult<List<LegalDistrict>>>> inFlight = new ConcurrentHashMap<>();
+
+    public LegalDistrictAdapter(
+            @Qualifier("externalApiRestTemplate") RestTemplate restTemplate,
+            @Value("${app.external.data-go-kr.service-key}") String serviceKey,
+            @Value("${app.cache.legal-district-days:30}") int cacheDays,
+            @Value("${app.data-mode:LIVE}") String dataMode) {
+        this.restTemplate = restTemplate;
+        this.serviceKey = serviceKey;
+        this.cacheDays = cacheDays;
+        this.replay = "REPLAY".equalsIgnoreCase(dataMode);
+    }
+
+    public static class LegalDistrict {
+        public String regionCd;
+        public String locataddNm;
+        public String locallowNm;
+    }
+
+    private record CachedDistrict(ExternalResult<List<LegalDistrict>> result, Instant cachedAt) {
+    }
+
+    /** Returns active, de-duplicated eup/myeon/dong rows only. */
+    public ExternalResult<List<LegalDistrict>> getDistrictCodes(String sidoName, String sigunguName) {
+        String cacheKey = sidoName + "_" + sigunguName;
+        return ExternalAdapterSupport.executeOnce(inFlight, cacheKey, () -> {
+            CachedDistrict cached = cache.get(cacheKey);
+            if (cached != null && Duration.between(cached.cachedAt(), Instant.now()).toDays() < cacheDays) {
+                return cached.result().asCached();
+            }
+            ExternalResult<List<LegalDistrict>> result = fetchDistricts(sidoName + " " + sigunguName);
+            if (!result.isFailure()) {
+                cache.put(cacheKey, new CachedDistrict(result, Instant.now()));
+            }
+            return result;
+        });
+    }
+
+    /** Testable raw-payload boundary for fixture-backed contract tests. */
+    public ExternalResult<List<LegalDistrict>> parse(String body, String contentType) {
+        ExternalResult<Map<String, Object>> parsed = ExternalAdapterSupport.parseJsonObject(body, contentType);
+        if (parsed.isFailure()) {
+            return ExternalResult.failure(parsed.errorCode(), parsed.metrics());
+        }
+        return normalize(parsed.value(), "fixture");
+    }
+
+    @SuppressWarnings("unchecked")
+    private ExternalResult<List<LegalDistrict>> fetchDistricts(String locationName) {
+        try {
+            String url = UriComponentsBuilder.fromHttpUrl(BASE_URL)
+                    .queryParam("ServiceKey", serviceKey)
+                    .queryParam("pageNo", 1)
+                    .queryParam("numOfRows", 1000)
+                    .queryParam("type", "json")
+                    .queryParam("locatadd_nm", locationName)
+                    .build(false)
+                    .toUriString();
+            Map<String, Object> response = restTemplate.getForObject(url, Map.class);
+            return normalize(response, locationName);
+        } catch (Exception exception) {
+            log.warn("Legal district API failed for {}: {}", locationName, exception.getMessage());
+            return ExternalResult.failure("LEGAL_DISTRICT_REQUEST_FAILED");
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private ExternalResult<List<LegalDistrict>> normalize(Map<String, Object> response, String requestedRegion) {
+        if (response == null) {
+            return ExternalResult.failure("EMPTY_PROVIDER_RESPONSE");
+        }
+        Object rawEnvelope = response.get("StanReginCd");
+        if (!(rawEnvelope instanceof List<?> envelope)) {
+            return ExternalResult.failure("MALFORMED_PROVIDER_RESPONSE");
+        }
+
+        List<Map<String, Object>> rows = List.of();
+        for (Object part : envelope) {
+            Map<String, Object> map = ExternalAdapterSupport.map(part);
+            if (map == null) {
+                continue;
+            }
+            Object error = map.get("RESULT");
+            if (error instanceof Map<?, ?> result && !"INFO-000".equals(String.valueOf(result.get("CODE")))) {
+                return ExternalResult.failure("LEGAL_DISTRICT_PROVIDER_" + result.get("CODE"));
+            }
+            if (map.containsKey("row")) {
+                rows = ExternalAdapterSupport.mapList(map.get("row"));
+                break;
+            }
+        }
+        if (rows.isEmpty()) {
+            return ExternalResult.empty();
+        }
+
+        Set<String> seenCodes = new HashSet<>();
+        List<LegalDistrict> districts = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            String regionCode = string(row, "region_cd", "regionCd");
+            if (regionCode == null || regionCode.isBlank() || !seenCodes.add(regionCode)
+                    || !isActive(row) || !isLegalDong(row)) {
+                continue;
+            }
+            LegalDistrict district = new LegalDistrict();
+            district.regionCd = regionCode;
+            district.locataddNm = string(row, "locatadd_nm", "locataddNm");
+            district.locallowNm = string(row, "locallow_nm", "locallowNm");
+            districts.add(district);
+        }
+        if (districts.isEmpty()) {
+            return ExternalResult.empty();
+        }
+        return ExternalResult.success(districts, metricsFor(districts, requestedRegion));
+    }
+
+    private List<NormalizedMetric> metricsFor(List<LegalDistrict> districts, String requestedRegion) {
+        List<NormalizedMetric> metrics = new ArrayList<>();
+        metrics.add(ExternalAdapterSupport.metric("legal_district.count", (double) districts.size(), null, "count",
+                PROVIDER, SERVICE, "SIGUNGU", requestedRegion, null, false, replay, "GOOD", List.of()));
+        for (LegalDistrict district : districts) {
+            metrics.add(ExternalAdapterSupport.metric("legal_district.code", null, district.regionCd, null,
+                    PROVIDER, SERVICE, "LEGAL_DONG", district.regionCd, null, false, replay, "GOOD", List.of()));
+        }
+        return metrics;
+    }
+
+    private boolean isActive(Map<String, Object> row) {
+        String use = string(row, "use_yn", "useYn", "use_at", "useAt", "status");
+        if (use != null && ("N".equalsIgnoreCase(use) || "INACTIVE".equalsIgnoreCase(use)
+                || "DISABLED".equalsIgnoreCase(use))) {
+            return false;
+        }
+        String deleted = string(row, "del_yn", "delYn", "deleted_yn", "deletedYn");
+        return deleted == null || !("Y".equalsIgnoreCase(deleted) || "TRUE".equalsIgnoreCase(deleted));
+    }
+
+    private boolean isLegalDong(Map<String, Object> row) {
+        String riCode = string(row, "ri_cd", "riCd");
+        return riCode == null || riCode.isBlank() || "00".equals(riCode) || "000".equals(riCode);
+    }
+
+    private String string(Map<String, Object> row, String... keys) {
+        for (String key : keys) {
+            Object value = row.get(key);
+            if (value != null) {
+                String text = String.valueOf(value).trim();
+                if (!text.isEmpty() && !"null".equalsIgnoreCase(text)) {
+                    return text;
+                }
+            }
+        }
+        return null;
+    }
+}
