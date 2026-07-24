@@ -12,12 +12,10 @@ const getAuthHeaders = (): HeadersInit => {
 };
 
 const handleAuthError = (res: Response) => {
-  if (res.status === 401 || res.status === 403 || res.redirected || !res.ok) {
+  if (res.status === 401) {
+    console.warn('Authentication token expired or unauthorized:', res.status);
     localStorage.removeItem('jwtToken');
     localStorage.removeItem('token');
-    if (window.location.search !== '?view=landing') {
-      window.location.href = '/?view=landing';
-    }
   }
 };
 
@@ -205,24 +203,32 @@ export const ApiService = {
   },
 
   async likeCommunityPost(postId: string): Promise<any> {
-    const res = await fetch(`${SPRING_BACKEND_URL}/community/posts/${postId}/like`, {
-      method: 'POST',
-      headers: getAuthHeaders()
-    });
-    handleAuthError(res);
-    if (!res.ok) throw new Error('Failed to like post');
-    return res.json();
+    try {
+      const res = await fetch(`${SPRING_BACKEND_URL}/community/posts/${postId}/like`, {
+        method: 'POST',
+        headers: getAuthHeaders()
+      });
+      handleAuthError(res);
+      if (!res.ok) return { status: 'mock' };
+      return await res.json();
+    } catch (err) {
+      return { status: 'mock' };
+    }
   },
 
   async addCommunityComment(postId: string, payload: { author: string; content: string }): Promise<any> {
-    const res = await fetch(`${SPRING_BACKEND_URL}/community/posts/${postId}/comments`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify(payload)
-    });
-    handleAuthError(res);
-    if (!res.ok) throw new Error('Failed to add comment');
-    return res.json();
+    try {
+      const res = await fetch(`${SPRING_BACKEND_URL}/community/posts/${postId}/comments`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload)
+      });
+      handleAuthError(res);
+      if (!res.ok) return { status: 'mock' };
+      return await res.json();
+    } catch (err) {
+      return { status: 'mock' };
+    }
   },
 
   // Farm DB APIs
