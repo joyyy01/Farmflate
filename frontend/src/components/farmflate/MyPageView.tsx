@@ -16,6 +16,7 @@ interface MyPageViewProps {
   onTabChange: (tab: TabState) => void;
   onLogout?: () => void;
   onGoToExplore?: () => void;
+  onUpdateUserName?: (name: string) => void;
   onToggleLike?: (postId: string) => void;
   onToggleSave?: (postId: string) => void;
   onAddComment?: (postId: string, commentText: string) => void;
@@ -31,6 +32,7 @@ export const MyPageView: React.FC<MyPageViewProps> = ({
   onTabChange,
   onLogout,
   onGoToExplore,
+  onUpdateUserName,
   onToggleLike = () => {},
   onToggleSave = () => {},
   onAddComment = () => {}
@@ -70,6 +72,29 @@ export const MyPageView: React.FC<MyPageViewProps> = ({
   const [inquiryError, setInquiryError] = useState<string | null>(null);
   const [isSubmittingInquiry, setIsSubmittingInquiry] = useState(false);
   const [myInquiries, setMyInquiries] = useState<Array<{ id: number; inquiryText: string; category: string; status: string; createdAt: string }>>([]);
+
+  const [editingNickname, setEditingNickname] = useState(userName);
+  const [isUpdatingNickname, setIsUpdatingNickname] = useState(false);
+  const [nicknameSuccess, setNicknameSuccess] = useState(false);
+  const [nicknameError, setNicknameError] = useState<string | null>(null);
+
+  const handleSaveProfile = async () => {
+    if (!editingNickname.trim()) return;
+    setIsUpdatingNickname(true);
+    setNicknameError(null);
+    setNicknameSuccess(false);
+    try {
+      await ApiService.updateUserProfile({ nickname: editingNickname.trim() });
+      localStorage.setItem('farmflate_user_name', editingNickname.trim());
+      if (onUpdateUserName) onUpdateUserName(editingNickname.trim());
+      setNicknameSuccess(true);
+      setTimeout(() => setNicknameSuccess(false), 3000);
+    } catch (e) {
+      setNicknameError(e instanceof Error ? e.message : '프로필을 변경하지 못했습니다.');
+    } finally {
+      setIsUpdatingNickname(false);
+    }
+  };
 
   const loadInquiries = async () => {
     try {
@@ -268,9 +293,28 @@ export const MyPageView: React.FC<MyPageViewProps> = ({
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 24 }}>
-                <div style={{ backgroundColor: '#F8FAF8', borderRadius: 16, padding: '14px 16px', border: '1px solid #EAEFEA', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '0.86rem', color: '#6E7671', fontWeight: 600 }}><ShieldCheck size={18} color="#2FA86A" /> 가입 유형</div>
-                  <span style={{ backgroundColor: '#E9F7EC', color: '#2FA86A', fontSize: '0.78rem', fontWeight: 850, padding: '4px 10px', borderRadius: 10 }}>카카오 간편인증 계정</span>
+                <div style={{ backgroundColor: '#F8FAF8', borderRadius: 16, padding: '14px 16px', border: '1px solid #EAEFEA', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '0.86rem', color: '#6E7671', fontWeight: 600 }}><ShieldCheck size={18} color="#2FA86A" /> 사용자 닉네임</div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      type="text"
+                      value={editingNickname}
+                      onChange={e => setEditingNickname(e.target.value)}
+                      placeholder="닉네임 입력"
+                      style={{ flex: 1, height: 40, borderRadius: 10, border: '1px solid #D1DFD7', padding: '0 12px', fontSize: '0.88rem', fontWeight: 700, outline: 'none' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveProfile()}
+                      disabled={isUpdatingNickname || !editingNickname.trim()}
+                      className="btn-farm-primary"
+                      style={{ height: 40, padding: '0 16px', borderRadius: 10, fontSize: '0.82rem' }}
+                    >
+                      {isUpdatingNickname ? '저장 중...' : '변경'}
+                    </button>
+                  </div>
+                  {nicknameSuccess && <div style={{ fontSize: '0.78rem', color: '#2FA86A', fontWeight: 800 }}>✓ 닉네임이 DB에 반영되었습니다.</div>}
+                  {nicknameError && <div style={{ fontSize: '0.78rem', color: '#EF4444', fontWeight: 700 }}>{nicknameError}</div>}
                 </div>
                 <div style={{ backgroundColor: '#F8FAF8', borderRadius: 16, padding: '14px 16px', border: '1px solid #EAEFEA', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '0.86rem', color: '#6E7671', fontWeight: 600 }}><Mail size={18} color="#2FA86A" /> 계정 이메일</div>

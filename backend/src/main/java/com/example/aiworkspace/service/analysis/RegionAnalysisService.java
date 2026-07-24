@@ -541,7 +541,9 @@ public class RegionAnalysisService {
     @Transactional(readOnly = true)
     public HomeResponseDto getHome(String userEmail, String userDisplayName) {
         String displayName = hasText(userDisplayName) ? userDisplayName : "Farmflate 사용자";
-        Optional<RegionAnalysisEntity> latest = analysisRepository.findFirstByUserEmailOrderByAnalyzedAtDesc(userEmail);
+        Optional<RegionAnalysisEntity> latest = analysisRepository
+                .findFirstByUserEmailAndReportStatusInOrderByAnalyzedAtDesc(userEmail, List.of("COMPLETED", "PARTIAL"))
+                .or(() -> analysisRepository.findFirstByUserEmailOrderByAnalyzedAtDesc(userEmail));
         
         Region region = null;
         if (latest.isPresent()) {

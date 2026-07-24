@@ -692,6 +692,7 @@ export function App() {
           activeTab={activeTab}
           onTabChange={handleTabChange}
           onGoToExplore={() => safeSetViewStep('explore')}
+          onUpdateUserName={setUserName}
           onLogout={handleLogout}
           onToggleLike={handleToggleLike}
           onToggleSave={handleToggleSave}

@@ -49,6 +49,39 @@ public class UserApiController {
         return ResponseEntity.ok(response);
     }
 
+    @PutMapping("/me")
+    public ResponseEntity<UserProfileResponse> updateProfile(
+            @AuthenticationPrincipal UserPrincipal userPrincipal,
+            @RequestBody UpdateProfileRequestDto request) {
+
+        String email = userPrincipal != null && userPrincipal.getEmail() != null ? userPrincipal.getEmail() : "user@farmflate.com";
+
+        User user = userRepository.findByEmail(email)
+                .map(existing -> {
+                    if (request.getNickname() != null && !request.getNickname().isBlank()) {
+                        existing.update(request.getNickname());
+                    }
+                    return userRepository.save(existing);
+                })
+                .orElseGet(() -> userRepository.save(User.builder()
+                        .email(email)
+                        .nickname(request.getNickname() != null && !request.getNickname().isBlank() ? request.getNickname() : "사용자님")
+                        .provider("kakao")
+                        .providerId("local_dev_id")
+                        .build()));
+
+        String displayName = (user.getNickname() != null && !user.getNickname().isBlank()) ? user.getNickname() : "사용자님";
+        String provider = user.getProvider() != null ? user.getProvider() : "kakao";
+        String role = user.getRole() != null ? user.getRole().name() : "USER";
+
+        return ResponseEntity.ok(new UserProfileResponse(
+                user.getEmail() != null ? user.getEmail() : email,
+                displayName,
+                provider,
+                role
+        ));
+    }
+
     @PostMapping("/inquiries")
     public ResponseEntity<Map<String, Object>> createInquiry(
             @AuthenticationPrincipal UserPrincipal userPrincipal,
@@ -92,5 +125,10 @@ public class UserApiController {
     public static class InquiryRequestDto {
         private String inquiryText;
         private String category;
+    }
+
+    @Data
+    public static class UpdateProfileRequestDto {
+        private String nickname;
     }
 }

@@ -225,6 +225,14 @@ export const ApiService = {
     return requestJson<UserProfileDto>('/users/me', { headers: getAuthHeaders() });
   },
 
+  async updateUserProfile(payload: { nickname: string }): Promise<UserProfileDto> {
+    return requestJson<UserProfileDto>('/users/me', {
+      method: 'PUT',
+      headers: jsonHeaders(),
+      body: JSON.stringify(payload)
+    });
+  },
+
   async getSidos(): Promise<RegionDto[]> {
     const response = await requestJson<unknown>('/regions/sidos', { headers: getAuthHeaders() });
     if (!Array.isArray(response)) throw new ApiError(200, 'MALFORMED_SIDOS', '시/도 목록 응답이 올바르지 않습니다.', response, false);
