@@ -15,7 +15,6 @@ import { MyFieldListView } from './components/farmflate/MyFieldListView';
 import { CommunityListView } from './components/farmflate/CommunityListView';
 import { CommunityCreatePostView } from './components/farmflate/CommunityCreatePostView';
 import { MyPageView } from './components/farmflate/MyPageView';
-import { MOCK_MY_FIELDS, MOCK_COMMUNITY_POSTS } from './data/mockData';
 import { analyzeCropSuitability, getSidoCode, getSigunguCode, type DynamicAnalysisResult } from './services/farmEngine';
 import { ApiService } from './services/api';
 import type { RegionReport, HomeData } from './services/api';
@@ -104,11 +103,57 @@ export function App() {
         console.warn('Backend server offline or unauthenticated, using default new user state:', err);
         setIsNewUser(true);
       });
+
+    // Fetch real community posts from Spring Boot Backend for Logged in Users (NO MOCK DATA)
+    ApiService.getCommunityPosts()
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          setPosts(data.map((p: any) => ({
+            id: p.id ? String(p.id) : 'post_' + Date.now(),
+            category: p.category || '농가 노하우',
+            tagLocation: p.tagLocation || '전북 고창군',
+            title: p.title,
+            content: p.content,
+            author: p.author || '초보농부',
+            timeAgo: '방금 전',
+            commentCount: p.commentCount || 0,
+            likeCount: p.likeCount || 0,
+            isLiked: false,
+            isSaved: false,
+            imageUrl: p.imageUrl || undefined,
+            comments: []
+          })));
+        } else {
+          setPosts([]);
+        }
+      })
+      .catch(() => setPosts([]));
+
+    // Fetch real farms from Spring Boot Backend
+    ApiService.getFarms()
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          setMyFields(data.map((f: any) => ({
+            id: String(f.id || Date.now()),
+            fieldName: f.fieldName || '내 밭',
+            cropName: f.cropName || '감자',
+            daysPlanted: f.daysPlanted || 1,
+            stage: f.stage || '생장 초기',
+            statusBadge: f.statusBadge || '정상 생육',
+            statusBadgeColor: 'green',
+            todayTask: f.todayTask || '토양 수분 및 생육 점검',
+            reportTime: '방금 전 자동 분석됨'
+          })));
+        } else {
+          setMyFields([]);
+        }
+      })
+      .catch(() => setMyFields([]));
   }, []);
 
   /* Dynamic Fields & Posts */
-  const [myFields, setMyFields] = useState<MyFieldItem[]>(MOCK_MY_FIELDS);
-  const [posts, setPosts] = useState<CommunityPost[]>(MOCK_COMMUNITY_POSTS);
+  const [myFields, setMyFields] = useState<MyFieldItem[]>([]);
+  const [posts, setPosts] = useState<CommunityPost[]>([]);
 
   /* Region Analysis Handler */
   const handleStartAnalysis = async (province: string, district: string) => {
@@ -153,23 +198,35 @@ export function App() {
   };
 
   /* Dynamic Add Field Handler */
-  const handleAddField = () => {
-    const newField: MyFieldItem = {
-      id: Date.now().toString(),
-      fieldName: `${selectedCropName}밭`,
-      cropName: selectedCropName,
-      daysPlanted: 1,
-      stage: '생장 초기',
-      statusBadge: '물주기 필요',
-      statusBadgeColor: 'yellow',
-      todayTask: `${selectedCropName}밭 토양 수분 체크 및 물주기`,
-      reportTime: '방금 전 자동 분석됨'
-    };
-    
-    setIsNewUser(false);
-    setMyFields(prev => isNewUser ? [newField] : [newField, ...prev]);
-    safeSetViewStep('myfield');
-    setActiveTab('myfield');
+  const handleAddField = async () => {
+    try {
+      const savedFarm = await ApiService.createFarm({
+        fieldName: `${selectedCropName}밭`,
+        cropName: selectedCropName,
+        daysPlanted: 1,
+        stage: '생장 초기'
+      });
+
+      const newField: MyFieldItem = {
+        id: String(savedFarm.id || Date.now()),
+        fieldName: savedFarm.fieldName || `${selectedCropName}밭`,
+        cropName: savedFarm.cropName || selectedCropName,
+        daysPlanted: savedFarm.daysPlanted || 1,
+        stage: savedFarm.stage || '생장 초기',
+        statusBadge: '물주기 필요',
+        statusBadgeColor: 'yellow',
+        todayTask: `${selectedCropName}밭 토양 수분 체크 및 물주기`,
+        reportTime: '방금 전 자동 분석됨'
+      };
+      
+      setIsNewUser(false);
+      setMyFields(prev => [newField, ...prev]);
+    } catch (err) {
+      console.warn('Farm creation fallback:', err);
+    } finally {
+      safeSetViewStep('myfield');
+      setActiveTab('myfield');
+    }
   };
 
   /* Tab Navigation Handler */
@@ -182,63 +239,92 @@ export function App() {
   };
 
   /* Community Handlers */
-  const handleToggleLike = (postId: string) => {
-    setPosts(prev => prev.map(p => {
-      if (p.id === postId) {
-        const isLiked = !p.isLiked;
-        return {
-          ...p,
-          isLiked,
-          likeCount: isLiked ? p.likeCount + 1 : Math.max(0, p.likeCount - 1)
-        };
-      }
-      return p;
-    }));
+  const handleToggleLike = async (postId: string) => {
+    try {
+      await ApiService.likeCommunityPost(postId);
+    } catch (err) {
+      console.warn('Like post backend sync error:', err);
+    } finally {
+      setPosts(prev => prev.map(p => {
+        if (p.id === postId) {
+          const isLiked = !p.isLiked;
+          return {
+            ...p,
+            isLiked,
+            likeCount: isLiked ? p.likeCount + 1 : Math.max(0, p.likeCount - 1)
+          };
+        }
+        return p;
+      }));
+    }
   };
 
   const handleToggleSave = (postId: string) => {
     setPosts(prev => prev.map(p => p.id === postId ? { ...p, isSaved: !p.isSaved } : p));
   };
 
-  const handleAddComment = (postId: string, commentText: string) => {
-    setPosts(prev => prev.map(p => {
-      if (p.id === postId) {
-        const newComment = {
-          id: 'comm_' + Date.now(),
-          author: userName,
-          content: commentText,
-          timeAgo: '방금 전'
-        };
-        const updatedComments = p.comments ? [...p.comments, newComment] : [newComment];
-        return {
-          ...p,
-          commentCount: updatedComments.length,
-          comments: updatedComments
-        };
-      }
-      return p;
-    }));
+  const handleAddComment = async (postId: string, commentText: string) => {
+    try {
+      await ApiService.addCommunityComment(postId, {
+        author: userName,
+        content: commentText
+      });
+    } catch (err) {
+      console.warn('Add comment backend sync error:', err);
+    } finally {
+      setPosts(prev => prev.map(p => {
+        if (p.id === postId) {
+          const newComment = {
+            id: 'comm_' + Date.now(),
+            author: userName,
+            content: commentText,
+            timeAgo: '방금 전'
+          };
+          const updatedComments = p.comments ? [...p.comments, newComment] : [newComment];
+          return {
+            ...p,
+            commentCount: updatedComments.length,
+            comments: updatedComments
+          };
+        }
+        return p;
+      }));
+    }
   };
 
-  const handleCreatePost = (title: string, content: string, category?: string, locationTag?: string, imageUrl?: string) => {
-    const newPost: CommunityPost = {
-      id: 'post_' + Date.now(),
-      category: category || '농가 노하우',
-      tagLocation: locationTag || `${selectedProvince} ${selectedDistrict}`,
-      title,
-      content,
-      author: userName,
-      timeAgo: '방금 전',
-      commentCount: 0,
-      likeCount: 0,
-      isLiked: false,
-      isSaved: false,
-      imageUrl,
-      comments: []
-    };
-    setPosts(prev => [newPost, ...prev]);
-    safeSetViewStep('community');
-    setActiveTab('community');
+  const handleCreatePost = async (title: string, content: string, category?: string, locationTag?: string, imageUrl?: string) => {
+    try {
+      const savedPost = await ApiService.createCommunityPost({
+        title,
+        content,
+        category: category || '농가 노하우',
+        tagLocation: locationTag || `${selectedProvince} ${selectedDistrict}`,
+        author: userName,
+        imageUrl: imageUrl || ''
+      });
+
+      const newPost: CommunityPost = {
+        id: String(savedPost.id || Date.now()),
+        category: savedPost.category || category || '농가 노하우',
+        tagLocation: savedPost.tagLocation || locationTag || `${selectedProvince} ${selectedDistrict}`,
+        title: savedPost.title || title,
+        content: savedPost.content || content,
+        author: savedPost.author || userName,
+        timeAgo: '방금 전',
+        commentCount: 0,
+        likeCount: 0,
+        isLiked: false,
+        isSaved: false,
+        imageUrl: savedPost.imageUrl || imageUrl,
+        comments: []
+      };
+      setPosts(prev => [newPost, ...prev]);
+    } catch (err) {
+      console.warn('Post creation fallback:', err);
+    } finally {
+      safeSetViewStep('community');
+      setActiveTab('community');
+    }
   };
 
   return (
@@ -356,7 +442,7 @@ export function App() {
       {/* 11. My Field List Screen */}
       {viewStep === 'myfield' && (
         <MyFieldListView
-          fields={isNewUser ? [] : myFields}
+          fields={myFields}
           onAddField={() => safeSetViewStep('explore')}
           onOpenAIChat={() => setIsAIChatOpen(true)}
           activeTab={activeTab}
