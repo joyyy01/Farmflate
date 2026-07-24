@@ -216,6 +216,9 @@ const normalizeField = (input: unknown): FieldProfile => {
   };
 };
 
+const sidosCache: { data: RegionDto[] | null } = { data: null };
+const sigungusCacheMap = new Map<string, RegionDto[]>();
+
 export const ApiService = {
   async getHome(): Promise<HomeData> {
     return requestJson<HomeData>('/home', { headers: getAuthHeaders() });
@@ -234,25 +237,33 @@ export const ApiService = {
   },
 
   async getSidos(): Promise<RegionDto[]> {
+    if (sidosCache.data) return sidosCache.data;
     const response = await requestJson<unknown>('/regions/sidos', { headers: getAuthHeaders() });
     if (!Array.isArray(response)) throw new ApiError(200, 'MALFORMED_SIDOS', '시/도 목록 응답이 올바르지 않습니다.', response, false);
-    return response.map(region => {
+    const parsed = response.map(region => {
       if (!isRecord(region) || !isString(region.sidoCode) || !isString(region.sidoName)) {
         throw new ApiError(200, 'MALFORMED_SIDOS', '시/도 목록 항목이 올바르지 않습니다.', region, false);
       }
       return { sidoCode: region.sidoCode, sidoName: region.sidoName };
     });
+    sidosCache.data = parsed;
+    return parsed;
   },
 
   async getSigungus(sidoCode: string): Promise<RegionDto[]> {
+    if (sigungusCacheMap.has(sidoCode)) {
+      return sigungusCacheMap.get(sidoCode)!;
+    }
     const response = await requestJson<unknown>(`/regions/sidos/${encodeURIComponent(sidoCode)}/sigungus`, { headers: getAuthHeaders() });
     if (!Array.isArray(response)) throw new ApiError(200, 'MALFORMED_SIGUNGUS', '시/군/구 목록 응답이 올바르지 않습니다.', response, false);
-    return response.map(region => {
+    const parsed = response.map(region => {
       if (!isRecord(region) || !isString(region.sidoCode) || !isString(region.sidoName) || !isString(region.sigunguCode) || !isString(region.sigunguName)) {
         throw new ApiError(200, 'MALFORMED_SIGUNGUS', '시/군/구 목록 항목이 올바르지 않습니다.', region, false);
       }
       return { sidoCode: region.sidoCode, sidoName: region.sidoName, sigunguCode: region.sigunguCode, sigunguName: region.sigunguName };
     });
+    sigungusCacheMap.set(sidoCode, parsed);
+    return parsed;
   },
 
   async createRegionAnalysis(payload: RegionAnalysisRequest): Promise<RegionAnalysisStatus> {

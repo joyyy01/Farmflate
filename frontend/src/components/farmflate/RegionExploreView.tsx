@@ -46,7 +46,6 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
       return;
     }
     let isCurrent = true;
-    setIsLoading(true);
     setLoadError(null);
     void ApiService.getSigungus(selectedProvinceCode)
       .then(next => {
@@ -54,8 +53,7 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
         setDistricts(next);
         setSelectedDistrictCode(next[0]?.sigunguCode || '');
       })
-      .catch(error => { if (isCurrent) setLoadError(error instanceof ApiError ? error.message : '시/군/구 목록을 불러오지 못했습니다.'); })
-      .finally(() => { if (isCurrent) setIsLoading(false); });
+      .catch(error => { if (isCurrent) setLoadError(error instanceof ApiError ? error.message : '시/군/구 목록을 불러오지 못했습니다.'); });
     return () => { isCurrent = false; };
   }, [selectedProvinceCode]);
 
@@ -147,7 +145,7 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
           <div style={{ position: 'relative' }}>
             <select
               value={selectedDistrictCode}
-              disabled={isLoading || !selectedProvinceCode}
+              disabled={!selectedProvinceCode}
               onChange={e => setSelectedDistrictCode(e.target.value)}
               style={{
                 width: '100%',
