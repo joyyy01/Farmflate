@@ -16,12 +16,26 @@ export const CommunityCreatePostView: React.FC<CommunityCreatePostViewProps> = (
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [attachedFile, setAttachedFile] = useState<{ name: string; size: string; url?: string } | null>({
-    name: '2873278_IMG',
-    size: '3.1MB'
-  });
+  const [attachedFile, setAttachedFile] = useState<{ name: string; size: string; url?: string; type?: 'file' | 'link' | 'image' } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setAttachedFile({
+          name: file.name,
+          size: `${(file.size / (1024 * 1024)).toFixed(1)}MB`,
+          url: reader.result as string,
+          type: 'file'
+        });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -31,10 +45,24 @@ export const CommunityCreatePostView: React.FC<CommunityCreatePostViewProps> = (
         setAttachedFile({
           name: file.name,
           size: `${(file.size / (1024 * 1024)).toFixed(1)}MB`,
-          url: reader.result as string
+          url: reader.result as string,
+          type: 'image'
         });
       };
       reader.readAsDataURL(file);
+    }
+  };
+
+  const handleAddLink = () => {
+    const inputUrl = window.prompt('첨부할 링크(URL)를 입력해 주세요 (예: https://example.com):');
+    if (inputUrl && inputUrl.trim()) {
+      const cleanUrl = inputUrl.trim().startsWith('http') ? inputUrl.trim() : `https://${inputUrl.trim()}`;
+      setAttachedFile({
+        name: cleanUrl,
+        size: '웹 링크',
+        url: cleanUrl,
+        type: 'link'
+      });
     }
   };
 
@@ -154,11 +182,17 @@ export const CommunityCreatePostView: React.FC<CommunityCreatePostViewProps> = (
             }}
           />
 
-          {/* Hidden File Input */}
+          {/* Hidden File & Image Inputs */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileUpload}
+            style={{ display: 'none' }}
+          />
           <input
             type="file"
             accept="image/*"
-            ref={fileInputRef}
+            ref={imageInputRef}
             onChange={handleImageUpload}
             style={{ display: 'none' }}
           />
@@ -170,6 +204,7 @@ export const CommunityCreatePostView: React.FC<CommunityCreatePostViewProps> = (
             color: '#6F7772', fontSize: '0.84rem', fontWeight: 600
           }}>
             <button
+              type="button"
               onClick={() => fileInputRef.current?.click()}
               style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 6, color: '#6F7772', cursor: 'pointer', padding: 0 }}
             >
@@ -177,14 +212,16 @@ export const CommunityCreatePostView: React.FC<CommunityCreatePostViewProps> = (
             </button>
 
             <button
-              onClick={() => fileInputRef.current?.click()}
+              type="button"
+              onClick={handleAddLink}
               style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 6, color: '#6F7772', cursor: 'pointer', padding: 0 }}
             >
               <LinkIcon size={16} /> 링크
             </button>
 
             <button
-              onClick={() => fileInputRef.current?.click()}
+              type="button"
+              onClick={() => imageInputRef.current?.click()}
               style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 6, color: '#6F7772', cursor: 'pointer', padding: 0 }}
             >
               <ImageIcon size={16} /> 이미지
@@ -192,7 +229,7 @@ export const CommunityCreatePostView: React.FC<CommunityCreatePostViewProps> = (
           </div>
         </div>
 
-        {/* Attached File Pill Container */}
+        {/* Attached File / Link / Image Pill Container */}
         {attachedFile && (
           <div style={{
             backgroundColor: '#F8FAF8',
@@ -203,29 +240,32 @@ export const CommunityCreatePostView: React.FC<CommunityCreatePostViewProps> = (
             alignItems: 'center',
             justifyContent: 'space-between'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: 1 }}>
               <div style={{
-                width: 36, height: 36, borderRadius: 10,
+                width: 36, height: 36, borderRadius: 10, flexShrink: 0,
                 backgroundColor: '#FFFFFF', border: '1px solid #EAEFEA',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 overflow: 'hidden'
               }}>
-                {attachedFile.url ? (
-                  <img src={attachedFile.url} alt="첨부 파일" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                {attachedFile.type === 'image' && attachedFile.url ? (
+                  <img src={attachedFile.url} alt="첨부 이미지" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : attachedFile.type === 'link' ? (
+                  <LinkIcon size={18} color="#0284C7" />
                 ) : (
-                  <ImageIcon size={18} color="#8E9892" />
+                  <Folder size={18} color="#8E9892" />
                 )}
               </div>
-              <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#191F28' }}>
+              <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#191F28', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {attachedFile.name}
               </span>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
               <span style={{ fontSize: '0.78rem', color: '#8E9892', fontWeight: 600 }}>
                 {attachedFile.size}
               </span>
               <button
+                type="button"
                 onClick={() => setAttachedFile(null)}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', padding: 2, display: 'flex' }}
               >
