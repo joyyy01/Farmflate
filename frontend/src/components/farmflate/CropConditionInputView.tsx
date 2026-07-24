@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, MapPin, Calendar, Check, Tag } from 'lucide-react';
+import { ArrowLeft, MapPin, Calendar } from 'lucide-react';
 import { DuotoneIcon } from '../common/DuotoneIcon';
 
 interface CropConditionInputViewProps {
@@ -20,17 +20,18 @@ export const CropConditionInputView: React.FC<CropConditionInputViewProps> = ({
   const [selectedCrop, setSelectedCrop] = useState('감자');
   const [stage, setStage] = useState<'before' | 'growing'>('before');
   const [farmType, setFarmType] = useState<'outdoor' | 'indoor'>('outdoor');
+  const [rawDateIso, setRawDateIso] = useState(new Date().toISOString().substring(0, 10));
   const [startDate, setStartDate] = useState(
     new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
   );
 
-  /* Available Crops with Vector Icons & Descriptions */
+  /* Available Crops */
   const crops = [
-    { name: '사과', icon: 'apple', desc: '과수 작물' },
-    { name: '배', icon: 'pear', desc: '과수 작물' },
-    { name: '감자', icon: 'potato', desc: '구근 작물' },
-    { name: '오이', icon: 'cucumber', desc: '과채 작물' },
-    { name: '상추', icon: 'lettuce', desc: '엽채 작물' }
+    { name: '사과', icon: 'apple' },
+    { name: '배', icon: 'pear' },
+    { name: '감자', icon: 'potato' },
+    { name: '오이', icon: 'cucumber' },
+    { name: '상추', icon: 'lettuce' }
   ];
 
   return (
@@ -39,14 +40,14 @@ export const CropConditionInputView: React.FC<CropConditionInputViewProps> = ({
       {/* Scrollable Main Area */}
       <div className="no-scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '0 20px 100px 20px' }}>
         
-        {/* Header Bar */}
+        {/* Minimal Header Bar */}
         <div style={{
           display: 'grid',
           gridTemplateColumns: '32px 1fr 32px',
           alignItems: 'center',
           height: 60,
           borderBottom: '1px solid #F0F2F1',
-          marginBottom: 16
+          marginBottom: 20
         }}>
           <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#191F28', padding: 0 }}>
             <ArrowLeft size={22} />
@@ -57,31 +58,27 @@ export const CropConditionInputView: React.FC<CropConditionInputViewProps> = ({
           <div />
         </div>
 
-        {/* Region Location Pill Badge */}
+        {/* Clean Region Card Tile (Sufficient Space Between Text & Link) */}
         <div style={{
           backgroundColor: '#F8FAF8',
           borderRadius: 16,
-          padding: '12px 16px',
+          padding: '14px 16px',
           border: '1px solid #EAEFEA',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          marginBottom: 24
+          marginBottom: 24,
+          boxSizing: 'border-box'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{
-              width: 28, height: 28, borderRadius: '50%',
-              backgroundColor: '#E9F7EC', color: '#2FA86A',
-              display: 'flex', alignItems: 'center', justifyContent: 'center'
-            }}>
-              <MapPin size={16} color="#2FA86A" />
-            </div>
-            <div>
-              <div style={{ fontSize: '0.72rem', color: '#6E7671', fontWeight: 600 }}>분석 대상 지역</div>
-              <div style={{ fontSize: '0.92rem', fontWeight: 850, color: '#191F28' }}>{selectedRegionName}</div>
-            </div>
+            <MapPin size={18} color="#2FA86A" />
+            <span style={{ fontSize: '0.92rem', fontWeight: 850, color: '#191F28' }}>
+              {selectedRegionName}
+            </span>
           </div>
+
           <button
+            type="button"
             onClick={onOpenExplore}
             style={{
               backgroundColor: '#FFFFFF',
@@ -89,30 +86,32 @@ export const CropConditionInputView: React.FC<CropConditionInputViewProps> = ({
               borderRadius: 10,
               padding: '6px 12px',
               fontSize: '0.78rem',
-              fontWeight: 750,
+              fontWeight: 800,
               color: '#2FA86A',
-              cursor: 'pointer'
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              flexShrink: 0
             }}
           >
-            지역 변경
+            지역 변경 ›
           </button>
         </div>
 
-        {/* 1. 밭 이름 (Field Name) */}
+        {/* 1. 밭 이름 (Field Name Input) */}
         <div style={{ marginBottom: 24 }}>
-          <label style={{ fontSize: '0.9rem', fontWeight: 850, color: '#191F28', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Tag size={16} color="#2FA86A" /> 밭 이름
+          <label style={{ fontSize: '0.88rem', fontWeight: 850, color: '#191F28', marginBottom: 8, display: 'block' }}>
+            밭 이름
           </label>
           <input
             type="text"
-            placeholder="예: 우리집 텃밭, 고창 감자 1밭"
+            placeholder="예: 우리집 텃밭"
             value={fieldName}
             onChange={e => setFieldName(e.target.value)}
             style={{
               width: '100%',
               height: 50,
               padding: '0 16px',
-              border: '1.5px solid #EAEFEA',
+              border: '1px solid #EAEFEA',
               borderRadius: 14,
               fontSize: '0.9rem',
               fontWeight: 650,
@@ -120,7 +119,7 @@ export const CropConditionInputView: React.FC<CropConditionInputViewProps> = ({
               outline: 'none',
               backgroundColor: '#F8FAF8',
               boxSizing: 'border-box',
-              transition: 'all 0.2s ease'
+              transition: 'all 0.15s ease'
             }}
             onFocus={(e) => {
               e.target.style.borderColor = '#2FA86A';
@@ -133,18 +132,12 @@ export const CropConditionInputView: React.FC<CropConditionInputViewProps> = ({
           />
         </div>
 
-        {/* 2. 작물 선택 (Balanced Tile Grid Cards) */}
-        <div style={{ marginBottom: 24 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <label style={{ fontSize: '0.9rem', fontWeight: 850, color: '#191F28', margin: 0 }}>
-              작물 선택
-            </label>
-            <span style={{ fontSize: '0.78rem', color: '#2FA86A', fontWeight: 800 }}>
-              선택: {selectedCrop}
-            </span>
-          </div>
+        {/* 2. 작물 선택 (Sleek Grid Tiles) */}
+        <div style={{ marginBottom: 26 }}>
+          <label style={{ fontSize: '0.88rem', fontWeight: 850, color: '#191F28', marginBottom: 12, display: 'block' }}>
+            작물 선택
+          </label>
 
-          {/* Equal Width 5-Card Uniform Grid */}
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(5, 1fr)',
@@ -159,39 +152,25 @@ export const CropConditionInputView: React.FC<CropConditionInputViewProps> = ({
                   whileTap={{ scale: 0.95 }}
                   onClick={() => setSelectedCrop(crop.name)}
                   style={{
-                    backgroundColor: isSelected ? '#E9F7EC' : '#F8FAF8',
+                    backgroundColor: isSelected ? '#F2FAF4' : '#FFFFFF',
                     border: isSelected ? '2px solid #2FA86A' : '1px solid #EAEFEA',
                     borderRadius: 16,
-                    padding: '12px 4px 10px 4px',
+                    padding: '14px 4px 12px 4px',
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
                     cursor: 'pointer',
-                    position: 'relative',
-                    boxShadow: isSelected ? '0 4px 12px rgba(47, 168, 106, 0.15)' : 'none',
-                    transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)'
+                    boxShadow: isSelected ? '0 4px 12px rgba(47, 168, 106, 0.12)' : 'none',
+                    transition: 'all 0.15s ease'
                   }}
                 >
-                  {/* Selected Badge Check Mark */}
-                  {isSelected && (
-                    <div style={{
-                      position: 'absolute', top: -5, right: -5,
-                      width: 18, height: 18, borderRadius: '50%',
-                      backgroundColor: '#2FA86A', color: '#FFFFFF',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      boxShadow: '0 2px 4px rgba(0,0,0,0.15)'
-                    }}>
-                      <Check size={11} strokeWidth={3} />
-                    </div>
-                  )}
-
                   <DuotoneIcon type={crop.icon} bgSize={40} iconSize={30} />
 
                   <span style={{
                     fontSize: '0.82rem',
                     fontWeight: isSelected ? 850 : 650,
-                    color: isSelected ? '#154F36' : '#333D4B',
+                    color: isSelected ? '#154F36' : '#4B5563',
                     marginTop: 6
                   }}>
                     {crop.name}
@@ -202,16 +181,16 @@ export const CropConditionInputView: React.FC<CropConditionInputViewProps> = ({
           </div>
         </div>
 
-        {/* 3. 현재 단계 (Modern Segmented Pill Toggle) */}
+        {/* 3. 현재 단계 (Modern Segmented Toggle Track) */}
         <div style={{ marginBottom: 24 }}>
-          <label style={{ fontSize: '0.9rem', fontWeight: 850, color: '#191F28', marginBottom: 10, display: 'block' }}>
+          <label style={{ fontSize: '0.88rem', fontWeight: 850, color: '#191F28', marginBottom: 10, display: 'block' }}>
             현재 단계
           </label>
 
           <div style={{
             display: 'flex',
-            backgroundColor: '#F1F5F3',
-            borderRadius: 16,
+            backgroundColor: '#F3F4F6',
+            borderRadius: 14,
             padding: 4,
             gap: 4
           }}>
@@ -221,22 +200,18 @@ export const CropConditionInputView: React.FC<CropConditionInputViewProps> = ({
               style={{
                 flex: 1,
                 height: 44,
-                borderRadius: 12,
+                borderRadius: 11,
                 border: 'none',
                 backgroundColor: stage === 'before' ? '#FFFFFF' : 'transparent',
-                color: stage === 'before' ? '#154F36' : '#6E7671',
-                fontWeight: stage === 'before' ? 850 : 650,
+                color: stage === 'before' ? '#154F36' : '#6B7280',
+                fontWeight: stage === 'before' ? 850 : 600,
                 fontSize: '0.88rem',
                 cursor: 'pointer',
-                boxShadow: stage === 'before' ? '0 2px 8px rgba(0,0,0,0.06)' : 'none',
-                transition: 'all 0.2s ease',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6
+                boxShadow: stage === 'before' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none',
+                transition: 'all 0.15s ease'
               }}
             >
-              <span>🌱</span> 심기 전
+              심기 전
             </button>
 
             <button
@@ -245,36 +220,32 @@ export const CropConditionInputView: React.FC<CropConditionInputViewProps> = ({
               style={{
                 flex: 1,
                 height: 44,
-                borderRadius: 12,
+                borderRadius: 11,
                 border: 'none',
                 backgroundColor: stage === 'growing' ? '#FFFFFF' : 'transparent',
-                color: stage === 'growing' ? '#154F36' : '#6E7671',
-                fontWeight: stage === 'growing' ? 850 : 650,
+                color: stage === 'growing' ? '#154F36' : '#6B7280',
+                fontWeight: stage === 'growing' ? 850 : 600,
                 fontSize: '0.88rem',
                 cursor: 'pointer',
-                boxShadow: stage === 'growing' ? '0 2px 8px rgba(0,0,0,0.06)' : 'none',
-                transition: 'all 0.2s ease',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6
+                boxShadow: stage === 'growing' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none',
+                transition: 'all 0.15s ease'
               }}
             >
-              <span>🌿</span> 이미 재배 중
+              이미 재배 중
             </button>
           </div>
         </div>
 
-        {/* 4. 재배 방식 (Outdoor vs Indoor Segment Control) */}
+        {/* 4. 재배 방식 (Modern Segmented Toggle Track) */}
         <div style={{ marginBottom: 24 }}>
-          <label style={{ fontSize: '0.9rem', fontWeight: 850, color: '#191F28', marginBottom: 10, display: 'block' }}>
+          <label style={{ fontSize: '0.88rem', fontWeight: 850, color: '#191F28', marginBottom: 10, display: 'block' }}>
             재배 방식
           </label>
 
           <div style={{
             display: 'flex',
-            backgroundColor: '#F1F5F3',
-            borderRadius: 16,
+            backgroundColor: '#F3F4F6',
+            borderRadius: 14,
             padding: 4,
             gap: 4
           }}>
@@ -284,22 +255,18 @@ export const CropConditionInputView: React.FC<CropConditionInputViewProps> = ({
               style={{
                 flex: 1,
                 height: 44,
-                borderRadius: 12,
+                borderRadius: 11,
                 border: 'none',
                 backgroundColor: farmType === 'outdoor' ? '#FFFFFF' : 'transparent',
-                color: farmType === 'outdoor' ? '#154F36' : '#6E7671',
-                fontWeight: farmType === 'outdoor' ? 850 : 650,
+                color: farmType === 'outdoor' ? '#154F36' : '#6B7280',
+                fontWeight: farmType === 'outdoor' ? 850 : 600,
                 fontSize: '0.88rem',
                 cursor: 'pointer',
-                boxShadow: farmType === 'outdoor' ? '0 2px 8px rgba(0,0,0,0.06)' : 'none',
-                transition: 'all 0.2s ease',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6
+                boxShadow: farmType === 'outdoor' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none',
+                transition: 'all 0.15s ease'
               }}
             >
-              <span>🏞️</span> 노지 (일반 밭)
+              노지
             </button>
 
             <button
@@ -308,68 +275,77 @@ export const CropConditionInputView: React.FC<CropConditionInputViewProps> = ({
               style={{
                 flex: 1,
                 height: 44,
-                borderRadius: 12,
+                borderRadius: 11,
                 border: 'none',
                 backgroundColor: farmType === 'indoor' ? '#FFFFFF' : 'transparent',
-                color: farmType === 'indoor' ? '#154F36' : '#6E7671',
-                fontWeight: farmType === 'indoor' ? 850 : 650,
+                color: farmType === 'indoor' ? '#154F36' : '#6B7280',
+                fontWeight: farmType === 'indoor' ? 850 : 600,
                 fontSize: '0.88rem',
                 cursor: 'pointer',
-                boxShadow: farmType === 'indoor' ? '0 2px 8px rgba(0,0,0,0.06)' : 'none',
-                transition: 'all 0.2s ease',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6
+                boxShadow: farmType === 'indoor' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none',
+                transition: 'all 0.15s ease'
               }}
             >
-              <span>🏡</span> 시설 (하우스/온실)
+              시설
             </button>
           </div>
         </div>
 
-        {/* 5. 재배 시작일 (Date Picker Selector Card) */}
+        {/* 5. 재배 시작일 (Clean Single-Date Row with Invisible Input Trigger) */}
         <div style={{ marginBottom: 24 }}>
-          <label style={{ fontSize: '0.9rem', fontWeight: 850, color: '#191F28', marginBottom: 10, display: 'block' }}>
+          <label style={{ fontSize: '0.88rem', fontWeight: 850, color: '#191F28', marginBottom: 10, display: 'block' }}>
             재배 시작일
           </label>
 
           <div style={{
             backgroundColor: '#F8FAF8',
-            borderRadius: 16,
+            borderRadius: 14,
             padding: '14px 16px',
             border: '1px solid #EAEFEA',
             display: 'flex',
             justifyContent: 'space-between',
-            alignItems: 'center'
+            alignItems: 'center',
+            position: 'relative'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <Calendar size={18} color="#2FA86A" />
+              <span style={{ fontSize: '0.9rem', fontWeight: 850, color: '#191F28' }}>
+                {startDate}
+              </span>
+            </div>
+
+            <div style={{ position: 'relative', cursor: 'pointer' }}>
+              <span style={{
+                backgroundColor: '#FFFFFF',
+                border: '1px solid #D1DFD7',
+                borderRadius: 8,
+                padding: '4px 10px',
+                fontSize: '0.78rem',
+                fontWeight: 800,
+                color: '#2FA86A'
+              }}>
+                변경
+              </span>
               <input
                 type="date"
-                value={new Date().toISOString().substring(0, 10)}
+                value={rawDateIso}
                 onChange={(e) => {
                   if (e.target.value) {
+                    setRawDateIso(e.target.value);
                     const parts = e.target.value.split('-');
                     setStartDate(`${parts[0]}년 ${parseInt(parts[1])}월 ${parseInt(parts[2])}일`);
                   }
                 }}
                 style={{
-                  border: 'none',
-                  backgroundColor: 'transparent',
-                  fontSize: '0.9rem',
-                  fontWeight: 800,
-                  color: '#191F28',
-                  outline: 'none',
-                  fontFamily: 'inherit',
+                  position: 'absolute',
+                  inset: 0,
+                  opacity: 0,
+                  width: '100%',
+                  height: '100%',
                   cursor: 'pointer'
                 }}
               />
             </div>
-
-            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#2FA86A' }}>
-              {startDate}
-            </span>
           </div>
         </div>
 
