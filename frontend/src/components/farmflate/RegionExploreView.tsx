@@ -17,7 +17,6 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
   const [districts, setDistricts] = useState<RegionDto[]>([]);
   const [selectedProvinceCode, setSelectedProvinceCode] = useState('');
   const [selectedDistrictCode, setSelectedDistrictCode] = useState('');
-  const [address, setAddress] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -139,11 +138,6 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
           </div>
         </div>
 
-        <div style={{ marginBottom: 20 }}>
-          <label htmlFor="analysis-address" style={{ fontSize: '0.96rem', fontWeight: 850, color: '#154F36', marginBottom: 8, display: 'block' }}>밭 주소 <span style={{ fontSize: '0.78rem', color: '#6F7772', fontWeight: 500 }}>(선택)</span></label>
-          <input id="analysis-address" value={address} onChange={event => setAddress(event.target.value)} placeholder="입력하면 위치 정밀도를 함께 확인해요" style={{ width: '100%', height: 48, borderRadius: 14, border: '1.5px solid #EAEFEA', padding: '0 16px', boxSizing: 'border-box', fontSize: '0.88rem', outline: 'none', backgroundColor: '#F8FAF8' }} />
-        </div>
-
         {/* District Select */}
         <div style={{ marginBottom: 28 }}>
           <h3 style={{ fontSize: '0.96rem', fontWeight: 850, color: '#154F36', marginBottom: 8 }}>
@@ -216,8 +210,7 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
               sidoCode: selectedProvince.sidoCode,
               sidoName: selectedProvince.sidoName || selectedProvince.sidoCode,
               sigunguCode: selectedDistrict.sigunguCode || '',
-              sigunguName: selectedDistrict.sigunguName || selectedDistrict.sigunguCode || '',
-              location: address.trim() ? { address: address.trim() } : undefined
+              sigunguName: selectedDistrict.sigunguName || selectedDistrict.sigunguCode || ''
             });
           }}
           className="btn-farm-primary"

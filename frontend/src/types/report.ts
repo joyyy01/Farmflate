@@ -9,14 +9,6 @@ export interface RegionIdentity {
   sigunguName: string;
 }
 
-export interface LocationRequest {
-  address?: string;
-  latitude?: number;
-  longitude?: number;
-  pnu?: string;
-  parcelSoilTestRef?: string;
-}
-
 export interface LocationResolution {
   addressLabel?: string | null;
   latitude?: number | null;
@@ -131,7 +123,6 @@ export interface RegionReport {
 }
 
 export interface RegionAnalysisRequest extends RegionIdentity {
-  location?: LocationRequest;
   idempotencyKey: string;
   forceRefresh?: boolean;
 }
