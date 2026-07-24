@@ -24,7 +24,7 @@ export const MyPageView: React.FC<MyPageViewProps> = ({
 }) => {
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
-      <div className="full-screen-view" style={{ padding: '20px 20px 96px 20px' }}>
+      <div className="full-screen-view" style={{ padding: '32px 20px 96px 20px' }}>
         
         {/* Top Header */}
         <h2 style={{ fontSize: '1.45rem', fontWeight: 900, color: '#191F28', marginBottom: 20 }}>

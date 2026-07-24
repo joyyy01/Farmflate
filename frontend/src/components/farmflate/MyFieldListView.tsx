@@ -21,7 +21,7 @@ export const MyFieldListView: React.FC<MyFieldListViewProps> = ({
 }) => {
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
-      <div className="full-screen-view" style={{ padding: '20px 20px 96px 20px' }}>
+      <div className="full-screen-view" style={{ padding: '32px 20px 96px 20px' }}>
         
         {/* Top Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
@@ -36,8 +36,7 @@ export const MyFieldListView: React.FC<MyFieldListViewProps> = ({
           borderRadius: 20,
           padding: 20,
           marginBottom: 16,
-          border: '1px solid #E5E8EB',
-          boxShadow: '0 4px 14px rgba(0, 0, 0, 0.03)'
+          border: '1px solid #E5E8EB'
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -109,8 +108,7 @@ export const MyFieldListView: React.FC<MyFieldListViewProps> = ({
           borderRadius: 20,
           padding: 20,
           marginBottom: 20,
-          border: '1px solid #E5E8EB',
-          boxShadow: '0 4px 14px rgba(0, 0, 0, 0.03)'
+          border: '1px solid #E5E8EB'
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

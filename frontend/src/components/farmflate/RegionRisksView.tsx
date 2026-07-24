@@ -35,7 +35,7 @@ export const RegionRisksView: React.FC<RegionRisksViewProps> = ({
   return (
     <div className="full-screen-view" style={{ backgroundColor: '#FFFFFF', display: 'flex', flexDirection: 'column', height: '100%', padding: 0 }}>
       {/* Scrollable Content Area */}
-      <div className="no-scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '24px 20px 24px 20px' }}>
+      <div className="no-scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '32px 20px 24px 20px' }}>
         
         {/* Back button */}
         <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginBottom: 24, display: 'flex' }}>
@@ -63,7 +63,6 @@ export const RegionRisksView: React.FC<RegionRisksViewProps> = ({
                 borderRadius: 20,
                 padding: '20px',
                 border: '1px solid #EAEFEA',
-                boxShadow: '0 4px 20px rgba(0, 0, 0, 0.02)',
                 position: 'relative',
                 overflow: 'hidden'
               }}
@@ -81,8 +80,9 @@ export const RegionRisksView: React.FC<RegionRisksViewProps> = ({
               <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
                 <div style={{ 
                   width: 44, height: 44, borderRadius: 14, backgroundColor: '#FFFFFF',
+                  border: '1px solid #EAEFEA',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.04)', flexShrink: 0
+                  flexShrink: 0
                 }}>
                   <img src={risk.icon} alt="아이콘" style={{ width: 24, height: 24 }} />
                 </div>
