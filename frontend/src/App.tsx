@@ -287,6 +287,35 @@ export function App() {
     setViewStep('analyzing');
   };
 
+  const [reportReturnStep, setReportReturnStep] = useState<ExtendedViewStep>('dashboard');
+
+  const handleOpenConfirmedReport = async (analysisId?: string, sourceStep: ExtendedViewStep = 'dashboard') => {
+    const targetId = analysisId || homeData?.latestRegionAnalysis?.analysisId || apiReport?.analysisId;
+    if (!targetId) {
+      safeSetViewStep('explore');
+      return;
+    }
+    setReportReturnStep(sourceStep);
+    try {
+      setAnalysisState({ kind: 'SUBMITTING' });
+      setViewStep('analyzing');
+      const report = await ApiService.getRegionReport(targetId, 'COMPLETED');
+      const nextState = stateFromAnalysisStatus({ analysisId: targetId, status: report.status || 'COMPLETED' }, report);
+      setApiReport(report);
+      setAnalysisState(nextState);
+      setSelectedProvince(report.region.sidoName);
+      setSelectedDistrict(report.region.sigunguName);
+      setViewStep('report_summary');
+    } catch (err) {
+      console.warn('Failed to load confirmed report:', err);
+      if (sourceStep !== 'explore') {
+        safeSetViewStep(sourceStep);
+      } else {
+        safeSetViewStep('explore');
+      }
+    }
+  };
+
   const completeAnalysis = async (analysisId: string, status: 'COMPLETED' | 'PARTIAL') => {
     const report = await ApiService.getRegionReport(analysisId, status);
     const nextState = stateFromAnalysisStatus({ analysisId, status }, report);
@@ -299,6 +328,15 @@ export function App() {
     localStorage.setItem('farmflate_district', report.region.sigunguName);
     setIsNewUser(false);
     localStorage.setItem('farmflate_is_new_user', 'false');
+
+    // Refresh Home summary from backend DB so homeData, home weather, and latestRegionAnalysis update everywhere in real-time
+    try {
+      const freshHome = await ApiService.getHome();
+      setHomeData(freshHome);
+    } catch (e) {
+      console.warn('Failed to refresh home summary:', e);
+    }
+
     setViewStep('report_summary');
   };
 
@@ -524,7 +562,7 @@ export function App() {
         <RegionReportSummaryView
           regionName={apiReport?.region?.sidoName && apiReport?.region?.sigunguName ? `${apiReport.region.sidoName} ${apiReport.region.sigunguName}` : `${selectedProvince} ${selectedDistrict}`}
           report={apiReport}
-          onBack={() => safeSetViewStep('explore')}
+          onBack={() => safeSetViewStep(reportReturnStep)}
           onNext={() => safeSetViewStep('report_risks')}
           onOpenAIChat={() => setIsAIChatOpen(true)}
         />
@@ -580,7 +618,7 @@ export function App() {
           homeData={homeData}
           loadError={homeLoadError}
           onGoToExplore={() => safeSetViewStep('explore')}
-          onOpenReport={() => safeSetViewStep('report_summary')}
+          onOpenReport={() => { void handleOpenConfirmedReport(undefined, 'dashboard'); }}
           onOpenAIChat={() => setIsAIChatOpen(true)}
           activeTab={activeTab}
           onTabChange={handleTabChange}
