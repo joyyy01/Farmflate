@@ -108,24 +108,27 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
           </p>
         </div>
 
-        {/* Weather Card - 1:1 Matching Mockup */}
+        {/* Weather Card - Soft Gradient Fill */}
         {isNewUser ? (
           <div
             onClick={onGoToExplore}
             style={{
-              backgroundColor: '#C5EAFA', borderRadius: 18,
+              background: 'linear-gradient(135deg, #FFFFFF 0%, #F0F9FF 50%, #CBEBFC 100%)',
+              border: '1px solid #CEECFC',
+              borderRadius: 20,
               height: 64, width: '100%', marginBottom: 20, cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center'
             }}
           >
-            <span style={{ fontSize: '0.94rem', fontWeight: 700, color: '#FFFFFF', letterSpacing: '-0.01em' }}>
+            <span style={{ fontSize: '0.94rem', fontWeight: 700, color: '#191F28', letterSpacing: '-0.01em' }}>
               날씨 데이터가 없어요
             </span>
           </div>
         ) : (
           <div style={{
             position: 'relative', width: '100%', minHeight: 116, borderRadius: 20,
-            backgroundColor: '#E0F2FE', border: '1px solid #BAE6FD',
+            background: 'linear-gradient(135deg, #F0F9FF 0%, #E0F2FE 100%)',
+            border: '1px solid #BAE6FD',
             padding: '18px 20px', marginBottom: 20, boxSizing: 'border-box',
             display: 'flex', justifyContent: 'space-between', alignItems: 'center'
           }}>
@@ -214,22 +217,23 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
         {/* Thin Divider */}
         <div style={{ borderBottom: '1px solid #ECEFED', margin: '20px 0' }} />
 
-        {/* Primary Action Banner Card - 1:1 Matching Mockup */}
+        {/* Primary Action Banner Card - Exact Screenshot Gradient Matching */}
         {isNewUser ? (
           <motion.div
             whileTap={{ scale: 0.98 }}
             onClick={onGoToExplore}
             style={{
               position: 'relative', width: '100%', borderRadius: 24,
-              backgroundColor: '#E4F4FC', border: '1px solid #D0ECFB',
-              padding: '24px 22px 28px 22px', marginBottom: 20, cursor: 'pointer',
+              background: 'linear-gradient(135deg, #FFFFFF 0%, #F3F9FE 40%, #D5F1FF 100%)',
+              border: '1px solid #CEECFC',
+              padding: '26px 24px 24px 24px', marginBottom: 20, cursor: 'pointer',
               boxSizing: 'border-box'
             }}
           >
-            <h2 style={{ fontSize: '1.3rem', fontWeight: 900, color: '#191F28', margin: '0 0 8px 0', lineHeight: 1.3, letterSpacing: '-0.02em' }}>
+            <h2 style={{ fontSize: '1.35rem', fontWeight: 900, color: '#191F28', margin: '0 0 8px 0', lineHeight: 1.3, letterSpacing: '-0.02em' }}>
               지역 입력하고<br />맞춤형 정보 받아보기
             </h2>
-            <p style={{ fontSize: '0.82rem', color: '#5B788C', margin: 0, fontWeight: 500 }}>
+            <p style={{ fontSize: '0.84rem', color: '#5B788C', margin: 0, fontWeight: 500 }}>
               재배 희망지역, 희망작물 입력 후 점수 확인하기
             </p>
             
@@ -259,7 +263,7 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
         {/* Thin Divider */}
         <div style={{ borderBottom: '1px solid #ECEFED', margin: '20px 0' }} />
 
-        {/* Recommended Farming Advice Section - 1:1 Matching Mockup */}
+        {/* Recommended Farming Advice Section */}
         <div style={{ marginBottom: 16 }}>
           <h2 style={{ fontSize: '1.15rem', fontWeight: 900, color: '#191F28', marginBottom: 14, letterSpacing: '-0.02em' }}>
             {isNewUser ? '내 밭에 맞는 추천 농사 정보' : `${regionName} 추천 작물 정보`}
@@ -294,7 +298,7 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
 
       </div>
 
-      {/* Floating AI Button - 1:1 Matching Wireframe Mockup */}
+      {/* Floating AI Button */}
       <button
         className="floating-ai-btn"
         onClick={onOpenAIChat}
