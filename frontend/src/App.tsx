@@ -28,18 +28,21 @@ export function App() {
   const [activeTab, setActiveTab] = useState<TabState>('home');
   const [isAIChatOpen, setIsAIChatOpen] = useState(false);
 
-  /* Instant Cache Initialization to Prevent 1-Second Flash on Page Refresh */
+  /* Clean Unauthenticated Default States (No Hardcoded Private Names) */
   const [isNewUser, setIsNewUser] = useState<boolean>(() => {
+    if (!checkHasToken()) return true;
     const cached = localStorage.getItem('farmflate_is_new_user');
-    return cached !== null ? JSON.parse(cached) : false; // Default existing user if logged in
+    return cached !== null ? JSON.parse(cached) : true;
   });
 
   const [userName, setUserName] = useState<string>(() => {
-    return localStorage.getItem('farmflate_user_name') || '최민수님';
+    if (!checkHasToken()) return '사용자님';
+    return localStorage.getItem('farmflate_user_name') || '사용자님';
   });
 
   const [userEmail, setUserEmail] = useState<string>(() => {
-    return localStorage.getItem('farmflate_user_email') || 'user@farmflate.com';
+    if (!checkHasToken()) return '미인증 계정';
+    return localStorage.getItem('farmflate_user_email') || '미인증 계정';
   });
 
   const [selectedProvince, setSelectedProvince] = useState<string>(() => {
@@ -57,6 +60,7 @@ export function App() {
   );
 
   const [apiReport, setApiReport] = useState<RegionReport | null>(() => {
+    if (!checkHasToken()) return null;
     const cached = localStorage.getItem('farmflate_region_report');
     if (cached) {
       try { return JSON.parse(cached); } catch {}
@@ -65,6 +69,7 @@ export function App() {
   });
 
   const [homeData, setHomeData] = useState<HomeData | null>(() => {
+    if (!checkHasToken()) return null;
     const cached = localStorage.getItem('farmflate_home_data');
     if (cached) {
       try { return JSON.parse(cached); } catch {}
@@ -77,9 +82,9 @@ export function App() {
     // 1. Wipe all local storage & tokens
     localStorage.clear();
 
-    // 2. Wipe all React component states to fresh initial values
+    // 2. Reset all React states to clean neutral values
     setUserName('사용자님');
-    setUserEmail('user@farmflate.com');
+    setUserEmail('미인증 계정');
     setSelectedProvince('전북특별자치도');
     setSelectedDistrict('고창군');
     setSelectedCropName('감자');
@@ -127,6 +132,9 @@ export function App() {
       safeSetViewStep(targetView as ExtendedViewStep);
     }
 
+    const isAuth = checkHasToken();
+    if (!isAuth) return;
+
     // Sync with Spring Boot API for Kakao user info and region analysis status
     ApiService.getHome()
       .then(resData => {
@@ -158,7 +166,6 @@ export function App() {
             })
             .catch(() => {});
         } else {
-          // Keep cached isNewUser or set appropriately
           const hasCache = !!localStorage.getItem('farmflate_home_data');
           if (!hasCache) {
             setIsNewUser(true);
