@@ -33,6 +33,7 @@ export interface ChatResponse {
   status: 'grounded' | 'needs_context';
   sources: GroundingSource[];
   used_context: string[];
+  agent_steps: string[];
 }
 
 export interface AgentTaskRequest {

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import json
-import re
 from typing import Any, AsyncGenerator, Iterable
 from uuid import uuid4
 
 import httpx
+from langgraph.graph import END, START, StateGraph
+from typing_extensions import TypedDict
 
 from app.core.config import settings
 from app.schemas.chat import (
@@ -16,6 +17,15 @@ from app.schemas.chat import (
     ChatResponse,
     GroundingSource,
 )
+
+
+class FarmAgentState(TypedDict, total=False):
+    request: ChatRequest
+    intent: str
+    facts: dict[str, Any]
+    fallback: str
+    reply: str
+    trace: list[str]
 
 
 class AIService:
@@ -30,15 +40,34 @@ class AIService:
     _CROP_WORDS = ("작물", "심", "재배", "추천", "감자", "배", "오이", "상추", "사과")
     _WHY_WORDS = ("왜", "이유", "근거", "분석", "점수")
 
+    def __init__(self) -> None:
+        builder = StateGraph(FarmAgentState)
+        builder.add_node("classify_request", self._classify_request)
+        builder.add_node("collect_page_evidence", self._collect_page_evidence)
+        builder.add_node("draft_grounded_answer", self._draft_grounded_answer)
+        builder.add_node("verify_grounding", self._verify_grounding)
+        builder.add_edge(START, "classify_request")
+        builder.add_edge("classify_request", "collect_page_evidence")
+        builder.add_edge("collect_page_evidence", "draft_grounded_answer")
+        builder.add_edge("draft_grounded_answer", "verify_grounding")
+        builder.add_edge("verify_grounding", END)
+        self._agent_graph = builder.compile()
+
     async def process_chat(self, request: ChatRequest) -> ChatResponse:
-        facts = self._extract_facts(request.context)
-        fallback = self._build_grounded_reply(request.message, facts)
-        reply = await self._optionally_synthesize(request, facts, fallback)
+        state = await self._run_agent_graph(request)
+        return self._response_from_state(state)
+
+    async def _run_agent_graph(self, request: ChatRequest) -> FarmAgentState:
+        return await self._agent_graph.ainvoke({"request": request, "trace": []})
+
+    def _response_from_state(self, state: FarmAgentState) -> ChatResponse:
+        facts = state["facts"]
         return ChatResponse(
-            reply=reply,
+            reply=state["reply"],
             status="grounded" if facts["has_report"] else "needs_context",
             sources=facts["sources"],
             used_context=facts["used_context"],
+            agent_steps=state.get("trace", []),
         )
 
     async def stream_chat_response(self, request: ChatRequest) -> AsyncGenerator[str, None]:
@@ -49,24 +78,45 @@ class AIService:
         yield f"event: done\ndata: {response.model_dump_json()}\n\n"
 
     async def execute_agent_task(self, request: AgentTaskRequest) -> AgentTaskResponse:
-        response = await self.process_chat(
-            ChatRequest(message=request.task, history=request.history, context=request.context)
-        )
-        steps = ["요청의 의도를 확인했습니다."]
-        if response.status == "grounded":
-            steps.extend([
-                "현재 화면의 지역·리포트·마이팜 정보를 확인했습니다.",
-                "확인된 분석 근거만 사용해 안내를 만들었습니다.",
-            ])
-        else:
-            steps.append("완료된 분석 리포트가 없어 필요한 분석 단계를 안내합니다.")
+        state = await self._run_agent_graph(ChatRequest(message=request.task, history=request.history, context=request.context))
+        response = self._response_from_state(state)
         return AgentTaskResponse(
             task_id=str(uuid4()),
             status="completed" if response.status == "grounded" else "needs_context",
             result=response.reply,
-            steps_taken=steps,
+            steps_taken=response.agent_steps,
             sources=response.sources,
         )
+
+    def _classify_request(self, state: FarmAgentState) -> dict[str, Any]:
+        intent = self._classify_intent(state["request"].message)
+        return {"intent": intent, "trace": [f"질문 의도를 ‘{intent}’로 분류했습니다."]}
+
+    def _collect_page_evidence(self, state: FarmAgentState) -> dict[str, Any]:
+        facts = self._extract_facts(state["request"].context)
+        report_status = "완료된 분석 리포트의 근거를 확인했습니다." if facts["has_report"] else "완료된 분석 리포트가 없음을 확인했습니다."
+        return {"facts": facts, "trace": [*state["trace"], report_status]}
+
+    def _draft_grounded_answer(self, state: FarmAgentState) -> dict[str, Any]:
+        fallback = self._build_grounded_reply(state["request"].message, state["facts"], state["intent"])
+        return {"fallback": fallback, "trace": [*state["trace"], "확인된 근거만으로 답변 초안을 만들었습니다."]}
+
+    async def _verify_grounding(self, state: FarmAgentState) -> dict[str, Any]:
+        reply = await self._optionally_synthesize(state["request"], state["facts"], state["fallback"])
+        reply = reply.strip() if isinstance(reply, str) else state["fallback"]
+        if not reply or len(reply) > 1_600:
+            reply = state["fallback"]
+        return {"reply": reply, "trace": [*state["trace"], "답변의 화면 근거와 응답 길이를 검증했습니다."]}
+
+    def _classify_intent(self, message: str) -> str:
+        lowered = message.replace(" ", "")
+        if any(word in lowered for word in self._RISK_WORDS):
+            return "위험·관리 확인"
+        if any(word in lowered for word in self._CROP_WORDS):
+            return "작물 추천 확인"
+        if any(word in lowered for word in self._WHY_WORDS):
+            return "리포트 근거 확인"
+        return "현재 리포트 요약"
 
     async def _optionally_synthesize(self, request: ChatRequest, facts: dict[str, Any], fallback: str) -> str:
         """Use OpenAI only when explicitly configured; a timeout always falls back safely."""
@@ -139,7 +189,7 @@ class AIService:
             "used_context": used_context,
         }
 
-    def _build_grounded_reply(self, message: str, facts: dict[str, Any]) -> str:
+    def _build_grounded_reply(self, message: str, facts: dict[str, Any], intent: str) -> str:
         if not facts["has_report"]:
             region_text = f"{facts['region']}의 " if facts["region"] else ""
             return (
@@ -148,14 +198,13 @@ class AIService:
             )
 
         intro = f"{facts['region']} 분석 리포트 기준으로 " if facts["region"] else "현재 분석 리포트 기준으로 "
-        lowered = message.replace(" ", "")
-        if any(word in lowered for word in self._RISK_WORDS):
+        if intent == "위험·관리 확인":
             risk_text = self._risk_summary(facts["risks"])
             return intro + (risk_text or "표시된 핵심 위험 항목이 없습니다.") + self._next_check(facts)
-        if any(word in lowered for word in self._CROP_WORDS):
+        if intent == "작물 추천 확인":
             crop_text = self._crop_summary(facts["recommendations"])
             return intro + (crop_text or "추천 작물 데이터가 아직 없습니다.") + self._next_check(facts)
-        if any(word in lowered for word in self._WHY_WORDS):
+        if intent == "리포트 근거 확인":
             score = f"기본 적합도는 {facts['score']}점입니다. " if facts["score"] is not None else ""
             feature_text = " ".join(facts["features"][:2])
             return intro + score + (feature_text or self._crop_summary(facts["recommendations"]) or "리포트의 세부 근거를 확인해 주세요.") + self._next_check(facts)

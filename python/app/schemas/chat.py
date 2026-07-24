@@ -65,6 +65,7 @@ class ChatResponse(BaseModel):
     status: Literal["grounded", "needs_context"] = "needs_context"
     sources: list[GroundingSource] = Field(default_factory=list)
     used_context: list[str] = Field(default_factory=list)
+    agent_steps: list[str] = Field(default_factory=list)
 
 
 class AgentTaskRequest(BaseModel):
