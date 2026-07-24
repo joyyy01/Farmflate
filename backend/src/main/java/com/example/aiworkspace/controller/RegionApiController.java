@@ -6,11 +6,17 @@ import com.example.aiworkspace.dto.region.*;
 import com.example.aiworkspace.security.UserPrincipal;
 import com.example.aiworkspace.service.analysis.RegionAnalysisService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
+import java.security.Principal;
 import java.util.List;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api")
@@ -51,21 +57,61 @@ public class RegionApiController {
         return ResponseEntity.ok(regionAnalysisService.getSigungus(sidoCode));
     }
 
-    @PostMapping("/region-analyses")
-    public ResponseEntity<RegionAnalysisStatusDto> createAnalysis(
-            @AuthenticationPrincipal UserPrincipal userPrincipal,
+    @PostMapping("/regions/analysis")
+    public ResponseEntity<RegionAnalysisStatusDto> create(
+            Principal principal,
             @RequestBody RegionAnalysisRequestDto request) {
-        String email = userPrincipal != null ? userPrincipal.getEmail() : "guest_" + System.currentTimeMillis();
-        return ResponseEntity.ok(regionAnalysisService.createAnalysis(email, request));
+        validateRequest(request);
+        return ResponseEntity.ok(regionAnalysisService.create(principal.getName(), request));
     }
 
-    @GetMapping("/region-analyses/{analysisId}/status")
-    public ResponseEntity<RegionAnalysisStatusDto> getStatus(@PathVariable String analysisId) {
-        return ResponseEntity.ok(regionAnalysisService.getStatus(analysisId));
+    @GetMapping("/regions/analysis/{analysisId}/status")
+    public ResponseEntity<RegionAnalysisStatusDto> getStatus(
+            Principal principal,
+            @PathVariable UUID analysisId) {
+        return ResponseEntity.ok(regionAnalysisService.getStatus(principal.getName(), analysisId));
     }
 
-    @GetMapping("/region-analyses/{analysisId}")
-    public ResponseEntity<RegionReportResponseDto> getReport(@PathVariable String analysisId) {
-        return ResponseEntity.ok(regionAnalysisService.getReport(analysisId));
+    @GetMapping("/regions/reports/{analysisId}")
+    public ResponseEntity<RegionReportResponseDto> getReport(
+            Principal principal,
+            @PathVariable UUID analysisId) {
+        return ResponseEntity.ok(regionAnalysisService.getReport(principal.getName(), analysisId));
+    }
+
+    @ExceptionHandler(RegionAnalysisService.RegionAnalysisException.class)
+    public ResponseEntity<ApiErrorResponse> handleRegionAnalysisException(
+            RegionAnalysisService.RegionAnalysisException exception) {
+        return ResponseEntity.status(exception.getHttpStatus())
+                .body(new ApiErrorResponse(exception.getCode(), exception.getMessage()));
+    }
+
+    @ExceptionHandler({
+            MethodArgumentNotValidException.class,
+            MethodArgumentTypeMismatchException.class,
+            HttpMessageNotReadableException.class
+    })
+    public ResponseEntity<ApiErrorResponse> handleInvalidRegionRequest(Exception exception) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ApiErrorResponse("INVALID_REGION_REQUEST", "요청한 지역 분석 정보가 올바르지 않습니다."));
+    }
+
+    private record ApiErrorResponse(String code, String message) {
+    }
+
+    private void validateRequest(RegionAnalysisRequestDto request) {
+        if (request == null
+                || !hasTextWithin(request.getSidoCode(), 20)
+                || !hasTextWithin(request.getSidoName(), 100)
+                || !hasTextWithin(request.getSigunguCode(), 20)
+                || !hasTextWithin(request.getSigunguName(), 100)
+                || !hasTextWithin(request.getIdempotencyKey(), 128)
+                || request.getForceRefresh() == null) {
+            throw RegionAnalysisService.RegionAnalysisException.invalidRequest();
+        }
+    }
+
+    private boolean hasTextWithin(String value, int maxLength) {
+        return value != null && !value.isBlank() && value.length() <= maxLength;
     }
 }

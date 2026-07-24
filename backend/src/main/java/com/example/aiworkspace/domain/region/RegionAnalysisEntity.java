@@ -10,7 +10,8 @@ import java.time.LocalDateTime;
 @Table(
     name = "region_analyses",
     indexes = {
-        @Index(name = "idx_analyses_user_sigungu_analyzed", columnList = "user_email, sigungu_code, analyzed_at")
+        @Index(name = "uq_region_analysis_owner_idempotency", columnList = "user_email, idempotency_key", unique = true),
+        @Index(name = "ix_region_analysis_reuse", columnList = "user_email, sigungu_code, rule_version, analyzed_at")
     }
 )
 @Getter
@@ -23,8 +24,11 @@ public class RegionAnalysisEntity extends BaseTimeEntity {
     @Column(length = 36)
     private String id; // UUID
 
-    @Column(name = "idempotency_key", length = 100)
+    @Column(name = "idempotency_key", length = 128)
     private String idempotencyKey;
+
+    @Column(name = "rule_version", nullable = false, length = 64)
+    private String ruleVersion;
 
     @Column(name = "user_email", nullable = false, length = 255)
     private String userEmail;

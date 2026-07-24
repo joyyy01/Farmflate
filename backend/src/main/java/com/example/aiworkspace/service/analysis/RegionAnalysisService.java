@@ -5,16 +5,19 @@ import com.example.aiworkspace.domain.region.RegionAnalysisEntity;
 import com.example.aiworkspace.domain.region.RegionAnalysisRepository;
 import com.example.aiworkspace.domain.region.RegionRepository;
 import com.example.aiworkspace.dto.region.*;
-import com.example.aiworkspace.service.external.FixtureProvider;
+import com.example.aiworkspace.service.external.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -26,6 +29,15 @@ public class RegionAnalysisService {
     private final CropScoringEngine cropScoringEngine;
     private final FixtureProvider fixtureProvider;
     private final ObjectMapper objectMapper;
+
+    // External API Adapters
+    private final ShortForecastAdapter shortForecastAdapter;
+    private final AsosAdapter asosAdapter;
+    private final SoilChemistryAdapter soilChemistryAdapter;
+    private final SoilSuitabilityAdapter soilSuitabilityAdapter;
+
+    @Value("${app.data-mode:LIVE}")
+    private String dataMode;
 
     @Transactional(readOnly = true)
     public List<RegionDto> getSidos() {
@@ -55,10 +67,11 @@ public class RegionAnalysisService {
     }
 
     @Transactional
-    public RegionAnalysisStatusDto createAnalysis(String userEmail, RegionAnalysisRequestDto req) {
+    public RegionAnalysisStatusDto create(String userEmail, RegionAnalysisRequestDto req) {
         // Idempotency check
         if (req.getIdempotencyKey() != null && !req.getIdempotencyKey().isBlank()) {
-            Optional<RegionAnalysisEntity> existing = analysisRepository.findByIdempotencyKey(req.getIdempotencyKey());
+            Optional<RegionAnalysisEntity> existing = analysisRepository
+                    .findByUserEmailAndIdempotencyKey(userEmail, req.getIdempotencyKey());
             if (existing.isPresent()) {
                 return RegionAnalysisStatusDto.builder()
                         .analysisId(existing.get().getId())
@@ -70,35 +83,161 @@ public class RegionAnalysisService {
             }
         }
 
-        // Check 6-hour cache if not forceRefresh
+        // 6-hour cache reuse (same user, sigungu, ruleVersion)
         if (!Boolean.TRUE.equals(req.getForceRefresh())) {
             LocalDateTime sixHoursAgo = LocalDateTime.now().minusHours(6);
-            List<RegionAnalysisEntity> recentList = analysisRepository
-                    .findByUserEmailAndSigunguCodeAndAnalyzedAtAfterOrderByAnalyzedAtDesc(userEmail, req.getSigunguCode(), sixHoursAgo);
-            if (!recentList.isEmpty()) {
-                RegionAnalysisEntity cached = recentList.get(0);
+            Optional<RegionAnalysisEntity> recent = analysisRepository
+                    .findFirstByUserEmailAndSigunguCodeAndRuleVersionAndAnalyzedAtAfterOrderByAnalyzedAtDesc(
+                            userEmail, req.getSigunguCode(), CropScoringEngine.RULE_VERSION, sixHoursAgo);
+            if (recent.isPresent()) {
+                RegionAnalysisEntity cached = recent.get();
                 return RegionAnalysisStatusDto.builder()
                         .analysisId(cached.getId())
                         .status("COMPLETED")
                         .completedSteps(List.of("REGION", "RECENT_WEATHER", "FORECAST", "SOIL", "CROP", "REPORT"))
                         .currentStep("COMPLETED")
                         .retryable(false)
+                        .reused(true)
                         .build();
             }
         }
 
-        // Perform new analysis
+        // Find region mapping
         Region region = regionRepository.findBySidoCodeAndSigunguCode(req.getSidoCode(), req.getSigunguCode())
-                .orElse(Region.builder()
-                        .sidoCode(req.getSidoCode())
-                        .sidoName("전북특별자치도")
-                        .sigunguCode(req.getSigunguCode())
-                        .sigunguName("고창군")
-                        .build());
+                .orElse(null);
 
-        RegionReportResponseDto report = fixtureProvider.getGochangFixture(
+        if (region == null) {
+            log.error("REGION_MAPPING_NOT_CONFIGURED: sido={}, sigungu={}", req.getSidoCode(), req.getSigunguCode());
+            throw RegionAnalysisException.mappingNotConfigured(req.getSidoCode(), req.getSigunguCode());
+        }
+
+        // ─── LIVE mode: Real API pipeline ───
+        if ("LIVE".equals(dataMode) || "AUTO".equals(dataMode)) {
+            try {
+                RegionReportResponseDto report = executeLiveAnalysis(region, userEmail);
+                return saveAndReturn(report, region, userEmail, req.getIdempotencyKey(), "LIVE");
+            } catch (Exception e) {
+                log.error("LIVE analysis failed for {}: {}", region.getSigunguName(), e.getMessage(), e);
+                if ("AUTO".equals(dataMode)) {
+                    log.warn("AUTO mode: falling back to REPLAY for {}", region.getSigunguName());
+                    RegionReportResponseDto replay = fixtureProvider.getGochangFixture(
+                            region.getSidoCode(), region.getSigunguCode(), region.getSidoName(), region.getSigunguName());
+                    return saveAndReturn(replay, region, userEmail, req.getIdempotencyKey(), "REPLAY");
+                }
+                return RegionAnalysisStatusDto.builder()
+                        .analysisId(null)
+                        .status("FAILED")
+                        .completedSteps(Collections.emptyList())
+                        .currentStep("ANALYSIS")
+                        .retryable(true)
+                        .errorMessage("분석 중 오류가 발생했습니다: " + e.getMessage())
+                        .build();
+            }
+        }
+
+        // ─── REPLAY mode: Fixture only ───
+        RegionReportResponseDto replay = fixtureProvider.getGochangFixture(
                 region.getSidoCode(), region.getSigunguCode(), region.getSidoName(), region.getSigunguName());
+        return saveAndReturn(replay, region, userEmail, req.getIdempotencyKey(), "REPLAY");
+    }
 
+    /**
+     * 실제 공공 API 파이프라인 실행
+     */
+    private RegionReportResponseDto executeLiveAnalysis(Region region, String userEmail) {
+        String analysisId = UUID.randomUUID().toString();
+        log.info("=== Starting LIVE analysis for {} {} (id={}) ===",
+                region.getSidoName(), region.getSigunguName(), analysisId);
+
+        // Step 1: 기상청 단기예보 (향후 3일)
+        log.info("[1/4] Fetching short forecast for nx={}, ny={}", region.getKmaNx(), region.getKmaNy());
+        List<ShortForecastAdapter.DailyForecast> forecasts = shortForecastAdapter.getForecast3Days(
+                region.getKmaNx(), region.getKmaNy());
+        log.info("[1/4] Short forecast: {} days fetched", forecasts.size());
+
+        // Step 2: ASOS 최근 30일 집계
+        log.info("[2/4] Fetching ASOS 30-day summary for station={}", region.getAsosStationId());
+        AsosAdapter.Asos30DaySummary asos = asosAdapter.get30DaySummary(region.getAsosStationId());
+        log.info("[2/4] ASOS: meanTemp={}, totalPrecip={}, dataPoints={}",
+                asos.meanTemperature30d, asos.totalPrecipitation30d, asos.dataPointCount);
+
+        // Step 3: 토양 데이터
+        log.info("[3/4] Fetching soil data for sigungu={}", region.getSigunguCode());
+        SoilChemistryAdapter.SoilChemistryResult soilChem = soilChemistryAdapter.getSoilChemistry(
+                region.getSigunguCode(), region.getSidoName(), region.getSigunguName());
+        log.info("[3/4] Soil chemistry: pH={}, spatialLevel={}", soilChem.ph, soilChem.spatialLevel);
+
+        Map<String, SoilSuitabilityAdapter.SoilSuitabilityResult> suitability =
+                soilSuitabilityAdapter.getSoilSuitability(region.getSigunguCode(), region.getSidoName(), region.getSigunguName());
+        log.info("[3/4] Soil suitability: {} crops evaluated", suitability.size());
+
+        // Step 4: 점수 계산
+        log.info("[4/4] Calculating scores...");
+
+        // Calculate forecast risk first
+        CropScoringEngine.ForecastRiskResult forecastRisk = cropScoringEngine.calculateForecastRisks(forecasts);
+
+        // Build analysis input
+        CropScoringEngine.AnalysisInput input = new CropScoringEngine.AnalysisInput();
+        input.meanTemperature30d = asos.meanTemperature30d;
+        input.soilPh = soilChem.ph;
+        input.forecastRiskSafetyScore = forecastRisk.safetyScore;
+
+        // Map suitability scores per crop
+        for (Map.Entry<String, SoilSuitabilityAdapter.SoilSuitabilityResult> e : suitability.entrySet()) {
+            if (e.getValue().hasData) {
+                input.soilSuitabilityScores.put(e.getKey(), e.getValue().score);
+            }
+        }
+
+        CropScoringEngine.AnalysisOutput output = cropScoringEngine.analyze(input);
+        log.info("[4/4] Region score={}, TOP3={}", output.regionScore,
+                output.topRecommended.stream().map(c -> c.cropCode + ":" + Math.round(c.totalScore)).collect(Collectors.joining(",")));
+
+        // Build report DTO
+        String nowStr = LocalDateTime.now().format(DateTimeFormatter.ISO_DATE_TIME);
+        String summary = buildSummary(region.getSigunguName(), output, forecastRisk);
+
+        List<RegionReportResponseDto.RecommendedCropDto> cropDtos = new ArrayList<>();
+        for (int i = 0; i < output.topRecommended.size(); i++) {
+            CropScoringEngine.CropResult cr = output.topRecommended.get(i);
+            cropDtos.add(RegionReportResponseDto.RecommendedCropDto.builder()
+                    .rank(i + 1)
+                    .cropCode(cr.cropCode)
+                    .cropName(cr.cropName)
+                    .score((int) Math.round(cr.totalScore))
+                    .positiveReasons(cr.positiveReasons.isEmpty() ? List.of("지역 토양 적성 등급이 양호한 편이에요.") : cr.positiveReasons)
+                    .cautionReason(cr.cautionReason)
+                    .build());
+        }
+
+        // Low score warning per spec 8.3
+        boolean allLow = output.topRecommended.stream().allMatch(c -> c.totalScore < 60);
+
+        return RegionReportResponseDto.builder()
+                .analysisId(analysisId)
+                .region(RegionDto.builder()
+                        .sidoCode(region.getSidoCode())
+                        .sidoName(region.getSidoName())
+                        .sigunguCode(region.getSigunguCode())
+                        .sigunguName(region.getSigunguName())
+                        .build())
+                .regionScore(output.regionScore)
+                .grade(output.regionGrade)
+                .summary(summary + (allLow ? " 지원 작물 5종 중 상대적으로 높은 순서입니다. 모두 추가 확인이 필요한 상태입니다." : ""))
+                .confidence(output.confidence)
+                .components(output.components)
+                .recommendedCrops(cropDtos)
+                .topRisks(forecastRisk.risks)
+                .tips(buildStaticTips(region.getSigunguName()))
+                .sources(buildSources())
+                .analyzedAt(nowStr)
+                .dataMode("LIVE")
+                .build();
+    }
+
+    private RegionAnalysisStatusDto saveAndReturn(RegionReportResponseDto report, Region region,
+                                                   String userEmail, String idempotencyKey, String mode) {
         String analysisId = report.getAnalysisId();
         String jsonPayload = "";
         try {
@@ -109,7 +248,8 @@ public class RegionAnalysisService {
 
         RegionAnalysisEntity entity = RegionAnalysisEntity.builder()
                 .id(analysisId)
-                .idempotencyKey(req.getIdempotencyKey())
+                .idempotencyKey(idempotencyKey)
+                .ruleVersion(CropScoringEngine.RULE_VERSION)
                 .userEmail(userEmail)
                 .sidoCode(region.getSidoCode())
                 .sidoName(region.getSidoName())
@@ -118,12 +258,12 @@ public class RegionAnalysisService {
                 .regionScore(report.getRegionScore())
                 .grade(report.getGrade())
                 .summary(report.getSummary())
-                .confidenceGrade(report.getConfidence() != null ? report.getConfidence().getGrade() : "HIGH")
-                .confidenceScore(report.getConfidence() != null ? report.getConfidence().getScore() : 85)
-                .confidenceMessage(report.getConfidence() != null ? report.getConfidence().getMessage() : "")
+                .confidenceGrade(report.getConfidence() != null ? report.getConfidence().getGrade() : null)
+                .confidenceScore(report.getConfidence() != null ? report.getConfidence().getScore() : null)
+                .confidenceMessage(report.getConfidence() != null ? report.getConfidence().getMessage() : null)
                 .payloadJson(jsonPayload)
                 .analyzedAt(LocalDateTime.now())
-                .dataMode("REPLAY")
+                .dataMode(mode)
                 .build();
 
         analysisRepository.save(entity);
@@ -138,31 +278,20 @@ public class RegionAnalysisService {
     }
 
     @Transactional(readOnly = true)
-    public RegionAnalysisStatusDto getStatus(String analysisId) {
-        Optional<RegionAnalysisEntity> entity = analysisRepository.findById(analysisId);
-        if (entity.isPresent()) {
-            return RegionAnalysisStatusDto.builder()
-                    .analysisId(analysisId)
-                    .status("COMPLETED")
-                    .completedSteps(List.of("REGION", "RECENT_WEATHER", "FORECAST", "SOIL", "CROP", "REPORT"))
-                    .currentStep("COMPLETED")
-                    .retryable(false)
-                    .build();
-        } else {
-            return RegionAnalysisStatusDto.builder()
-                    .analysisId(analysisId)
-                    .status("FAILED")
-                    .completedSteps(Collections.emptyList())
-                    .currentStep("FAILED")
-                    .retryable(true)
-                    .build();
-        }
+    public RegionAnalysisStatusDto getStatus(String ownerEmail, UUID analysisId) {
+        RegionAnalysisEntity entity = findOwnedAnalysis(ownerEmail, analysisId);
+        return RegionAnalysisStatusDto.builder()
+                .analysisId(entity.getId())
+                .status("COMPLETED")
+                .completedSteps(List.of("REGION", "RECENT_WEATHER", "FORECAST", "SOIL", "CROP", "REPORT"))
+                .currentStep("COMPLETED")
+                .retryable(false)
+                .build();
     }
 
     @Transactional(readOnly = true)
-    public RegionReportResponseDto getReport(String analysisId) {
-        RegionAnalysisEntity entity = analysisRepository.findById(analysisId)
-                .orElseThrow(() -> new IllegalArgumentException("Analysis not found: " + analysisId));
+    public RegionReportResponseDto getReport(String ownerEmail, UUID analysisId) {
+        RegionAnalysisEntity entity = findOwnedAnalysis(ownerEmail, analysisId);
 
         if (entity.getPayloadJson() != null && !entity.getPayloadJson().isBlank()) {
             try {
@@ -182,7 +311,6 @@ public class RegionAnalysisService {
         Optional<RegionAnalysisEntity> latestOpt = analysisRepository.findFirstByUserEmailOrderByAnalyzedAtDesc(userEmail);
 
         if (latestOpt.isEmpty()) {
-            // Initial user state (no analysis)
             return HomeResponseDto.builder()
                     .user(HomeResponseDto.UserDto.builder().displayName(displayName).build())
                     .weather(HomeResponseDto.WeatherDto.builder().status("UNAVAILABLE").build())
@@ -193,9 +321,8 @@ public class RegionAnalysisService {
         }
 
         RegionAnalysisEntity latest = latestOpt.get();
-        RegionReportResponseDto report = getReport(latest.getId());
+        RegionReportResponseDto report = getReport(userEmail, UUID.fromString(latest.getId()));
 
-        // Calculate dynamic real-time weather based on regional hash
         String regionKey = latest.getSidoName() + " " + latest.getSigunguName();
         long hash = Math.abs(regionKey.hashCode());
         double temp = Math.round((21.0 + (hash % 10)) * 10.0) / 10.0;
@@ -247,5 +374,128 @@ public class RegionAnalysisService {
                         .build())
                 .farms(Collections.emptyList())
                 .build();
+    }
+
+    // ─── Helper methods ───
+
+    private String buildSummary(String sigunguName, CropScoringEngine.AnalysisOutput output,
+                                 CropScoringEngine.ForecastRiskResult forecastRisk) {
+        String subject = getKoreanSubject(sigunguName);
+        StringBuilder sb = new StringBuilder();
+        sb.append(subject).append(" ");
+
+        if (output.regionScore >= 80) {
+            sb.append("현재 계절에 여러 작물을 재배하기 양호한 환경이에요.");
+        } else if (output.regionScore >= 60) {
+            sb.append("일부 조건을 확인하면 재배할 수 있는 환경이에요.");
+        } else {
+            sb.append("현재 환경에서 작물 선택 전 추가 확인이 필요해요.");
+        }
+
+        if (!forecastRisk.risks.isEmpty()) {
+            String riskName = forecastRisk.risks.get(0).getTitle();
+            sb.append(" ").append(riskName).append("에 대비가 필요해요.");
+        }
+
+        return sb.toString();
+    }
+
+    private String getKoreanSubject(String name) {
+        if (name == null || name.isBlank()) return "이 지역은";
+        char lastChar = name.charAt(name.length() - 1);
+        if (lastChar >= 0xAC00 && lastChar <= 0xD7A3) {
+            boolean hasJongsung = (lastChar - 0xAC00) % 28 != 0;
+            return name + (hasJongsung ? "은" : "는");
+        }
+        return name + "는";
+    }
+
+    private List<RegionReportResponseDto.TipDto> buildStaticTips(String sigunguName) {
+        return List.of(
+                RegionReportResponseDto.TipDto.builder()
+                        .rank(1)
+                        .tipCode("DRAINAGE_BEFORE_RAIN")
+                        .title("장마철 배수 관리가 중요해요")
+                        .summary("여름철 많은 비가 몰릴 수 있어 밭 주변 배수로 점검이 필요해요.")
+                        .sourceType("NONGSARO")
+                        .sourceName("농사로 공식자료")
+                        .sourceUrl("https://www.nongsaro.go.kr")
+                        .actionLabel("농사로 원문 보기")
+                        .dataDate(LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE))
+                        .build(),
+                RegionReportResponseDto.TipDto.builder()
+                        .rank(2)
+                        .tipCode("SOIL_TEST_GUIDE")
+                        .title("시군구 농업기술센터 토양검정 활용")
+                        .summary("무료 토양 검정 서비스를 통해 정확한 pH와 비료 처방전을 받아보세요.")
+                        .sourceType("CURATED_OFFICIAL_GUIDE")
+                        .sourceName("농촌진흥청 흙토람")
+                        .sourceUrl("https://soil.rda.go.kr")
+                        .actionLabel("흙토람 홈페이지 바로가기")
+                        .dataDate(LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE))
+                        .build()
+        );
+    }
+
+    private List<RegionReportResponseDto.SourceDto> buildSources() {
+        return List.of(
+                RegionReportResponseDto.SourceDto.builder()
+                        .provider("기상청")
+                        .service("단기예보 및 ASOS 시간자료")
+                        .sourceUrl("https://www.weather.go.kr")
+                        .dataDate(LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE))
+                        .build(),
+                RegionReportResponseDto.SourceDto.builder()
+                        .provider("농촌진흥청 국립농업과학원")
+                        .service("농경지화학성 통계정보 V2 / 작물별 토양적성 V2")
+                        .sourceUrl("https://soil.rda.go.kr")
+                        .dataDate(LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE))
+                        .build()
+        );
+    }
+
+    private RegionAnalysisEntity findOwnedAnalysis(String ownerEmail, UUID analysisId) {
+        return analysisRepository.findByIdAndUserEmail(analysisId.toString(), ownerEmail)
+                .orElseThrow(() -> RegionAnalysisException.analysisNotFound(analysisId));
+    }
+
+    public static class RegionAnalysisException extends RuntimeException {
+        private final HttpStatus httpStatus;
+        private final String code;
+
+        private RegionAnalysisException(HttpStatus httpStatus, String code, String message) {
+            super(message);
+            this.httpStatus = httpStatus;
+            this.code = code;
+        }
+
+        public static RegionAnalysisException mappingNotConfigured(String sidoCode, String sigunguCode) {
+            return new RegionAnalysisException(
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    "REGION_MAPPING_NOT_CONFIGURED",
+                    "해당 지역의 매핑 정보가 설정되어 있지 않습니다: " + sidoCode + "/" + sigunguCode);
+        }
+
+        public static RegionAnalysisException invalidRequest() {
+            return new RegionAnalysisException(
+                    HttpStatus.BAD_REQUEST,
+                    "INVALID_REGION_REQUEST",
+                    "요청한 지역 분석 정보가 올바르지 않습니다.");
+        }
+
+        public static RegionAnalysisException analysisNotFound(UUID analysisId) {
+            return new RegionAnalysisException(
+                    HttpStatus.NOT_FOUND,
+                    "REGION_ANALYSIS_NOT_FOUND",
+                    "지역 분석을 찾을 수 없습니다: " + analysisId);
+        }
+
+        public HttpStatus getHttpStatus() {
+            return httpStatus;
+        }
+
+        public String getCode() {
+            return code;
+        }
     }
 }

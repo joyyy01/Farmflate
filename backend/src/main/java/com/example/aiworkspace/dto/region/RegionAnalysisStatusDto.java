@@ -16,4 +16,6 @@ public class RegionAnalysisStatusDto {
     private List<String> completedSteps;
     private String currentStep;
     private Boolean retryable;
+    private Boolean reused;
+    private String errorMessage;
 }

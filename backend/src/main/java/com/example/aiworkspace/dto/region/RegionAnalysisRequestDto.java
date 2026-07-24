@@ -8,8 +8,14 @@ import lombok.*;
 @Builder
 public class RegionAnalysisRequestDto {
     private String sidoCode;
+
+    private String sidoName;
+
     private String sigunguCode;
-    @Builder.Default
-    private Boolean forceRefresh = false;
+
+    private String sigunguName;
+
     private String idempotencyKey;
+
+    private Boolean forceRefresh;
 }
