@@ -8,6 +8,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -194,16 +195,17 @@ public class SoilChemistryAdapter {
     }
 
     private ExternalResult<SoilChemistryResult> fetchSoilExam(String legalDongCode) {
-        String url = UriComponentsBuilder.fromHttpUrl(BASE_URL)
+        URI uri = UriComponentsBuilder.fromHttpUrl(BASE_URL)
                 .queryParam("serviceKey", serviceKey)
                 .queryParam("Page_Size", 1)
                 .queryParam("Page_No", 1)
                 .queryParam("STDG_CD", legalDongCode)
-                .build(false)
-                .toUriString();
+                .build()
+                .encode()
+                .toUri();
         ExternalResult<String> payload = ExternalAdapterSupport.executePacedRequest(
                 RDA_SOIL_RATE_SCOPE, Math.max(0, rdaMinIntervalMs), retryCount,
-                "SOIL_CHEMISTRY_REQUEST_FAILED", () -> restTemplate.getForObject(url, String.class));
+                "SOIL_CHEMISTRY_REQUEST_FAILED", () -> restTemplate.getForObject(uri, String.class));
         if (payload.isFailure()) {
             return ExternalResult.failure(payload.errorCode(), payload.metrics());
         }

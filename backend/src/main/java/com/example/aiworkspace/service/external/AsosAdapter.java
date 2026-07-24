@@ -12,6 +12,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -136,7 +137,7 @@ public class AsosAdapter {
 
     @SuppressWarnings("unchecked")
     private ExternalResult<AsosPage> fetchPage(String stationId, LocalDate startDate, LocalDate endDate, int pageNo) {
-        String url = UriComponentsBuilder.fromHttpUrl(BASE_URL)
+        URI uri = UriComponentsBuilder.fromHttpUrl(BASE_URL)
                 .queryParam("ServiceKey", serviceKey)
                 .queryParam("pageNo", pageNo)
                 .queryParam("numOfRows", 999)
@@ -148,10 +149,11 @@ public class AsosAdapter {
                 .queryParam("endDt", endDate.format(DATE_FMT))
                 .queryParam("endHh", "23")
                 .queryParam("stnIds", stationId)
-                .build(false)
-                .toUriString();
+                .build()
+                .encode()
+                .toUri();
         ExternalResult<Map<String, Object>> response = ExternalAdapterSupport.executeRequest(
-                retryCount, "ASOS_REQUEST_FAILED", () -> restTemplate.getForObject(url, Map.class));
+                retryCount, "ASOS_REQUEST_FAILED", () -> restTemplate.getForObject(uri, Map.class));
         if (response.isFailure()) {
             log.warn("ASOS API call failed for station {}: {}", stationId, response.errorCode());
             return ExternalResult.failure(response.errorCode(), response.metrics());

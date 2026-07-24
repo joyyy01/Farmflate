@@ -9,6 +9,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -186,15 +187,16 @@ public class SoilSuitabilityAdapter {
 
     private ExternalResult<Map<String, Double>> fetchGradeAreas(
             String regionCode, String apiCropCode, String expectedCropName) {
-        String url = UriComponentsBuilder.fromHttpUrl(BASE_URL)
+        URI uri = UriComponentsBuilder.fromHttpUrl(BASE_URL)
                 .queryParam("serviceKey", serviceKey)
                 .queryParam("STDG_CD", regionCode)
                 .queryParam("soil_Crop_CD", apiCropCode)
-                .build(false)
-                .toUriString();
+                .build()
+                .encode()
+                .toUri();
         ExternalResult<String> payload = ExternalAdapterSupport.executePacedRequest(
                 RDA_SOIL_RATE_SCOPE, Math.max(0, rdaMinIntervalMs), retryCount,
-                "SOIL_SUITABILITY_REQUEST_FAILED", () -> restTemplate.getForObject(url, String.class));
+                "SOIL_SUITABILITY_REQUEST_FAILED", () -> restTemplate.getForObject(uri, String.class));
         if (payload.isFailure()) {
             log.debug("Soil suitability fetch failed for stdg={}, crop={}: {}", regionCode, apiCropCode,
                     payload.errorCode());

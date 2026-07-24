@@ -11,6 +11,7 @@ import org.springframework.web.client.ResourceAccessException;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
@@ -21,7 +22,7 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -131,7 +132,7 @@ class ExternalAdaptersContractTest {
     void legal_district_request_reads_text_and_preserves_special_region_names(
             String sidoName, String sigunguName, String regionCode) {
         RestTemplate restTemplate = mock(RestTemplate.class);
-        when(restTemplate.getForObject(anyString(), eq(String.class)))
+        when(restTemplate.getForObject(any(URI.class), eq(String.class)))
                 .thenReturn(legalDistrictJson(sidoName, sigunguName, regionCode));
 
         ExternalResult<List<LegalDistrictAdapter.LegalDistrict>> result =
@@ -139,10 +140,21 @@ class ExternalAdaptersContractTest {
                         .getDistrictCodes(sidoName, sigunguName);
 
         assertThat(result.status()).isEqualTo(ExternalResult.Status.SUCCESS);
-        org.mockito.ArgumentCaptor<String> url = org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.ArgumentCaptor<URI> url = org.mockito.ArgumentCaptor.forClass(URI.class);
         verify(restTemplate).getForObject(url.capture(), eq(String.class));
-        assertThat(URLDecoder.decode(url.getValue(), StandardCharsets.UTF_8))
+        assertThat(URLDecoder.decode(url.getValue().toString(), StandardCharsets.UTF_8))
                 .contains("locatadd_nm=" + sidoName + " " + sigunguName);
+        assertThat(url.getValue().getRawQuery()).doesNotContain("%25");
+    }
+
+    @Test
+    void stan_regin_cd_head_then_row_wrapper_is_normalized_when_the_envelope_is_an_object() {
+        ExternalResult<List<LegalDistrictAdapter.LegalDistrict>> result = legalDistrict.parse(
+                legalDistrictHeadThenRowObjectJson("강원특별자치도", "강릉시", "5115035000"),
+                "text/html;charset=UTF-8");
+
+        assertThat(result.status()).isEqualTo(ExternalResult.Status.SUCCESS);
+        assertThat(result.value()).extracting(district -> district.regionCd).containsExactly("5115035000");
     }
 
     @Test
@@ -160,7 +172,7 @@ class ExternalAdaptersContractTest {
         LegalDistrictAdapter.LegalDistrict district = new LegalDistrictAdapter.LegalDistrict();
         district.regionCd = "4111710600";
         when(legalDistrict.getDistrictCodes("경기도", "수원시")).thenReturn(ExternalResult.success(List.of(district)));
-        when(restTemplate.getForObject(anyString(), eq(String.class))).thenReturn(soilExamPayload("6.2"));
+        when(restTemplate.getForObject(any(URI.class), eq(String.class))).thenReturn(soilExamPayload("6.2"));
 
         ExternalResult<SoilChemistryAdapter.SoilChemistryResult> result =
                 new SoilChemistryAdapter(restTemplate, "fixture-key", legalDistrict, 30, 0, "LIVE")
@@ -168,9 +180,9 @@ class ExternalAdaptersContractTest {
 
         assertThat(result.status()).isEqualTo(ExternalResult.Status.SUCCESS);
         assertThat(result.value().ph).isEqualTo(6.2);
-        org.mockito.ArgumentCaptor<String> urls = org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.ArgumentCaptor<URI> urls = org.mockito.ArgumentCaptor.forClass(URI.class);
         verify(restTemplate, times(1)).getForObject(urls.capture(), eq(String.class));
-        assertThat(urls.getAllValues()).allSatisfy(url -> assertThat(url)
+        assertThat(urls.getAllValues()).allSatisfy(uri -> assertThat(uri.toString())
                 .contains("SoilExam/V2/getSoilExamList", "STDG_CD=4111710600", "Page_Size=1", "Page_No=1"));
     }
 
@@ -180,7 +192,7 @@ class ExternalAdaptersContractTest {
         LegalDistrictAdapter legalDistrict = mock(LegalDistrictAdapter.class);
         when(legalDistrict.getDistrictCodes("강원특별자치도", "강릉시"))
                 .thenReturn(ExternalResult.success(List.of(legalDistrict("5115011900"), legalDistrict("5115012800"))));
-        when(restTemplate.getForObject(anyString(), eq(String.class)))
+        when(restTemplate.getForObject(any(URI.class), eq(String.class)))
                 .thenReturn(soilExamPayload("5.6"), soilExamNoDataXml());
 
         ExternalResult<SoilChemistryAdapter.SoilChemistryResult> result =
@@ -203,16 +215,16 @@ class ExternalAdaptersContractTest {
         CropCodeAdapter.CropCodeMapping mapping = cropMapping("POTATO", "CR032", "감자");
         when(cropCodeAdapter.getCropCodeMappings()).thenReturn(ExternalResult.success(Map.of("POTATO", mapping)));
         when(legalDistrict.getDistrictCodes("경기도", "수원시")).thenReturn(ExternalResult.success(List.of(district)));
-        when(restTemplate.getForObject(anyString(), eq(String.class))).thenReturn(soilFitNoDataXml());
+        when(restTemplate.getForObject(any(URI.class), eq(String.class))).thenReturn(soilFitNoDataXml());
 
         ExternalResult<Map<String, SoilSuitabilityAdapter.SoilSuitabilityResult>> result =
                 new SoilSuitabilityAdapter(restTemplate, "fixture-key", legalDistrict, cropCodeAdapter, 90, 0, "LIVE")
                         .getSoilSuitability("41110", "경기도", "수원시");
 
         assertThat(result.status()).isEqualTo(ExternalResult.Status.EMPTY);
-        org.mockito.ArgumentCaptor<String> urls = org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.ArgumentCaptor<URI> urls = org.mockito.ArgumentCaptor.forClass(URI.class);
         verify(restTemplate, times(1)).getForObject(urls.capture(), eq(String.class));
-        assertThat(urls.getAllValues()).allSatisfy(url -> assertThat(url).contains("STDG_CD=4111710600"));
+        assertThat(urls.getAllValues()).allSatisfy(uri -> assertThat(uri.toString()).contains("STDG_CD=4111710600"));
     }
 
     @Test
@@ -238,7 +250,7 @@ class ExternalAdaptersContractTest {
         CropCodeAdapter cropCodeAdapter = mock(CropCodeAdapter.class);
         CropCodeAdapter.CropCodeMapping mapping = cropMapping("POTATO", "CR032", "감자");
         when(cropCodeAdapter.getCropCodeMappings()).thenReturn(ExternalResult.success(Map.of("POTATO", mapping)));
-        when(restTemplate.getForObject(anyString(), eq(String.class))).thenReturn(soilFitAreaBandsXml("복숭아"));
+        when(restTemplate.getForObject(any(URI.class), eq(String.class))).thenReturn(soilFitAreaBandsXml("복숭아"));
 
         ExternalResult<Map<String, SoilSuitabilityAdapter.SoilSuitabilityResult>> result =
                 new SoilSuitabilityAdapter(restTemplate, "fixture-key", mock(LegalDistrictAdapter.class), cropCodeAdapter, 90, 0, "LIVE")
@@ -256,7 +268,7 @@ class ExternalAdaptersContractTest {
         CropCodeAdapter cropCodeAdapter = mock(CropCodeAdapter.class);
         CropCodeAdapter.CropCodeMapping mapping = cropMapping("POTATO", "CR032", "감자");
         when(cropCodeAdapter.getCropCodeMappings()).thenReturn(ExternalResult.success(Map.of("POTATO", mapping)));
-        when(restTemplate.getForObject(anyString(), eq(String.class))).thenReturn(soilFitAreaBandsXml("감자"));
+        when(restTemplate.getForObject(any(URI.class), eq(String.class))).thenReturn(soilFitAreaBandsXml("감자"));
 
         ExternalResult<Map<String, SoilSuitabilityAdapter.SoilSuitabilityResult>> result =
                 new SoilSuitabilityAdapter(restTemplate, "fixture-key", mock(LegalDistrictAdapter.class), cropCodeAdapter, 90, 0, "LIVE")
@@ -348,7 +360,7 @@ class ExternalAdaptersContractTest {
     private static ExternalResult<?> mixedSoilChemistryFailure() {
         RestTemplate restTemplate = mock(RestTemplate.class);
         AtomicInteger calls = new AtomicInteger();
-        when(restTemplate.getForObject(anyString(), eq(String.class))).thenAnswer(invocation -> {
+        when(restTemplate.getForObject(any(URI.class), eq(String.class))).thenAnswer(invocation -> {
             if (calls.getAndIncrement() == 1) {
                 throw new ResourceAccessException("fixture timeout");
             }
@@ -365,7 +377,7 @@ class ExternalAdaptersContractTest {
     private static ExternalResult<?> mixedSoilSuitabilityFailure() {
         RestTemplate restTemplate = mock(RestTemplate.class);
         AtomicInteger calls = new AtomicInteger();
-        when(restTemplate.getForObject(anyString(), eq(String.class))).thenAnswer(invocation -> {
+        when(restTemplate.getForObject(any(URI.class), eq(String.class))).thenAnswer(invocation -> {
             if (calls.getAndIncrement() == 1) {
                 throw new ResourceAccessException("fixture timeout");
             }
@@ -439,8 +451,20 @@ class ExternalAdaptersContractTest {
 
     private static String legalDistrictJson(String sidoName, String sigunguName, String regionCode) {
         return """
-                {"StanReginCd":[{"row":[{"region_cd":"%s","locatadd_nm":"%s %s","locallow_nm":"fixture","ri_cd":"00","use_yn":"Y"}]}]}
+                {"StanReginCd":[
+                  {"head":[{"totalCount":1},{"result":{"code":"INFO-000"}}]},
+                  {"row":[{"region_cd":"%s","locatadd_nm":"%s %s","locallow_nm":"fixture","ri_cd":"00","use_yn":"Y"}]}
+                ]}
                 """.formatted(regionCode, sidoName, sigunguName);
+    }
+
+    private static String legalDistrictHeadThenRowObjectJson(String sidoName, String sigunguName, String regionCode) {
+        return """
+                {"StanReginCd":{"head":[{"totalCount":2},{"result":{"code":"INFO-000"}}],"row":[
+                  {"region_cd":"%s","locatadd_nm":"%s %s","locallow_nm":"fixture","ri_cd":"00"},
+                  {"region_cd":"5115034030","locatadd_nm":"%s %s 강동면 산성우리","locallow_nm":"산성우리","ri_cd":"30"}
+                ]}}
+                """.formatted(regionCode, sidoName, sigunguName, sidoName, sigunguName);
     }
 
     private static String areaOnlySoilXml() {

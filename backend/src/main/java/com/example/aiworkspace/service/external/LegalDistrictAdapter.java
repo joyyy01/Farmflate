@@ -9,6 +9,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -82,7 +83,7 @@ public class LegalDistrictAdapter {
     }
 
     private ExternalResult<List<LegalDistrict>> fetchDistricts(String locationName) {
-        String url = UriComponentsBuilder.fromHttpUrl(BASE_URL)
+        URI uri = UriComponentsBuilder.fromHttpUrl(BASE_URL)
                 .queryParam("ServiceKey", serviceKey)
                 .queryParam("pageNo", 1)
                 .queryParam("numOfRows", 1000)
@@ -90,11 +91,11 @@ public class LegalDistrictAdapter {
                 .queryParam("locatadd_nm", locationName)
                 .build()
                 .encode()
-                .toUriString();
+                .toUri();
         // This provider currently labels its JSON body as text/html; retrieve text
         // first and normalize from the body so RestTemplate does not reject it.
         ExternalResult<String> payload = ExternalAdapterSupport.executeRequest(
-                retryCount, "LEGAL_DISTRICT_REQUEST_FAILED", () -> restTemplate.getForObject(url, String.class));
+                retryCount, "LEGAL_DISTRICT_REQUEST_FAILED", () -> restTemplate.getForObject(uri, String.class));
         if (payload.isFailure()) {
             log.warn("Legal district API failed for {}: {}", locationName, payload.errorCode());
             return ExternalResult.failure(payload.errorCode(), payload.metrics());
@@ -106,30 +107,25 @@ public class LegalDistrictAdapter {
         return normalize(response.value(), locationName);
     }
 
-    @SuppressWarnings("unchecked")
     private ExternalResult<List<LegalDistrict>> normalize(Map<String, Object> response, String requestedRegion) {
         if (response == null) {
             return ExternalResult.failure("EMPTY_PROVIDER_RESPONSE");
         }
         Object rawEnvelope = response.get("StanReginCd");
-        if (!(rawEnvelope instanceof List<?> envelope)) {
+        List<Map<String, Object>> envelopeParts = ExternalAdapterSupport.mapList(rawEnvelope);
+        if (envelopeParts.isEmpty()) {
             return ExternalResult.failure("MALFORMED_PROVIDER_RESPONSE");
         }
 
-        List<Map<String, Object>> rows = List.of();
-        for (Object part : envelope) {
-            Map<String, Object> map = ExternalAdapterSupport.map(part);
-            if (map == null) {
-                continue;
+        for (Map<String, Object> part : envelopeParts) {
+            String providerErrorCode = providerErrorCode(part);
+            if (providerErrorCode != null) {
+                return ExternalResult.failure("LEGAL_DISTRICT_PROVIDER_" + providerErrorCode);
             }
-            Object error = map.get("RESULT");
-            if (error instanceof Map<?, ?> result && !"INFO-000".equals(String.valueOf(result.get("CODE")))) {
-                return ExternalResult.failure("LEGAL_DISTRICT_PROVIDER_" + result.get("CODE"));
-            }
-            if (map.containsKey("row")) {
-                rows = ExternalAdapterSupport.mapList(map.get("row"));
-                break;
-            }
+        }
+        List<Map<String, Object>> rows = extractRows(rawEnvelope, 0);
+        if (rows == null) {
+            return ExternalResult.failure("MALFORMED_PROVIDER_RESPONSE");
         }
         if (rows.isEmpty()) {
             return ExternalResult.empty();
@@ -153,6 +149,55 @@ public class LegalDistrictAdapter {
             return ExternalResult.empty();
         }
         return ExternalResult.success(districts, metricsFor(districts, requestedRegion));
+    }
+
+    private String providerErrorCode(Map<String, Object> value) {
+        Map<String, Object> result = ExternalAdapterSupport.map(value.get("RESULT"));
+        if (result == null) {
+            result = ExternalAdapterSupport.map(value.get("result"));
+        }
+        String code = string(result, "CODE", "code", "resultCode", "result_Code");
+        if (code != null && !"INFO-000".equals(code) && !"00".equals(code) && !"200".equals(code)) {
+            return code;
+        }
+        for (Map<String, Object> headPart : ExternalAdapterSupport.mapList(value.get("head"))) {
+            String headErrorCode = providerErrorCode(headPart);
+            if (headErrorCode != null) {
+                return headErrorCode;
+            }
+        }
+        return null;
+    }
+
+    private List<Map<String, Object>> extractRows(Object node, int depth) {
+        if (depth > 4) {
+            return null;
+        }
+        Map<String, Object> map = ExternalAdapterSupport.map(node);
+        if (map != null) {
+            if (map.containsKey("row")) {
+                Object rawRows = map.get("row");
+                return rawRows instanceof Map<?, ?> || rawRows instanceof List<?>
+                        ? ExternalAdapterSupport.mapList(rawRows)
+                        : null;
+            }
+            for (Object value : map.values()) {
+                List<Map<String, Object>> rows = extractRows(value, depth + 1);
+                if (rows != null) {
+                    return rows;
+                }
+            }
+            return null;
+        }
+        if (node instanceof List<?> values) {
+            for (Object value : values) {
+                List<Map<String, Object>> rows = extractRows(value, depth + 1);
+                if (rows != null) {
+                    return rows;
+                }
+            }
+        }
+        return null;
     }
 
     private List<NormalizedMetric> metricsFor(List<LegalDistrict> districts, String requestedRegion) {
@@ -182,6 +227,9 @@ public class LegalDistrictAdapter {
     }
 
     private String string(Map<String, Object> row, String... keys) {
+        if (row == null) {
+            return null;
+        }
         for (String key : keys) {
             Object value = row.get(key);
             if (value != null) {

@@ -13,6 +13,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -191,7 +192,7 @@ public class ShortForecastAdapter {
 
     @SuppressWarnings("unchecked")
     private ExternalResult<Map<String, Object>> requestPage(int nx, int ny, String baseDate, String baseTime, int page) {
-        String url = UriComponentsBuilder.fromHttpUrl(BASE_URL)
+        URI uri = UriComponentsBuilder.fromHttpUrl(BASE_URL)
                 .queryParam("ServiceKey", serviceKey)
                 .queryParam("pageNo", page)
                 .queryParam("numOfRows", 1000)
@@ -200,10 +201,11 @@ public class ShortForecastAdapter {
                 .queryParam("base_time", baseTime)
                 .queryParam("nx", nx)
                 .queryParam("ny", ny)
-                .build(false)
-                .toUriString();
+                .build()
+                .encode()
+                .toUri();
         return ExternalAdapterSupport.executeRequest(
-                retryCount, "KMA_REQUEST_FAILED", () -> restTemplate.getForObject(url, Map.class));
+                retryCount, "KMA_REQUEST_FAILED", () -> restTemplate.getForObject(uri, Map.class));
     }
 
     private ExternalResult<List<Map<String, Object>>> extractItems(Map<String, Object> response) {
