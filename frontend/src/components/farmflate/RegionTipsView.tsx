@@ -7,7 +7,7 @@ interface RegionTipsViewProps {
   districtName: string;
   report?: RegionReport | null;
   onBack: () => void;
-  onSave: () => void;
+  onSave?: () => void;
   onOpenAIChat: () => void;
   variant?: 'default' | 'cropRegister' | 'view';
   onRegisterCrop?: () => void;
