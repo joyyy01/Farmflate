@@ -72,6 +72,28 @@ export function App() {
     return null;
   });
 
+  /* Full 100% Reliable Logout Reset Handler */
+  const handleLogout = () => {
+    // 1. Wipe all local storage & tokens
+    localStorage.clear();
+
+    // 2. Wipe all React component states to fresh initial values
+    setUserName('사용자님');
+    setUserEmail('user@farmflate.com');
+    setSelectedProvince('전북특별자치도');
+    setSelectedDistrict('고창군');
+    setSelectedCropName('감자');
+    setHomeData(null);
+    setApiReport(null);
+    setPosts([]);
+    setMyFields([]);
+    setIsNewUser(true);
+    setActiveTab('home');
+
+    // 3. Navigate back to Landing screen
+    setViewStep('landing');
+  };
+
   // =========================================================================
   // [TEMP DEV FALLBACK - REMOVE IN PRODUCTION]
   // Flexible Navigation Guard: Allows full screen switching during local UI dev/testing
@@ -566,10 +588,7 @@ export function App() {
           activeTab={activeTab}
           onTabChange={handleTabChange}
           onGoToExplore={() => safeSetViewStep('explore')}
-          onLogout={() => {
-            localStorage.clear();
-            safeSetViewStep('landing');
-          }}
+          onLogout={handleLogout}
           onToggleLike={handleToggleLike}
           onToggleSave={handleToggleSave}
           onAddComment={handleAddComment}
