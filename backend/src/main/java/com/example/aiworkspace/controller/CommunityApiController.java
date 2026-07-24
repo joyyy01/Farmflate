@@ -32,16 +32,16 @@ public class CommunityApiController {
             @AuthenticationPrincipal UserPrincipal userPrincipal,
             @RequestBody CreatePostRequest request) {
 
-        String authorEmail = userPrincipal != null ? userPrincipal.getEmail() : "user@farmflate.com";
+        String authorEmail = userPrincipal != null && userPrincipal.getEmail() != null ? userPrincipal.getEmail() : "user@farmflate.com";
 
         CommunityPostEntity post = CommunityPostEntity.builder()
-                .category(request.getCategory())
-                .tagLocation(request.getTagLocation())
-                .title(request.getTitle())
-                .content(request.getContent())
-                .author(request.getAuthor() != null ? request.getAuthor() : "초보농부")
+                .category(request.getCategory() != null ? request.getCategory() : "농가 노하우")
+                .tagLocation(request.getTagLocation() != null ? request.getTagLocation() : "전북 고창군")
+                .title(request.getTitle() != null ? request.getTitle() : "농가 소식")
+                .content(request.getContent() != null ? request.getContent() : "")
+                .author(request.getAuthor() != null && !request.getAuthor().isBlank() ? request.getAuthor() : "초보농부")
                 .authorEmail(authorEmail)
-                .imageUrl(request.getImageUrl())
+                .imageUrl(request.getImageUrl() != null ? request.getImageUrl() : "")
                 .likeCount(0)
                 .commentCount(0)
                 .build();
@@ -66,15 +66,15 @@ public class CommunityApiController {
             @PathVariable Long id,
             @RequestBody AddCommentRequest request) {
 
-        String authorEmail = userPrincipal != null ? userPrincipal.getEmail() : "user@farmflate.com";
+        String authorEmail = userPrincipal != null && userPrincipal.getEmail() != null ? userPrincipal.getEmail() : "user@farmflate.com";
         CommunityPostEntity post = communityPostRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Post not found: " + id));
 
         CommunityCommentEntity comment = CommunityCommentEntity.builder()
                 .post(post)
-                .author(request.getAuthor() != null ? request.getAuthor() : "사용자")
+                .author(request.getAuthor() != null && !request.getAuthor().isBlank() ? request.getAuthor() : "사용자")
                 .authorEmail(authorEmail)
-                .content(request.getContent())
+                .content(request.getContent() != null ? request.getContent() : "")
                 .build();
 
         post.addComment(comment);
