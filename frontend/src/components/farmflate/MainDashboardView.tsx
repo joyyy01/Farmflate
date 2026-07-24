@@ -48,13 +48,13 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
   const forecastText = rainProb > 50 ? '집중호우에 유의하세요' : dynamicWeather.forecast;
 
   // Action / Risk parameters from Backend
-  const actionTitle = homeData?.todayAction?.title || '밭 주변 배수로 점검';
-  const actionReason = homeData?.todayAction?.reason || '집중호우에 대비해 물 빠짐을 점검해 주세요.';
+  const actionTitle = homeData?.todayAction?.title || '밭 주변 배수로가 막히지 않았는지 점검하세요.';
+  const actionReason = homeData?.todayAction?.reason || '향후 강수가 특정 시기에 몰릴 수 있어 밭 주변 배수 관리가 중요해요.';
 
   // Latest Region Analysis & Recommended Crop from Backend
   const topCropName = homeData?.latestRegionAnalysis?.topCrop?.cropName || '감자';
-  const topCropScore = homeData?.latestRegionAnalysis?.topCrop?.score || 91;
-  const topCropReason = homeData?.latestRegionAnalysis?.topCrop?.reason || '서늘한 기후와 배수가 우수한 토양 환경에 적합합니다.';
+  const topCropScore = homeData?.latestRegionAnalysis?.topCrop?.score || 96;
+  const topCropReason = homeData?.latestRegionAnalysis?.topCrop?.reason || '서늘한 기후 조건과 배수가 우수한 토양 생육 환경에 잘 맞습니다.';
 
   const getCropIcon = (cropName: string) => {
     if (cropName.includes('상추')) return '/svg-assets/crops/lettuce.svg';
@@ -108,7 +108,7 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
           </p>
         </div>
 
-        {/* Weather Card - Solid Light Sky Blue (No Routing / No Divider) */}
+        {/* Weather Card - Refined Layout & No Awkward Word Wraps */}
         {isNewUser ? (
           <div
             style={{
@@ -144,15 +144,15 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
                 최저 {minTemp}℃ &nbsp;|&nbsp; 최고 {maxTemp}℃ &nbsp;|&nbsp; 습도 {humidity}% &nbsp;|&nbsp; 바람 {wind}m/s
               </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <img
                 src={rainProb > 50 ? '/svg-assets/weather/rain.svg' : '/svg-assets/weather/partly-cloudy.svg'}
                 alt="날씨"
-                style={{ width: 68, height: 58, objectFit: 'contain' }}
+                style={{ width: 64, height: 56, objectFit: 'contain' }}
               />
-              <div style={{ width: 1, height: 50, backgroundColor: '#BAE6FD' }} />
-              <div style={{ fontSize: '0.76rem', lineHeight: 1.6, color: '#0C4A6E', textAlign: 'right' }}>
-                {forecastText}<br />
+              <div style={{ width: 1, height: 46, backgroundColor: '#BAE6FD' }} />
+              <div style={{ fontSize: '0.76rem', lineHeight: 1.5, color: '#0C4A6E', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                <span>{forecastText}</span><br />
                 <strong style={{ fontWeight: 800 }}>강수확률 {rainProb}%</strong>
               </div>
             </div>
@@ -185,21 +185,21 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
             <div style={{ border: '1px solid #E5E8EB', borderRadius: 20, overflow: 'hidden', backgroundColor: '#FFFFFF', boxSizing: 'border-box' }}>
               {tasks.map((task, idx) => (
                 <div key={task.id} onClick={() => toggleTask(task.id)} style={{
-                  display: 'grid', gridTemplateColumns: '38px minmax(0, 1fr) 54px 28px', alignItems: 'center',
-                  padding: '16px 18px', borderBottom: idx < tasks.length - 1 ? '1px solid #F1F5F9' : 'none', cursor: 'pointer', gap: '4px'
+                  display: 'grid', gridTemplateColumns: '32px minmax(0, 1fr) 48px 24px', alignItems: 'center',
+                  padding: '16px 18px', borderBottom: idx < tasks.length - 1 ? '1px solid #F3F4F6' : 'none', cursor: 'pointer', gap: '8px'
                 }}>
-                  <img src={task.icon} alt={task.title} style={{ width: 26, height: 26, objectFit: 'contain' }} />
+                  <img src={task.icon} alt={task.title} style={{ width: 24, height: 24, objectFit: 'contain' }} />
                   <span style={{
-                    fontSize: '0.9rem', fontWeight: 700, color: task.completed ? '#9CA3AF' : '#191F28',
-                    textDecoration: task.completed ? 'line-through' : 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+                    fontSize: '0.88rem', fontWeight: 700, color: task.completed ? '#9CA3AF' : '#191F28',
+                    textDecoration: task.completed ? 'line-through' : 'none', lineHeight: 1.35
                   }}>
                     {task.title}
                   </span>
-                  <span style={{ fontSize: '0.74rem', color: '#8E9892', fontWeight: 600 }}>{task.time}</span>
+                  <span style={{ fontSize: '0.74rem', color: '#8E9892', fontWeight: 600, textAlign: 'right' }}>{task.time}</span>
                   <div style={{
                     width: 22, height: 22, borderRadius: '50%', border: task.completed ? 'none' : '1.8px solid #CBD5E1',
                     backgroundColor: task.completed ? '#2FA86A' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    color: '#FFF', fontSize: '0.75rem', fontWeight: 900
+                    color: '#FFF', fontSize: '0.75rem', fontWeight: 900, justifySelf: 'end'
                   }}>
                     {task.completed && '✓'}
                   </div>
@@ -209,7 +209,7 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
           )}
         </div>
 
-        {/* EXCLUSIVE REGION SETTING CLICKABLE CARD - Ultra-sleek Gradient */}
+        {/* Primary Action Banner Card (New User) OR Today's Alert Action Card (Existing User) */}
         {isNewUser ? (
           <motion.div
             whileTap={{ scale: 0.98 }}
@@ -242,12 +242,12 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
             </div>
           </motion.div>
         ) : (
-          <div style={{ position: 'relative', width: '100%', minHeight: 150, border: '1px solid #FFE0A8', borderRadius: 20, backgroundColor: '#FFF8E8', padding: '20px', marginBottom: 20, boxSizing: 'border-box', overflow: 'hidden' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#FF7F2B', fontSize: '0.88rem', fontWeight: 850, marginBottom: 10 }}>
-              <AlertTriangle size={18} color="#FF7F2B" /> 오늘 조치사항 ({regionName})
+          <div style={{ position: 'relative', width: '100%', minHeight: 154, border: '1px solid #FFE0A8', borderRadius: 20, backgroundColor: '#FFF8E8', padding: '20px', marginBottom: 20, boxSizing: 'border-box', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#FF7F2B', fontSize: '0.86rem', fontWeight: 850, marginBottom: 8 }}>
+              <AlertTriangle size={18} color="#FF7F2B" /> 오늘 조치사항 ({shortRegion})
             </div>
-            <div style={{ fontSize: '0.86rem', lineHeight: 1.5, color: '#626A65', marginBottom: 14 }}>
-              <strong style={{ display: 'block', color: '#191F28', fontSize: '0.94rem', marginBottom: 2, fontWeight: 850 }}>
+            <div style={{ fontSize: '0.85rem', lineHeight: 1.5, color: '#626A65', marginBottom: 14, paddingRight: 80 }}>
+              <strong style={{ display: 'block', color: '#191F28', fontSize: '0.94rem', marginBottom: 3, fontWeight: 850 }}>
                 {actionTitle}
               </strong>
               {actionReason}
@@ -255,14 +255,14 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
             <button onClick={handleReportViewClick} style={{ height: 34, padding: '0 16px', border: '1px solid #FFCFB1', borderRadius: 18, backgroundColor: '#FFFFFF', color: '#FF7D31', fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer' }}>
               지역 리포트 보기 ›
             </button>
-            <img src="/svg-assets/weather/water-drop-alert.svg" alt="물방울 캐릭터" style={{ position: 'absolute', right: 12, bottom: 4, width: 84, height: 120, objectFit: 'contain' }} />
+            <img src="/svg-assets/weather/water-drop-alert.svg" alt="물방울 캐릭터" style={{ position: 'absolute', right: 10, bottom: 4, width: 80, height: 114, objectFit: 'contain' }} />
           </div>
         )}
 
         {/* Recommended Farming Advice Section */}
         <div style={{ marginBottom: 16 }}>
           <h2 style={{ fontSize: '1.12rem', fontWeight: 900, color: '#191F28', marginBottom: 12, letterSpacing: '-0.02em' }}>
-            {isNewUser ? '내 밭에 맞는 추천 농사 정보' : `${regionName} 추천 작물 정보`}
+            {isNewUser ? '내 밭에 맞는 추천 농사 정보' : `${shortRegion} 추천 작물 정보`}
           </h2>
 
           {isNewUser ? (
@@ -284,7 +284,7 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
                 <img src={topCropIcon} alt={topCropName} style={{ width: 44, height: 44, objectFit: 'contain' }} />
                 <div>
                   <strong style={{ fontSize: '0.9rem', color: '#154F36', fontWeight: 850 }}>TOP 1 추천: {topCropName} ({topCropScore}점)</strong>
-                  <p style={{ margin: '3px 0 0 0', fontSize: '0.78rem', color: '#6E7671', fontWeight: 500 }}>{topCropReason}</p>
+                  <p style={{ margin: '3px 0 0 0', fontSize: '0.78rem', color: '#6E7671', fontWeight: 500, lineHeight: 1.4 }}>{topCropReason}</p>
                 </div>
               </div>
               <ChevronRight size={20} color="#154F36" />
@@ -294,7 +294,7 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
 
       </div>
 
-      {/* Floating AI Button - 100% UNIFIED VECTOR SVG ICON (SAME ON ALL SCREENS) */}
+      {/* Floating AI Button - 100% UNIFIED VECTOR SVG ICON */}
       <button className="floating-ai-btn" onClick={onOpenAIChat} title="AI Assistant">
         <img src="/svg-assets/ui-icons/ai-chat.svg" alt="AI 채팅" style={{ width: 26, height: 26, filter: 'brightness(0) invert(1)' }} />
       </button>
