@@ -88,7 +88,7 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
       <div className="full-screen-view no-scrollbar" style={{ backgroundColor: '#FFFFFF', padding: '32px 20px 96px 20px', overflowY: 'auto' }}>
         
         {/* Top Wordmark Logo */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
           <img
             src="/svg-assets/brand/wordmark.svg"
             alt="Farmflate"
@@ -99,25 +99,26 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
         </div>
 
         {/* Dynamic User Greeting */}
-        <div style={{ marginBottom: 20 }}>
-          <h1 style={{ fontSize: '1.45rem', fontWeight: 900, color: '#191F28', lineHeight: 1.2, margin: '0 0 4px 0', letterSpacing: '-0.02em' }}>
+        <div style={{ marginBottom: 22 }}>
+          <h1 style={{ fontSize: '1.45rem', fontWeight: 900, color: '#191F28', lineHeight: 1.2, margin: '0 0 5px 0', letterSpacing: '-0.03em' }}>
             안녕하세요, {userName.endsWith('님') ? userName : `${userName}님`}
           </h1>
-          <p style={{ fontSize: '0.84rem', color: '#8B95A1', margin: 0, fontWeight: 500 }}>
+          <p style={{ fontSize: '0.84rem', color: '#8B95A1', margin: 0, fontWeight: 500, letterSpacing: '-0.01em' }}>
             {isNewUser ? '오늘의 밭 상황을 확인해보세요' : '오늘도 즐거운 농사 되세요!'}
           </p>
         </div>
 
-        {/* Weather Card - Solid Light Sky Blue (No Routing / No Gradient) */}
+        {/* Weather Card - Micro-polished Solid Sky Blue */}
         {isNewUser ? (
           <div
             style={{
-              backgroundColor: '#C5EAFA', borderRadius: 18,
-              height: 64, width: '100%', marginBottom: 20, cursor: 'default',
+              backgroundColor: '#C5EAFA', borderRadius: 20,
+              border: '1px solid rgba(255, 255, 255, 0.4)',
+              height: 62, width: '100%', marginBottom: 22, cursor: 'default',
               display: 'flex', alignItems: 'center', justifyContent: 'center'
             }}
           >
-            <span style={{ fontSize: '0.94rem', fontWeight: 700, color: '#FFFFFF', letterSpacing: '-0.01em' }}>
+            <span style={{ fontSize: '0.94rem', fontWeight: 750, color: '#FFFFFF', letterSpacing: '-0.02em' }}>
               날씨 데이터가 없어요
             </span>
           </div>
@@ -126,7 +127,7 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
             position: 'relative', width: '100%', minHeight: 116, borderRadius: 20,
             background: 'linear-gradient(135deg, #F0F9FF 0%, #E0F2FE 100%)',
             border: '1px solid #BAE6FD',
-            padding: '18px 20px', marginBottom: 20, boxSizing: 'border-box',
+            padding: '18px 20px', marginBottom: 22, boxSizing: 'border-box',
             display: 'flex', justifyContent: 'space-between', alignItems: 'center'
           }}>
             <div>
@@ -158,13 +159,13 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
           </div>
         )}
 
-        {/* Thin Divider */}
-        <div style={{ borderBottom: '1px solid #ECEFED', margin: '20px 0' }} />
+        {/* Thin Micro-Divider */}
+        <div style={{ borderBottom: '1px solid #F1F4F3', margin: '22px 0' }} />
 
         {/* Today's Tasks Section */}
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-            <h2 style={{ fontSize: '1.15rem', fontWeight: 900, color: '#191F28', margin: 0, letterSpacing: '-0.02em' }}>
+        <div style={{ marginBottom: 22 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <h2 style={{ fontSize: '1.12rem', fontWeight: 900, color: '#191F28', margin: 0, letterSpacing: '-0.02em' }}>
               오늘 해야 할 일
             </h2>
             {!isNewUser && (
@@ -176,10 +177,10 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
 
           {isNewUser ? (
              <div style={{
-               backgroundColor: '#F2F2F2', borderRadius: 18,
+               backgroundColor: '#F8FAF8', borderRadius: 20, border: '1px solid #EAEFEA',
                height: 56, padding: '0 20px', display: 'flex', alignItems: 'center'
              }}>
-               <span style={{ fontSize: '0.9rem', color: '#555555', fontWeight: 600 }}>
+               <span style={{ fontSize: '0.88rem', color: '#6E7671', fontWeight: 650, letterSpacing: '-0.01em' }}>
                  오늘 해야할 일이 없어요
                </span>
              </div>
@@ -211,36 +212,43 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
           )}
         </div>
 
-        {/* Thin Divider */}
-        <div style={{ borderBottom: '1px solid #ECEFED', margin: '20px 0' }} />
+        {/* Thin Micro-Divider */}
+        <div style={{ borderBottom: '1px solid #F1F4F3', margin: '22px 0' }} />
 
-        {/* EXCLUSIVE REGION SETTING CLICKABLE CARD - Linear Gradient */}
+        {/* EXCLUSIVE REGION SETTING CLICKABLE CARD - Ultra-sleek Gradient & Circular Arrow Backdrop */}
         {isNewUser ? (
           <motion.div
             whileTap={{ scale: 0.98 }}
             onClick={onGoToExplore}
             style={{
-              position: 'relative', width: '100%', borderRadius: 24,
-              background: 'linear-gradient(135deg, #FFFFFF 0%, #F3F9FE 40%, #D5F1FF 100%)',
-              border: '1px solid #CEECFC',
-              padding: '26px 24px 24px 24px', marginBottom: 20, cursor: 'pointer',
+              position: 'relative', width: '100%', borderRadius: 26,
+              background: 'linear-gradient(135deg, #FFFFFF 0%, #F1F9FE 45%, #D2F0FF 100%)',
+              border: '1px solid #C4E9FC',
+              padding: '28px 24px 24px 24px', marginBottom: 22, cursor: 'pointer',
               boxSizing: 'border-box'
             }}
           >
-            <h2 style={{ fontSize: '1.35rem', fontWeight: 900, color: '#191F28', margin: '0 0 8px 0', lineHeight: 1.3, letterSpacing: '-0.02em' }}>
+            <h2 style={{ fontSize: '1.38rem', fontWeight: 900, color: '#191F28', margin: '0 0 6px 0', lineHeight: 1.32, letterSpacing: '-0.03em' }}>
               지역 입력하고<br />맞춤형 정보 받아보기
             </h2>
-            <p style={{ fontSize: '0.84rem', color: '#5B788C', margin: 0, fontWeight: 500 }}>
+            <p style={{ fontSize: '0.84rem', color: '#557285', margin: 0, fontWeight: 500, letterSpacing: '-0.01em' }}>
               재배 희망지역, 희망작물 입력 후 점수 확인하기
             </p>
             
-            {/* Bottom Right Arrow */}
+            {/* Bottom Right Arrow in Circular White Button Backdrop */}
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
-              <MoveRight size={28} color="#191F28" strokeWidth={2.2} />
+              <div style={{
+                width: 42, height: 42, borderRadius: '50%',
+                backgroundColor: '#FFFFFF', border: '1px solid #C4E9FC',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.03)'
+              }}>
+                <MoveRight size={22} color="#191F28" strokeWidth={2.4} />
+              </div>
             </div>
           </motion.div>
         ) : (
-          <div style={{ position: 'relative', width: '100%', minHeight: 150, border: '1px solid #FFE0A8', borderRadius: 20, backgroundColor: '#FFF8E8', padding: '20px', marginBottom: 20, boxSizing: 'border-box', overflow: 'hidden' }}>
+          <div style={{ position: 'relative', width: '100%', minHeight: 150, border: '1px solid #FFE0A8', borderRadius: 20, backgroundColor: '#FFF8E8', padding: '20px', marginBottom: 22, boxSizing: 'border-box', overflow: 'hidden' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#FF7F2B', fontSize: '0.88rem', fontWeight: 850, marginBottom: 10 }}>
               <AlertTriangle size={18} color="#FF7F2B" /> 오늘 조치사항 ({regionName})
             </div>
@@ -257,24 +265,25 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
           </div>
         )}
 
-        {/* Thin Divider */}
-        <div style={{ borderBottom: '1px solid #ECEFED', margin: '20px 0' }} />
+        {/* Thin Micro-Divider */}
+        <div style={{ borderBottom: '1px solid #F1F4F3', margin: '22px 0' }} />
 
-        {/* Recommended Farming Advice Section - No Routing in New User state */}
+        {/* Recommended Farming Advice Section - Micro-polished Soft Green */}
         <div style={{ marginBottom: 16 }}>
-          <h2 style={{ fontSize: '1.15rem', fontWeight: 900, color: '#191F28', marginBottom: 14, letterSpacing: '-0.02em' }}>
+          <h2 style={{ fontSize: '1.12rem', fontWeight: 900, color: '#191F28', marginBottom: 12, letterSpacing: '-0.02em' }}>
             {isNewUser ? '내 밭에 맞는 추천 농사 정보' : `${regionName} 추천 작물 정보`}
           </h2>
 
           {isNewUser ? (
              <div
                style={{
-                 backgroundColor: '#E2F1E5', borderRadius: 18,
+                 backgroundColor: '#E4F3E7', borderRadius: 20,
+                 border: '1px solid #D1EADB',
                  height: 60, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
                  cursor: 'default'
                }}
              >
-               <span style={{ fontSize: '0.92rem', fontWeight: 800, color: '#2E6848' }}>
+               <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#154F36', letterSpacing: '-0.02em' }}>
                  아직 추천 정보가 없어요
                </span>
              </div>
