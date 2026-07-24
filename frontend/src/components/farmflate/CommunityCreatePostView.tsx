@@ -4,7 +4,7 @@ import { Folder, Link as LinkIcon, Image as ImageIcon, X } from 'lucide-react';
 
 interface CommunityCreatePostViewProps {
   onCancel: () => void;
-  onSubmitPost: (title: string, content: string, category?: string, locationTag?: string, imageUrl?: string) => void;
+  onSubmitPost: (title: string, content: string, category?: string, locationTag?: string, imageUrl?: string) => void | Promise<void>;
   userRegion?: string;
 }
 
@@ -15,6 +15,7 @@ export const CommunityCreatePostView: React.FC<CommunityCreatePostViewProps> = (
 }) => {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [attachedFile, setAttachedFile] = useState<{ name: string; size: string; url?: string } | null>({
     name: '2873278_IMG',
     size: '3.1MB'
@@ -37,15 +38,20 @@ export const CommunityCreatePostView: React.FC<CommunityCreatePostViewProps> = (
     }
   };
 
-  const handleSubmit = () => {
-    if (!title.trim() || !content.trim()) return;
-    onSubmitPost(
-      title.trim(),
-      content.trim(),
-      '농가 노하우',
-      userRegion,
-      attachedFile?.url
-    );
+  const handleSubmit = async () => {
+    if (!title.trim() || !content.trim() || isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      await onSubmitPost(
+        title.trim(),
+        content.trim(),
+        '농가 노하우',
+        userRegion,
+        attachedFile?.url
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -75,24 +81,24 @@ export const CommunityCreatePostView: React.FC<CommunityCreatePostViewProps> = (
             <motion.button
               whileTap={{ scale: 0.95 }}
               onClick={handleSubmit}
-              disabled={!title.trim() || !content.trim()}
+              disabled={!title.trim() || !content.trim() || isSubmitting}
               style={{
                 height: 36,
                 padding: '0 18px',
                 borderRadius: 18,
-                backgroundColor: (!title.trim() || !content.trim()) ? '#C8D5CE' : '#2FA86A',
+                backgroundColor: (!title.trim() || !content.trim() || isSubmitting) ? '#C8D5CE' : '#2FA86A',
                 color: '#FFFFFF',
                 fontSize: '0.88rem',
                 fontWeight: 850,
                 border: 'none',
-                cursor: (!title.trim() || !content.trim()) ? 'default' : 'pointer',
+                cursor: (!title.trim() || !content.trim() || isSubmitting) ? 'default' : 'pointer',
                 whiteSpace: 'nowrap',
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center'
               }}
             >
-              게시
+              {isSubmitting ? '등록 중...' : '게시'}
             </motion.button>
           </div>
         </div>
