@@ -22,7 +22,7 @@ export const AnalyzingView: React.FC<AnalyzingViewProps> = ({
   onBack,
   onLogin
 }) => {
-  const isCropMode = analysisType === 'crop' || (!!cropName && cropName !== '작물' && cropName !== '지역 분석 전');
+  const isCropMode = analysisType === 'crop';
 
   // 1. Regional Analysis Dedicated Steps & Terminology
   const regionSteps = [
