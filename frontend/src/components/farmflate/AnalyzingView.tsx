@@ -1,20 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { motion } from 'framer-motion';
 import { EarthAnalysisIllustration } from '../illustrations/EarthAnalysisIllustration';
+import type { AnalysisState } from '../../services/reportLifecycle';
 
 interface AnalyzingViewProps {
   regionName: string;
-  onComplete: () => void;
-  mode?: 'region' | 'crop';
+  state: AnalysisState;
+  onRetry: () => void;
+  onBack: () => void;
+  onLogin: () => void;
 }
 
 export const AnalyzingView: React.FC<AnalyzingViewProps> = ({
-  regionName: _regionName,
-  onComplete,
-  mode = 'region'
+  regionName,
+  state,
+  onRetry,
+  onBack,
+  onLogin
 }) => {
-  const [activeStep, setActiveStep] = useState(0);
-
   const regionSteps = [
     '지역 정보 확인 중',
     '기상청 데이터를 불러오는 중',
@@ -23,35 +26,14 @@ export const AnalyzingView: React.FC<AnalyzingViewProps> = ({
     '지역 농사 환경 점수를 산출하는 중'
   ];
 
-  const cropSteps = [
-    '선택한 작물을 확인하는 중',
-    '재배 방식을 적용하는 중',
-    '기후 적합도를 계산하는 중',
-    '토양 적합도를 계산하는 중',
-    '핵심 위험 요소를 분석하는 중',
-    '시작 전 준비사항을 생성하는 중'
-  ];
-
-  const steps = mode === 'region' ? regionSteps : cropSteps;
-  const title = mode === 'region' ? '지역 환경 분석 중...' : '농작물 적합도 분석 중...';
-  const subtitle = mode === 'region'
-    ? `선택한 지역의 기후와 토양 데이터를\n분석하고 있습니다`
-    : `입력한 밭 정보를 바탕으로 재배 적합도를 계산하고 있습니다`;
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setActiveStep(prev => {
-        if (prev < steps.length - 1) {
-          return prev + 1;
-        } else {
-          clearInterval(timer);
-          setTimeout(() => onComplete(), 800);
-          return prev;
-        }
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [onComplete, steps.length]);
+  const steps = regionSteps;
+  const completedSteps = state.kind === 'POLLING' ? state.completedSteps : [];
+  const activeStep = state.kind === 'POLLING' && state.currentStep ? Math.max(0, steps.findIndex(step => step === state.currentStep)) : state.kind === 'SUBMITTING' ? 0 : 0;
+  const isWorking = state.kind === 'SUBMITTING' || state.kind === 'POLLING';
+  const isUnauthorized = state.kind === 'UNAUTHORIZED';
+  const errorMessage = state.kind === 'ERROR' || state.kind === 'UNAUTHORIZED' ? state.message : null;
+  const title = isWorking ? '지역 환경 분석 중...' : '분석을 완료하지 못했어요';
+  const subtitle = isWorking ? `${regionName}의 기후와 토양 데이터를\n서버에서 확인하고 있습니다` : errorMessage ?? '선택한 지역은 그대로 유지되어 있습니다.';
 
   return (
     <div className="full-screen-view" style={{
@@ -101,8 +83,8 @@ export const AnalyzingView: React.FC<AnalyzingViewProps> = ({
         {/* Animated Steps */}
         <div style={{ width: '100%', maxWidth: 280, display: 'flex', flexDirection: 'column', gap: 12 }}>
           {steps.map((text, idx) => {
-            const isCompleted = idx < activeStep;
-            const isCurrent = idx === activeStep;
+            const isCompleted = completedSteps.includes(text) || (isWorking && idx < activeStep);
+            const isCurrent = isWorking && idx === activeStep;
 
             return (
               <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -155,11 +137,18 @@ export const AnalyzingView: React.FC<AnalyzingViewProps> = ({
           marginTop: 28,
           lineHeight: 1.55
         }}>
-          {mode === 'region'
-            ? '공공데이터를 기반으로 분석 중입니다.\n잠시만 기다려 주세요.'
-            : '현재 지역 환경과 작물 기준을 비교하여\n재배 적합도를 분석하고 있습니다.'
+          {isWorking
+            ? '공공데이터를 기반으로 분석 중입니다.\n완료 상태가 확인될 때까지 기다려 주세요.'
+            : '분석 실패 시에는 리포트로 이동하지 않습니다.\n다시 시도하거나 지역을 변경할 수 있어요.'
           }
         </p>
+
+        {!isWorking && (
+          <div role="alert" aria-live="assertive" style={{ width: '100%', display: 'flex', gap: 8, marginTop: 8 }}>
+            <button type="button" onClick={onBack} style={{ flex: 1, height: 44, borderRadius: 12, border: '1px solid #D1DFD7', background: '#FFFFFF', color: '#2FA86A', fontWeight: 800 }}>지역 변경</button>
+            {isUnauthorized ? <button type="button" onClick={onLogin} className="btn-farm-primary" style={{ flex: 1, height: 44, borderRadius: 12 }}>로그인</button> : <button type="button" onClick={onRetry} className="btn-farm-primary" style={{ flex: 1, height: 44, borderRadius: 12 }}>다시 시도</button>}
+          </div>
+        )}
 
       </div>
     </div>

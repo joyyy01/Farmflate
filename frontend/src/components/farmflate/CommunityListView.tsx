@@ -7,6 +7,7 @@ import { CommunityPostDetailModal } from './CommunityPostDetailModal';
 
 interface CommunityListViewProps {
   posts: CommunityPost[];
+  loadError?: string | null;
   onOpenAIChat: () => void;
   onOpenWrite?: () => void;
   activeTab: TabState;
@@ -18,6 +19,7 @@ interface CommunityListViewProps {
 
 export const CommunityListView: React.FC<CommunityListViewProps> = ({
   posts,
+  loadError,
   onOpenAIChat,
   onOpenWrite,
   activeTab,
@@ -28,19 +30,11 @@ export const CommunityListView: React.FC<CommunityListViewProps> = ({
 }) => {
   const [selectedPost, setSelectedPost] = useState<CommunityPost | null>(null);
 
-  const getTagBadgeStyle = (tagText: string, index: number) => {
-    if (tagText.includes('전북') || tagText.includes('고창') || index % 3 === 0) {
-      return { bg: '#E9F7EC', color: '#2FA86A' }; // Soft green pill
-    }
-    if (tagText.includes('경북') || tagText.includes('상주') || index % 3 === 1) {
-      return { bg: '#E0F2FE', color: '#0284C7' }; // Soft blue pill
-    }
-    return { bg: '#FFF4DC', color: '#FF842F' }; // Soft yellow/orange pill for 장터
-  };
+  const tagBadgeStyle = { bg: '#E9F7EC', color: '#2FA86A' };
 
   // Active post detail reference
   const activeDetailPost = selectedPost
-    ? posts.find(p => p.id === selectedPost.id) || selectedPost
+    ? posts.find(p => p.id === selectedPost.id) ?? null
     : null;
 
   return (
@@ -67,6 +61,12 @@ export const CommunityListView: React.FC<CommunityListViewProps> = ({
         </div>
 
         {/* Post Cards List or Empty State */}
+        {loadError && (
+          <div role="alert" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px', marginBottom: 16, textAlign: 'center', borderRadius: 16, backgroundColor: '#FFF4F0' }}>
+            <h4 style={{ fontSize: '1.05rem', fontWeight: 850, color: '#191F28', margin: '0 0 6px 0' }}>게시글을 불러오지 못했습니다.</h4>
+            <p style={{ fontSize: '0.82rem', color: '#B54708', margin: 0 }}>{loadError}</p>
+          </div>
+        )}
         {posts.length === 0 ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 20px', textAlign: 'center' }}>
             <img src="/svg-assets/brand/mascot/guide.svg" alt="마스코트" style={{ width: 64, height: 64, marginBottom: 16 }} />
@@ -78,9 +78,9 @@ export const CommunityListView: React.FC<CommunityListViewProps> = ({
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {posts.map((post, idx) => {
+            {posts.map(post => {
               const tagText = post.tagLocation || post.category;
-              const badge = getTagBadgeStyle(tagText, idx);
+              const badge = tagBadgeStyle;
 
               return (
                 <motion.div

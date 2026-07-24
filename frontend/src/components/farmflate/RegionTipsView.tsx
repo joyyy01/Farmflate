@@ -48,36 +48,21 @@ export const RegionTipsView: React.FC<RegionTipsViewProps> = ({
     }
     return {
       icon: '/svg-assets/weather/rain.svg',
-      category: '배수 관리',
+      category: '농사 TIP',
       badgeBg: '#E9F7EC',
       badgeColor: '#2FA86A'
     };
   };
 
-  const rawTips = report?.tips && report.tips.length > 0 ? report.tips : [
-    {
-      tipCode: 'DRAINAGE_BEFORE_RAIN',
-      title: '장마철 배수 관리가 중요해요',
-      summary: '이 지역은 여름철 많은 비가 몰릴 수 있어 밭 주변 배수로 점검이 필요해요.',
-      sourceName: '농사로 공식자료',
-      sourceUrl: 'https://www.nongsaro.go.kr'
-    },
-    {
-      tipCode: 'SOIL_TEST_GUIDE',
-      title: '시군구 농업기술센터 토양검정 활용',
-      summary: '무료 토양 검정 서비스를 통해 정확한 pH와 비료 처방전을 받아보세요.',
-      sourceName: '농촌진흥청 흙토람',
-      sourceUrl: 'https://soil.rda.go.kr'
-    }
-  ];
+  const rawTips = report?.tips?.length ? report.tips : (report?.prioritizedActions ?? []);
 
   const dynamicTips = rawTips.map(t => {
-    const meta = getTipMeta(t.title, t.tipCode);
+    const meta = getTipMeta(t.title ?? '', t.tipCode ?? undefined);
     return {
-      title: t.title,
-      desc: t.summary,
-      linkText: `${t.sourceName || '공식 자료'} 보기`,
-      sourceUrl: t.sourceUrl || 'https://www.nongsaro.go.kr',
+      title: t.title ?? 'TIP 제목 정보 없음',
+      desc: t.reason ?? 'TIP 설명 정보가 제공되지 않았습니다.',
+      linkText: `${t.sourceName || '출처'} 보기`,
+      sourceUrl: t.sourceUrl,
       icon: meta.icon,
       category: meta.category,
       badgeBg: meta.badgeBg,
@@ -103,13 +88,14 @@ export const RegionTipsView: React.FC<RegionTipsViewProps> = ({
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <CheckCircle2 size={16} color="#2FA86A" />
             <p style={{ fontSize: '0.84rem', color: '#6E7671', fontWeight: 600, margin: 0 }}>
-              농사로 공식 자료를 바탕으로 정리했어요
+              제공된 분석 자료를 바탕으로 정리했어요
             </p>
           </div>
         </div>
 
         {/* Premium Diversified Tip Cards */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {dynamicTips.length === 0 && <div style={{ backgroundColor: '#F8FAF8', borderRadius: 20, padding: '20px', border: '1px solid #EAEFEA', color: '#6E7671', fontSize: '0.86rem' }}>현재 리포트에 제공된 농사 TIP이 없습니다.</div>}
           {dynamicTips.map((tip, idx) => (
             <motion.div 
               key={idx}
@@ -156,8 +142,8 @@ export const RegionTipsView: React.FC<RegionTipsViewProps> = ({
                     {tip.desc}
                   </p>
 
-                  <button
-                    onClick={() => window.open(tip.sourceUrl, '_blank')}
+                  {tip.sourceUrl && <button
+                    onClick={() => window.open(tip.sourceUrl || undefined, '_blank')}
                     style={{
                       backgroundColor: '#FFFFFF', border: '1px solid #D1DFD7',
                       borderRadius: 10, padding: '8px 14px',
@@ -168,7 +154,7 @@ export const RegionTipsView: React.FC<RegionTipsViewProps> = ({
                     }}
                   >
                     {tip.linkText} <ChevronRight size={14} color="#2FA86A" />
-                  </button>
+                  </button>}
                 </div>
               </div>
             </motion.div>

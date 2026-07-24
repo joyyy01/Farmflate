@@ -23,8 +23,8 @@ interface MyPageViewProps {
 
 export const MyPageView: React.FC<MyPageViewProps> = ({
   userName = '사용자님',
-  userEmail = 'user@farmflate.com',
-  userRegion = '전북 고창군',
+  userEmail = '이메일 정보 없음',
+  userRegion = '지역 정보 없음',
   posts = [],
   onOpenAIChat,
   activeTab,
@@ -38,7 +38,7 @@ export const MyPageView: React.FC<MyPageViewProps> = ({
   const [activeModal, setActiveModal] = useState<'account' | 'crops' | 'saved' | 'my_posts' | 'support' | null>(null);
   const [selectedPost, setSelectedPost] = useState<CommunityPost | null>(null);
 
-  /* Real Favorite Crops State from LocalStorage */
+  /* User-selected favorites are not analysis recommendations. */
   const availableCrops = [
     { name: '감자', icon: '/svg-assets/crops/potato.svg' },
     { name: '상추', icon: '/svg-assets/crops/lettuce.svg' },
@@ -52,7 +52,7 @@ export const MyPageView: React.FC<MyPageViewProps> = ({
 
   const [favoriteCrops, setFavoriteCrops] = useState<string[]>(() => {
     const saved = localStorage.getItem('farmflate_favorite_crops');
-    return saved ? JSON.parse(saved) : ['감자', '상추'];
+    return saved ? JSON.parse(saved) : [];
   });
 
   const toggleFavoriteCrop = (cropName: string) => {
@@ -67,38 +67,40 @@ export const MyPageView: React.FC<MyPageViewProps> = ({
   const [expandedFaq, setExpandedFaq] = useState<number | null>(0);
   const [inquiryText, setInquiryText] = useState('');
   const [inquirySuccess, setInquirySuccess] = useState(false);
+  const [inquiryError, setInquiryError] = useState<string | null>(null);
   const [isSubmittingInquiry, setIsSubmittingInquiry] = useState(false);
 
   const faqs = [
     {
-      q: '토양 및 날씨 분석 정보는 어떻게 얻어오나요?',
-      a: '농촌진흥청(흙람보) 토양분석 공공 데이터 API 및 기상청 단기예보 실시간 데이터를 연동하여 고창군 등 각 지역 환경을 가중치 엔진으로 분석합니다.'
+      q: '지역 분석 결과는 어떻게 확인하나요?',
+      a: '지역 분석 화면에서 서버가 제공한 결과와 데이터 근거를 확인할 수 있습니다. 정보가 없으면 자료 부족으로 표시됩니다.'
     },
     {
-      q: '추천 작물 점수는 어떤 기준으로 계산되나요?',
-      a: '지역 대표 토양 pH, 유기물 함량, 일조시간, 계절 강수확률, 서리/집중호우 위험도를 4대 평가 지표로 합산해 100점 만점으로 시뮬레이션합니다.'
+      q: '추천 작물 정보가 없으면 어떻게 하나요?',
+      a: '분석이 완료된 뒤 서버에서 추천 작물 정보를 제공하면 리포트에 표시됩니다.'
     },
     {
       q: '1:1 문의 응답은 얼마나 걸리나요?',
-      a: '영업일 기준 24시간 이내에 가입하신 카카오 이메일 계정으로 상세 답변을 보내드립니다.'
+      a: '문의 내용은 접수 후 서비스 운영 정책에 따라 확인됩니다.'
     }
   ];
 
   const savedPosts = posts.filter(p => p.isSaved);
-  const myAuthoredPosts = posts.filter(p => p.author === userName || p.author.includes('초보농부') || p.author.includes('사용자'));
+  const myAuthoredPosts = posts.filter(p => p.author === userName);
 
   const handleInquirySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inquiryText.trim() || isSubmittingInquiry) return;
     
     setIsSubmittingInquiry(true);
+    setInquiryError(null);
     try {
       await ApiService.submitInquiry({ inquiryText: inquiryText.trim() });
       setInquirySuccess(true);
       setInquiryText('');
-      setTimeout(() => setInquirySuccess(false), 3500);
     } catch (err) {
       console.warn('Inquiry submit failed:', err);
+      setInquiryError(err instanceof Error ? err.message : '문의 접수에 실패했습니다.');
     } finally {
       setIsSubmittingInquiry(false);
     }
@@ -422,6 +424,11 @@ export const MyPageView: React.FC<MyPageViewProps> = ({
                   {inquirySuccess && (
                     <div style={{ backgroundColor: '#E9F7EC', color: '#2FA86A', borderRadius: 12, padding: '10px 14px', fontSize: '0.82rem', fontWeight: 800, textAlign: 'center' }}>
                       ✓ 문의사항이 성공적으로 접수되었습니다!
+                    </div>
+                  )}
+                  {inquiryError && (
+                    <div role="alert" style={{ backgroundColor: '#FFF4F0', color: '#B54708', borderRadius: 12, padding: '10px 14px', fontSize: '0.82rem', fontWeight: 700, textAlign: 'center' }}>
+                      {inquiryError}
                     </div>
                   )}
                   <button type="submit" disabled={!inquiryText.trim() || isSubmittingInquiry} className="btn-farm-primary" style={{ width: '100%', height: 46, borderRadius: 14, fontSize: '0.9rem', gap: 6 }}>

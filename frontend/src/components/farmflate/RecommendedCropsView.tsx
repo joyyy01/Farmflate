@@ -12,7 +12,7 @@ interface RecommendedCropsViewProps {
 }
 
 export const RecommendedCropsView: React.FC<RecommendedCropsViewProps> = ({
-  districtName = '고창군',
+  districtName,
   report,
   onBack,
   onOpenAIChat: _onOpenAIChat,
@@ -20,29 +20,14 @@ export const RecommendedCropsView: React.FC<RecommendedCropsViewProps> = ({
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<'all' | 'leaf' | 'root' | 'fruit'>('all');
 
-  const defaultCrops = [
-    { id: 'potato', name: '감자', category: 'root', score: 91, desc: '서늘한 기후 및 배수 우수 토성', icon: '/svg-assets/crops/potato.svg' },
-    { id: 'lettuce', name: '상추', category: 'leaf', score: 85, desc: '봄·가을 서늘한 기간이 긺', icon: '/svg-assets/crops/lettuce.svg' },
-    { id: 'pear', name: '배', category: 'fruit', score: 78, desc: '일조량 풍부 및 큰 일교차', icon: '/svg-assets/crops/pear.svg' },
-    { id: 'cabbage', name: '배추', category: 'leaf', score: 84, desc: '토양 유기물 함량 적정', icon: '/svg-assets/crops/cabbage.svg' },
-    { id: 'tomato', name: '토마토', category: 'fruit', score: 80, desc: '시설 및 노지 배수 양호', icon: '/svg-assets/crops/tomato.svg' },
-    { id: 'pepper', name: '고추', category: 'fruit', score: 82, desc: '여름철 볕과 지온 유지 유리', icon: '/svg-assets/crops/pepper.svg' }
-  ];
-
-  const crops = report?.recommendedCrops && report.recommendedCrops.length > 0 ? report.recommendedCrops.map(rc => {
-    const isRoot = rc.cropName.includes('감자') || rc.cropName.includes('당근') || rc.cropName.includes('고구마');
-    const isLeaf = rc.cropName.includes('상추') || rc.cropName.includes('배추') || rc.cropName.includes('시금치');
-    const cat = isRoot ? 'root' : isLeaf ? 'leaf' : 'fruit';
-    const icon = isRoot ? '/svg-assets/crops/potato.svg' : isLeaf ? '/svg-assets/crops/lettuce.svg' : '/svg-assets/crops/pear.svg';
-    return {
-      id: rc.cropCode.toLowerCase(),
-      name: rc.cropName,
-      category: cat,
-      score: rc.score,
-      desc: rc.positiveReasons && rc.positiveReasons.length > 0 ? rc.positiveReasons[0] : '지역 환경 적합도가 높습니다.',
-      icon
-    };
-  }) : defaultCrops;
+  const crops = (report?.recommendedCrops ?? []).map((rc, index) => ({
+    id: rc.cropCode ?? `${rc.rank ?? index}-${rc.cropName ?? 'crop'}`,
+    name: rc.cropName ?? '작물명 정보 없음',
+    category: rc.category ?? 'unknown',
+    score: rc.score,
+    desc: rc.positiveReasons[0] ?? rc.cautionReason ?? '근거 자료가 제공되지 않았습니다.',
+    icon: rc.iconUrl
+  }));
 
   const filteredCrops = crops.filter(c => selectedCategory === 'all' || c.category === selectedCategory);
 
@@ -77,7 +62,7 @@ export const RecommendedCropsView: React.FC<RecommendedCropsViewProps> = ({
 
         {/* Title */}
         <div style={{ marginBottom: 20 }}>
-          <span style={{ fontSize: '0.8rem', color: '#6F7772', fontWeight: 600 }}>{districtName} 분석 기준</span>
+          <span style={{ fontSize: '0.8rem', color: '#6F7772', fontWeight: 600 }}>{districtName || '지역 정보 없음'} 분석 기준</span>
           <h2 style={{ fontSize: '1.45rem', fontWeight: 900, color: '#154F36', margin: '2px 0 0 0' }}>
             가장 잘 자라는 작물 TOP {crops.length}
           </h2>
@@ -133,11 +118,12 @@ export const RecommendedCropsView: React.FC<RecommendedCropsViewProps> = ({
 
         {/* Dynamic Crop Cards with Pure Vector SVG Icons */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {filteredCrops.length === 0 && <div style={{ backgroundColor: '#F8FAF8', borderRadius: 18, border: '1px solid #E1E8E4', padding: '18px', color: '#6F7772', fontSize: '0.86rem' }}>현재 조건에서 제공된 추천 작물이 없습니다.</div>}
           {filteredCrops.map(c => (
             <motion.div
               key={c.id}
               whileTap={{ scale: 0.98 }}
-              onClick={() => onSelectCrop(c.name)}
+              onClick={() => c.name !== '작물명 정보 없음' && onSelectCrop(c.name)}
               style={{
                 backgroundColor: '#FFFFFF',
                 borderRadius: 18,
@@ -151,12 +137,12 @@ export const RecommendedCropsView: React.FC<RecommendedCropsViewProps> = ({
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                <img src={c.icon} alt={c.name} style={{ width: 44, height: 44, objectFit: 'contain' }} />
+                {c.icon && <img src={c.icon} alt={c.name} style={{ width: 44, height: 44, objectFit: 'contain' }} />}
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: '1rem', fontWeight: 900, color: '#154F36' }}>{c.name}</span>
                     <span style={{ backgroundColor: '#E9F7EC', color: '#2FA86A', fontSize: '0.74rem', fontWeight: 800, padding: '2px 8px', borderRadius: 6 }}>
-                      {c.score}점
+                      {c.score === null || c.score === undefined ? '자료 부족' : `${c.score}점`}
                     </span>
                   </div>
                   <div style={{ fontSize: '0.78rem', color: '#6F7772', fontWeight: 500, marginTop: 2 }}>

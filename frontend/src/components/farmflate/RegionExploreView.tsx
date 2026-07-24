@@ -1,26 +1,68 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, ChevronDown, MapPin } from 'lucide-react';
-import { KOREA_REGIONS } from '../../services/farmEngine';
+import { ApiError, ApiService } from '../../services/api';
+import type { RegionAnalysisRequest, RegionDto } from '../../services/api';
 
 interface RegionExploreViewProps {
   onBack: () => void;
-  onStartAnalysis: (province: string, district: string) => void;
+  onStartAnalysis: (request: Omit<RegionAnalysisRequest, 'idempotencyKey'>) => void;
 }
 
 export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
   onBack,
   onStartAnalysis
 }) => {
-  const provinces = Object.keys(KOREA_REGIONS);
-  const [selectedProvince, setSelectedProvince] = useState('전북특별자치도');
-  const districts = KOREA_REGIONS[selectedProvince] || [];
-  const [selectedDistrict, setSelectedDistrict] = useState(districts[0] || '고창군');
+  const [provinces, setProvinces] = useState<RegionDto[]>([]);
+  const [districts, setDistricts] = useState<RegionDto[]>([]);
+  const [selectedProvinceCode, setSelectedProvinceCode] = useState('');
+  const [selectedDistrictCode, setSelectedDistrictCode] = useState('');
+  const [address, setAddress] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const handleProvinceSelect = (p: string) => {
-    setSelectedProvince(p);
-    const newDistricts = KOREA_REGIONS[p] || [];
-    setSelectedDistrict(newDistricts[0] || '');
+  const selectedProvince = provinces.find(region => region.sidoCode === selectedProvinceCode);
+  const selectedDistrict = districts.find(region => region.sigunguCode === selectedDistrictCode);
+
+  const loadProvinces = async () => {
+    setIsLoading(true);
+    setLoadError(null);
+    try {
+      const next = await ApiService.getSidos();
+      setProvinces(next);
+      setSelectedProvinceCode(previous => previous || next[0]?.sidoCode || '');
+    } catch (error) {
+      setLoadError(error instanceof ApiError ? error.message : '지역 목록을 불러오지 못했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => { void loadProvinces(); }, []);
+
+  useEffect(() => {
+    if (!selectedProvinceCode) {
+      setDistricts([]);
+      setSelectedDistrictCode('');
+      return;
+    }
+    let isCurrent = true;
+    setIsLoading(true);
+    setLoadError(null);
+    void ApiService.getSigungus(selectedProvinceCode)
+      .then(next => {
+        if (!isCurrent) return;
+        setDistricts(next);
+        setSelectedDistrictCode(next[0]?.sigunguCode || '');
+      })
+      .catch(error => { if (isCurrent) setLoadError(error instanceof ApiError ? error.message : '시/군/구 목록을 불러오지 못했습니다.'); })
+      .finally(() => { if (isCurrent) setIsLoading(false); });
+    return () => { isCurrent = false; };
+  }, [selectedProvinceCode]);
+
+  const handleProvinceSelect = (code: string) => {
+    setSelectedProvinceCode(code);
+    setSelectedDistrictCode('');
   };
 
   return (
@@ -56,6 +98,13 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
           </p>
         </div>
 
+        {loadError && (
+          <div role="alert" style={{ backgroundColor: '#FFF4F2', border: '1px solid #F3CCC5', borderRadius: 14, padding: '12px 14px', marginBottom: 20, color: '#A43A2F', fontSize: '0.82rem', fontWeight: 650 }}>
+            {loadError}
+            <button type="button" onClick={() => void loadProvinces()} style={{ marginLeft: 8, border: 0, background: 'none', color: '#A43A2F', textDecoration: 'underline', fontWeight: 800 }}>다시 시도</button>
+          </div>
+        )}
+
         {/* Province Chips */}
         <div style={{ marginBottom: 28 }}>
           <h3 style={{ fontSize: '0.96rem', fontWeight: 850, color: '#154F36', marginBottom: 12 }}>
@@ -64,12 +113,12 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {provinces.map(p => {
-              const isSelected = p === selectedProvince;
+              const isSelected = p.sidoCode === selectedProvinceCode;
               return (
                 <button
-                  key={p}
+                  key={p.sidoCode}
                   type="button"
-                  onClick={() => handleProvinceSelect(p)}
+                  onClick={() => handleProvinceSelect(p.sidoCode)}
                   style={{
                     padding: '8px 15px',
                     borderRadius: 20,
@@ -83,11 +132,16 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
                     transition: 'background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease'
                   }}
                 >
-                  {p}
+                  {p.sidoName || p.sidoCode}
                 </button>
               );
             })}
           </div>
+        </div>
+
+        <div style={{ marginBottom: 20 }}>
+          <label htmlFor="analysis-address" style={{ fontSize: '0.96rem', fontWeight: 850, color: '#154F36', marginBottom: 8, display: 'block' }}>밭 주소 <span style={{ fontSize: '0.78rem', color: '#6F7772', fontWeight: 500 }}>(선택)</span></label>
+          <input id="analysis-address" value={address} onChange={event => setAddress(event.target.value)} placeholder="입력하면 위치 정밀도를 함께 확인해요" style={{ width: '100%', height: 48, borderRadius: 14, border: '1.5px solid #EAEFEA', padding: '0 16px', boxSizing: 'border-box', fontSize: '0.88rem', outline: 'none', backgroundColor: '#F8FAF8' }} />
         </div>
 
         {/* District Select */}
@@ -98,8 +152,9 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
 
           <div style={{ position: 'relative' }}>
             <select
-              value={selectedDistrict}
-              onChange={e => setSelectedDistrict(e.target.value)}
+              value={selectedDistrictCode}
+              disabled={isLoading || !selectedProvinceCode}
+              onChange={e => setSelectedDistrictCode(e.target.value)}
               style={{
                 width: '100%',
                 height: 52,
@@ -115,8 +170,9 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
                 cursor: 'pointer'
               }}
             >
+              <option value="">시/군/구 선택</option>
               {districts.map(d => (
-                <option key={d} value={d}>{d}</option>
+                <option key={d.sigunguCode} value={d.sigunguCode}>{d.sigunguName || d.sigunguCode}</option>
               ))}
             </select>
             <ChevronDown size={22} color="#2FA86A" style={{ position: 'absolute', right: 16, top: 15, pointerEvents: 'none' }} />
@@ -136,7 +192,7 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
           <div>
             <span style={{ fontSize: '0.76rem', color: '#2FA86A', fontWeight: 750 }}>선택된 분석 지역</span>
             <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#154F36', marginTop: 2 }}>
-              {selectedProvince} {selectedDistrict}
+              {[selectedProvince?.sidoName, selectedDistrict?.sigunguName].filter(Boolean).join(' ') || '지역을 선택해 주세요'}
             </div>
           </div>
           <div style={{
@@ -153,7 +209,17 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
       <div style={{ padding: '16px 20px 32px 20px', backgroundColor: '#FFFFFF', borderTop: '1px solid #F0F2F1' }}>
         <motion.button
           whileTap={{ scale: 0.98 }}
-          onClick={() => onStartAnalysis(selectedProvince, selectedDistrict)}
+          disabled={isLoading || !selectedProvince || !selectedDistrict}
+          onClick={() => {
+            if (!selectedProvince || !selectedDistrict) return;
+            onStartAnalysis({
+              sidoCode: selectedProvince.sidoCode,
+              sidoName: selectedProvince.sidoName || selectedProvince.sidoCode,
+              sigunguCode: selectedDistrict.sigunguCode || '',
+              sigunguName: selectedDistrict.sigunguName || selectedDistrict.sigunguCode || '',
+              location: address.trim() ? { address: address.trim() } : undefined
+            });
+          }}
           className="btn-farm-primary"
           style={{ width: '100%', height: 56, fontSize: '1.05rem', borderRadius: 16 }}
         >

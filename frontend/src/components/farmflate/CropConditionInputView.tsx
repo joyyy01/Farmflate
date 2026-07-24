@@ -3,9 +3,17 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, MapPin, Calendar } from 'lucide-react';
 import { DuotoneIcon } from '../common/DuotoneIcon';
 
+export interface CropRegistrationInput {
+  fieldName: string;
+  cropName: string;
+  stage: string;
+  farmType: string;
+  startDate: string;
+}
+
 interface CropConditionInputViewProps {
   onBack: () => void;
-  onStartAnalysis: (cropName: string, stage: string, mode: string) => void;
+  onStartAnalysis: (input: CropRegistrationInput) => void;
   onOpenExplore: () => void;
   selectedRegionName: string;
 }
@@ -360,7 +368,7 @@ export const CropConditionInputView: React.FC<CropConditionInputViewProps> = ({
         <motion.button
           whileTap={{ scale: 0.98 }}
           className="btn-farm-primary"
-          onClick={() => onStartAnalysis(selectedCrop, stage, farmType)}
+          onClick={() => onStartAnalysis({ fieldName: fieldName.trim(), cropName: selectedCrop, stage, farmType, startDate: rawDateIso })}
           style={{
             width: '100%',
             height: 56,

@@ -6,7 +6,6 @@ interface RegionRisksViewProps {
   report?: RegionReport | null;
   onBack: () => void;
   onNext: () => void;
-  onOpenAIChat: () => void;
 }
 
 export const RegionRisksView: React.FC<RegionRisksViewProps> = ({
@@ -14,21 +13,15 @@ export const RegionRisksView: React.FC<RegionRisksViewProps> = ({
   onBack,
   onNext
 }) => {
-  const rawRisks = report?.topRisks && report.topRisks.length > 0 ? report.topRisks : [
-    {
-      rank: 1,
-      riskCode: 'HEAVY_RAIN',
-      title: '장마철 집중호우 대비',
-      description: '여름철 강수가 특정 시기에 몰려서 밭 주변 배수 관리가 중요해요.',
-      source: { sourceUrl: 'https://www.nongsaro.go.kr' }
-    }
-  ];
+  const rawRisks = (report?.topRisks ?? []).slice(0, 3);
 
   const dynamicRisks = rawRisks.map((r, idx) => ({
-    number: r.rank || (idx + 1),
-    title: r.title,
-    desc: r.description,
-    sourceUrl: r.source?.sourceUrl || 'https://www.nongsaro.go.kr',
+    number: r.rank ?? (idx + 1),
+    title: r.title ?? '위험 제목 정보 없음',
+    desc: r.description ?? '위험 설명 정보가 제공되지 않았습니다.',
+    sourceUrl: r.source?.sourceUrl,
+    actions: r.actions,
+    period: r.period,
     icon: r.riskCode === 'HEAVY_RAIN' ? '/svg-assets/weather/rain.svg' : r.riskCode === 'HEAT' ? '/svg-assets/weather/sunny.svg' : '/svg-assets/ui-icons/warning-triangle.svg'
   }));
 
@@ -52,6 +45,7 @@ export const RegionRisksView: React.FC<RegionRisksViewProps> = ({
 
         {/* Risk Cards */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {dynamicRisks.length === 0 && <div style={{ backgroundColor: '#F8FAF8', borderRadius: 20, padding: '20px', border: '1px solid #EAEFEA', color: '#6E7671', fontSize: '0.86rem' }}>현재 리포트에 제공된 핵심 위험이 없습니다.</div>}
           {dynamicRisks.map((risk, index) => (
             <motion.div 
               key={risk.number}
@@ -98,39 +92,18 @@ export const RegionRisksView: React.FC<RegionRisksViewProps> = ({
                     {risk.desc}
                   </p>
 
-                  {/* Action links */}
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <button
-                      onClick={() => window.open('https://www.nongsaro.go.kr', '_blank')}
-                      style={{
-                        backgroundColor: '#FFFFFF',
-                        border: '1px solid #D1DFD7',
-                        borderRadius: 10, padding: '7px 12px',
-                        fontSize: '0.78rem', fontWeight: 700,
-                        color: '#191F28', cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', gap: 4
-                      }}
-                    >
-                      농사로 공식자료
-                    </button>
-                    <button
-                      onClick={() => window.open(risk.sourceUrl, '_blank')}
-                      style={{
-                        backgroundColor: 'transparent',
-                        border: 'none',
-                        borderRadius: 10, padding: '7px 0',
-                        fontSize: '0.78rem', fontWeight: 700,
-                        color: '#8E9892', cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', gap: 4
-                      }}
-                    >
-                      원문 보기 →
-                    </button>
-                  </div>
+                  {risk.period && <p style={{ fontSize: '0.76rem', color: '#8E9892', margin: '0 0 8px' }}>위험 기간: {risk.period.start ?? '자료 부족'} ~ {risk.period.end ?? '자료 부족'}</p>}
+                  {risk.actions.length > 0 && <p style={{ fontSize: '0.78rem', color: '#526157', margin: '0 0 8px' }}>권장 행동: {risk.actions.join(' · ')}</p>}
+                  {risk.sourceUrl && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button onClick={() => window.open(risk.sourceUrl || undefined, '_blank', 'noopener,noreferrer')} style={{ backgroundColor: '#FFFFFF', border: '1px solid #D1DFD7', borderRadius: 10, padding: '7px 12px', fontSize: '0.78rem', fontWeight: 700, color: '#191F28', cursor: 'pointer' }}>원문 보기 →</button></div>}
                 </div>
               </div>
             </motion.div>
           ))}
+        </div>
+
+        <div style={{ marginTop: 24 }}>
+          <h3 style={{ fontSize: '1rem', fontWeight: 850, color: '#191F28', margin: '0 0 10px' }}>안전 작업 창</h3>
+          {(report?.safeWorkWindows ?? []).length === 0 ? <p style={{ margin: 0, color: '#6E7671', fontSize: '0.84rem' }}>제공된 안전 작업 창이 없습니다.</p> : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{(report?.safeWorkWindows ?? []).map((window, index) => <div key={`${window.start ?? 'window'}-${index}`} style={{ backgroundColor: '#F8FAF8', borderRadius: 14, padding: '12px 14px', border: '1px solid #EAEFEA' }}><strong style={{ fontSize: '0.84rem', color: '#191F28' }}>{window.label ?? '작업 가능 시간'}</strong><p style={{ margin: '4px 0 0', color: '#6E7671', fontSize: '0.78rem' }}>{window.start ?? '자료 부족'} ~ {window.end ?? '자료 부족'}{window.reason ? ` · ${window.reason}` : ''}</p></div>)}</div>}
         </div>
       </div>
 

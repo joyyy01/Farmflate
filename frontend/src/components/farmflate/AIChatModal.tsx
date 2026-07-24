@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { PanInfo } from 'framer-motion';
 import { ArrowUp, ChevronRight, X, Sparkles } from 'lucide-react';
-import { ApiService } from '../../services/api';
+import { ApiError, ApiService } from '../../services/api';
 import type { Message } from '../../types/chat';
 
 interface AIChatModalProps {
@@ -20,6 +20,7 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [hasStartedChat, setHasStartedChat] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const detailedQuestions = [
@@ -38,8 +39,9 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
   const handleSendPrompt = async (promptText: string) => {
     if (!promptText.trim() || loading) return;
     setHasStartedChat(true);
+    setErrorMessage(null);
     const userMsg: Message = {
-      id: Date.now().toString(),
+      id: crypto.randomUUID(),
       sender: 'user',
       content: promptText,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -51,7 +53,7 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
     try {
       const response = await ApiService.sendChatMessage({ message: promptText });
       const aiMsg: Message = {
-        id: (Date.now() + 1).toString(),
+        id: crypto.randomUUID(),
         sender: 'assistant',
         content: response.reply,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -59,6 +61,7 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
       setMessages(prev => [...prev, aiMsg]);
     } catch (err) {
       console.error(err);
+      setErrorMessage(err instanceof ApiError ? err.message : 'AI 답변을 불러오지 못했습니다.');
     } finally {
       setLoading(false);
     }
@@ -67,6 +70,7 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
   const handleReset = () => {
     setHasStartedChat(false);
     setMessages([]);
+    setErrorMessage(null);
   };
 
   const handleDragEnd = (_: any, info: PanInfo) => {
@@ -266,6 +270,11 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
                   {loading && (
                     <div style={{ alignSelf: 'flex-start', padding: '12px 16px', backgroundColor: '#F8FAFC', borderRadius: 18, fontSize: '0.84rem', color: '#6B7280', display: 'flex', alignItems: 'center', gap: 8 }}>
                       <Sparkles size={16} color="#2e9f5b" /> AI 답변을 생성하고 있어요...
+                    </div>
+                  )}
+                  {errorMessage && (
+                    <div role="alert" style={{ alignSelf: 'flex-start', maxWidth: '85%', padding: '12px 16px', backgroundColor: '#FFF4F0', border: '1px solid #FFD5C8', borderRadius: 18, fontSize: '0.84rem', color: '#B54708', lineHeight: 1.5 }}>
+                      {errorMessage}
                     </div>
                   )}
                   <div ref={chatEndRef} />

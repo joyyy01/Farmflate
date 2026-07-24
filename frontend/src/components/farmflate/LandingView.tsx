@@ -2,19 +2,12 @@ import React from 'react';
 import { motion } from 'framer-motion';
 
 interface LandingViewProps {
-  onLogin?: () => void;
+  errorMessage?: string | null;
 }
 
-export const LandingView: React.FC<LandingViewProps> = ({ onLogin }) => {
+export const LandingView: React.FC<LandingViewProps> = ({ errorMessage }) => {
   const handleKakaoLogin = () => {
-    // REAL Official Kakao OAuth2 Authorization Endpoint
-    try {
-      window.location.href = 'http://localhost:8080/oauth2/authorization/kakao';
-    } catch {
-      // [TEMP DEV FALLBACK - REMOVE IN PRODUCTION]
-      // If backend is offline during local UI development, fallback directly to dashboard
-      if (onLogin) onLogin();
-    }
+    window.location.href = 'http://localhost:8080/oauth2/authorization/kakao';
   };
 
   return (
@@ -154,7 +147,7 @@ export const LandingView: React.FC<LandingViewProps> = ({ onLogin }) => {
 
       </div>
 
-      {/* Official Kakao Brand Yellow (#FEE500) Button + Dev Preview Mode */}
+      {/* Official Kakao Brand Yellow (#FEE500) Button */}
       <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <motion.button
           whileTap={{ scale: 0.97 }}
@@ -180,19 +173,10 @@ export const LandingView: React.FC<LandingViewProps> = ({ onLogin }) => {
           </svg>
           카카오로 시작하기
         </motion.button>
-
-        {/* [TEMP DEV FALLBACK - REMOVE IN PRODUCTION] Direct UI Preview link without backend dependency */}
-        {onLogin && (
-          <button
-            onClick={onLogin}
-            style={{
-              marginTop: 10, background: 'none', border: 'none',
-              fontSize: '0.78rem', color: '#6E7671', cursor: 'pointer',
-              textDecoration: 'underline', fontWeight: 600
-            }}
-          >
-            (개발 모드) 로그인 없이 대시보드 둘러보기
-          </button>
+        {errorMessage && (
+          <p role="alert" style={{ margin: '10px 0 0', color: '#B54708', fontSize: '0.78rem', fontWeight: 650, textAlign: 'center' }}>
+            {errorMessage}
+          </p>
         )}
       </div>
     </div>
