@@ -41,6 +41,7 @@ class RegionAnalysisServiceTruthfulnessTest {
     @Mock private SoilChemistryAdapter soilChemistryAdapter;
     @Mock private SoilSuitabilityAdapter soilSuitabilityAdapter;
     @Mock private LocationResolutionService locationResolutionService;
+    @Mock private org.springframework.context.ApplicationEventPublisher applicationEventPublisher;
 
     private RegionAnalysisService service;
 
@@ -56,7 +57,8 @@ class RegionAnalysisServiceTruthfulnessTest {
                 asosAdapter,
                 soilChemistryAdapter,
                 soilSuitabilityAdapter,
-                locationResolutionService);
+                locationResolutionService,
+                applicationEventPublisher);
     }
 
     @Test

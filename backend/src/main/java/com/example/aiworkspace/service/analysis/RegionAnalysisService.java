@@ -5,6 +5,7 @@ import com.example.aiworkspace.domain.region.RegionAnalysisEntity;
 import com.example.aiworkspace.domain.region.RegionAnalysisRepository;
 import com.example.aiworkspace.domain.region.RegionRepository;
 import com.example.aiworkspace.dto.region.HomeResponseDto;
+import com.example.aiworkspace.dto.region.LocationRequestDto;
 import com.example.aiworkspace.dto.region.RegionAnalysisRequestDto;
 import com.example.aiworkspace.dto.region.RegionAnalysisStatusDto;
 import com.example.aiworkspace.dto.region.RegionDto;
@@ -20,6 +21,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -66,6 +68,7 @@ public class RegionAnalysisService {
     private final SoilChemistryAdapter soilChemistryAdapter;
     private final SoilSuitabilityAdapter soilSuitabilityAdapter;
     private final LocationResolutionService locationResolutionService;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     @Value("${app.data-mode:LIVE}")
     private String dataMode;
@@ -129,10 +132,10 @@ public class RegionAnalysisService {
 
         Region region = regionRepository.findBySidoCodeAndSigunguCode(request.getSidoCode(), request.getSigunguCode())
                 .orElseThrow(() -> RegionAnalysisException.mappingNotConfigured(request.getSidoCode(), request.getSigunguCode()));
-        LocationResolution location = locationResolutionService.resolve(request.getLocation(), region);
         String mode = normalizedDataMode();
 
         if ("REPLAY".equals(mode)) {
+            LocationResolution location = locationResolutionService.resolve(request.getLocation(), region);
             RegionReportResponseDto replay = fixtureProvider.getGochangFixture(
                     region.getSidoCode(), region.getSigunguCode(), region.getSidoName(), region.getSigunguName());
             RegionReportResponseDto explicitReplay = replay.toBuilder()
@@ -145,29 +148,36 @@ public class RegionAnalysisService {
                     request.getIdempotencyKey(), "REPLAY");
         }
 
+        RegionAnalysisEntity pending = RegionAnalysisEntity.builder()
+                .id(UUID.randomUUID().toString())
+                .idempotencyKey(request.getIdempotencyKey())
+                .ruleVersion(CropScoringEngine.RULE_VERSION)
+                .userEmail(ownerEmail)
+                .analysisScope(analysisScope)
+                .scopeSubject(scopeSubject)
+                .sidoCode(region.getSidoCode())
+                .sidoName(region.getSidoName())
+                .sigunguCode(region.getSigunguCode())
+                .sigunguName(region.getSigunguName())
+                .locationRequestJson(serializeLocationRequest(request.getLocation()))
+                .analyzedAt(LocalDateTime.now())
+                .dataMode(mode)
+                .reportStatus("PENDING")
+                .currentStep("REGION")
+                .completedSteps("")
+                .build();
         try {
-            RegionReportResponseDto report = executeLiveAnalysis(region, location);
-            return saveAndReturn(report, region, ownerEmail, analysisScope, scopeSubject,
-                    request.getIdempotencyKey(), "LIVE");
-        } catch (RegionAnalysisException exception) {
-            if ("AUTO".equals(mode)) {
-                Optional<RegionAnalysisEntity> cached = findRecentSuccessful(ownerEmail, analysisScope, scopeSubject,
-                        request.getSigunguCode());
-                if (cached.isPresent()) {
-                    return completedStatus(cached.get().getId(), reportStatus(cached.get()), true, analysisScope);
-                }
+            RegionAnalysisEntity saved = analysisRepository.saveAndFlush(pending);
+            applicationEventPublisher.publishEvent(new RegionAnalysisJobRequestedEvent(saved.getId()));
+            return statusFor(saved, false);
+        } catch (DataIntegrityViolationException exception) {
+            Optional<RegionAnalysisEntity> winner = hasText(request.getIdempotencyKey())
+                    ? findByScopedIdempotency(ownerEmail, analysisScope, scopeSubject, request.getIdempotencyKey())
+                    : Optional.empty();
+            if (winner.isPresent()) {
+                return statusFor(winner.get(), false);
             }
-            return failedStatus(exception.getCode(), exception.getMessage(), exception.isRetryable(), analysisScope);
-        } catch (Exception exception) {
-            log.error("Region analysis failed for {} {}", region.getSidoCode(), region.getSigunguCode(), exception);
-            if ("AUTO".equals(mode)) {
-                Optional<RegionAnalysisEntity> cached = findRecentSuccessful(ownerEmail, analysisScope, scopeSubject,
-                        request.getSigunguCode());
-                if (cached.isPresent()) {
-                    return completedStatus(cached.get().getId(), reportStatus(cached.get()), true, analysisScope);
-                }
-            }
-            return failedStatus("REGION_ANALYSIS_UNAVAILABLE", "공공 데이터 분석을 완료하지 못했습니다.", true, analysisScope);
+            throw exception;
         }
     }
 
@@ -346,6 +356,127 @@ public class RegionAnalysisService {
             }
             throw exception;
         }
+    }
+
+    /**
+     * Async entry point called by {@link RegionAnalysisJobDispatcher} after the
+     * PENDING row has been committed.  Loads the entity, resolves location,
+     * runs the live provider chain, and persists the final report.
+     */
+    public void executePersistedAnalysis(String analysisId) {
+        RegionAnalysisEntity entity = analysisRepository.findById(analysisId).orElse(null);
+        if (entity == null) {
+            log.warn("Analysis {} not found for async execution", analysisId);
+            return;
+        }
+        String currentStatus = reportStatus(entity);
+        if ("COMPLETED".equals(currentStatus) || "PARTIAL".equals(currentStatus) || "FAILED".equals(currentStatus)) {
+            return;
+        }
+        try {
+            entity.markProcessing("REGION", "REGION");
+            analysisRepository.saveAndFlush(entity);
+
+            Region region = regionRepository.findBySidoCodeAndSigunguCode(entity.getSidoCode(), entity.getSigunguCode())
+                    .orElseThrow(() -> RegionAnalysisException.mappingNotConfigured(entity.getSidoCode(), entity.getSigunguCode()));
+
+            LocationRequestDto locationRequest = readLocationRequest(entity);
+            LocationResolution location = locationResolutionService.resolve(locationRequest, region);
+
+            entity.markProcessing("RECENT_WEATHER", "REGION");
+            analysisRepository.saveAndFlush(entity);
+
+            RegionReportResponseDto report = executeLiveAnalysis(region, location);
+
+            RegionReportResponseDto scopedReport = report.toBuilder().analysisScope(entity.getAnalysisScope()).build();
+            String payload = objectMapper.writeValueAsString(scopedReport);
+
+            entity.markCompleted(
+                    scopedReport.getStatus(),
+                    scopedReport.getRegionScore(),
+                    scopedReport.getGrade(),
+                    scopedReport.getSummary(),
+                    scopedReport.getDataConfidence() != null ? scopedReport.getDataConfidence().getLevel() : null,
+                    scopedReport.getDataConfidence() != null ? scopedReport.getDataConfidence().getScore() : null,
+                    scopedReport.getDataConfidence() != null ? scopedReport.getDataConfidence().getMessage() : null,
+                    payload,
+                    LocalDateTime.now(),
+                    "REGION,RECENT_WEATHER,FORECAST,SOIL,CROP,REPORT");
+            analysisRepository.saveAndFlush(entity);
+        } catch (RegionAnalysisException exception) {
+            markEntityFailed(entity, firstOr(java.util.List.of(entity.getCurrentStep()), "ANALYSIS"),
+                    firstOr(java.util.List.of(entity.getCompletedSteps()), ""),
+                    exception.getCode(), exception.getMessage(), exception.isRetryable());
+        } catch (Exception exception) {
+            log.error("Unexpected failure in async analysis {}", analysisId, exception);
+            markEntityFailed(entity, firstOr(java.util.List.of(entity.getCurrentStep()), "ANALYSIS"),
+                    firstOr(java.util.List.of(entity.getCompletedSteps()), ""),
+                    "INTERNAL_ERROR", exception.getMessage(), true);
+        }
+    }
+
+    /** Marks a queued analysis as FAILED when the async executor rejects it. */
+    public void markDispatchRejected(String analysisId) {
+        RegionAnalysisEntity entity = analysisRepository.findById(analysisId).orElse(null);
+        if (entity == null) return;
+        markEntityFailed(entity, "REGION", "", "DISPATCH_REJECTED",
+                "분석 작업 큐가 가득 차 요청을 처리할 수 없습니다.", true);
+    }
+
+    private void markEntityFailed(RegionAnalysisEntity entity, String step, String completedStepCodes,
+                                   String failureCode, String failureMessage, boolean canRetry) {
+        entity.markFailed(step, completedStepCodes, failureCode, failureMessage, canRetry);
+        analysisRepository.saveAndFlush(entity);
+    }
+
+    private LocationRequestDto readLocationRequest(RegionAnalysisEntity entity) {
+        if (!hasText(entity.getLocationRequestJson())) return null;
+        try {
+            return objectMapper.readValue(entity.getLocationRequestJson(), LocationRequestDto.class);
+        } catch (Exception exception) {
+            return null;
+        }
+    }
+
+    private String serializeLocationRequest(LocationRequestDto location) {
+        if (location == null) return null;
+        try {
+            return objectMapper.writeValueAsString(location);
+        } catch (Exception exception) {
+            return null;
+        }
+    }
+
+    /** Builds a status DTO from a persisted entity with Korean step labels. */
+    private RegionAnalysisStatusDto statusFor(RegionAnalysisEntity entity, boolean reused) {
+        String status = reportStatus(entity);
+        String normalized = "PARTIAL".equalsIgnoreCase(status) ? "PARTIAL"
+                : "FAILED".equalsIgnoreCase(status) ? "FAILED"
+                : "PROCESSING".equalsIgnoreCase(status) ? "PROCESSING"
+                : "PENDING".equalsIgnoreCase(status) ? "PROCESSING"
+                : "COMPLETED";
+        if ("FAILED".equals(normalized)) {
+            return RegionAnalysisStatusDto.builder()
+                    .analysisId(entity.getId())
+                    .status("FAILED")
+                    .analysisScope(entity.getAnalysisScope())
+                    .completedSteps(List.of())
+                    .currentStep(entity.getCurrentStep())
+                    .retryable(Boolean.TRUE.equals(entity.getRetryable()))
+                    .reused(false)
+                    .errorCode(entity.getErrorCode())
+                    .errorMessage(entity.getErrorMessage())
+                    .build();
+        }
+        return RegionAnalysisStatusDto.builder()
+                .analysisId(entity.getId())
+                .status(normalized)
+                .analysisScope(entity.getAnalysisScope())
+                .completedSteps(COMPLETED_STEPS)
+                .currentStep(entity.getCurrentStep())
+                .retryable(false)
+                .reused(reused)
+                .build();
     }
 
     private Optional<RegionAnalysisEntity> findByScopedIdempotency(

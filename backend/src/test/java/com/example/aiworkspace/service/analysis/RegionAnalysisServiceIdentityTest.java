@@ -69,6 +69,9 @@ class RegionAnalysisServiceIdentityTest {
     @Mock
     private LocationResolutionService locationResolutionService;
 
+    @Mock
+    private org.springframework.context.ApplicationEventPublisher applicationEventPublisher;
+
     private RegionAnalysisService service;
 
     @BeforeEach
@@ -83,7 +86,8 @@ class RegionAnalysisServiceIdentityTest {
                 asosAdapter,
                 soilChemistryAdapter,
                 soilSuitabilityAdapter,
-                locationResolutionService);
+                locationResolutionService,
+                applicationEventPublisher);
     }
 
     @Test

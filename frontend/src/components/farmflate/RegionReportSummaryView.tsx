@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, CheckCircle2, AlertTriangle } from 'lucide-react';
 import type { RegionReport } from '../../services/api';
+import { formatReportLabel, formatReportText } from '../../utils/reportDisplay';
 
 export interface RegionReportSummaryViewProps {
   regionName: string;
@@ -21,22 +22,14 @@ export const RegionReportSummaryView: React.FC<RegionReportSummaryViewProps> = (
   const score = report?.baseFitness ?? report?.regionScore ?? null;
   const hasScore = typeof score === 'number';
   const numericScore = hasScore ? score : 0;
+  const displayScore = hasScore ? (Number.isInteger(score) ? String(score) : score.toFixed(1)) : null;
   const isPartialWithoutScore = report?.status === 'PARTIAL' && !hasScore;
-  const cleanSummary = report?.summary || '자료 부족';
+  const cleanSummary = formatReportText(report?.summary);
 
-  // Translate English grades (GOOD, CAUTION, WARNING) to Korean (양호, 주의, 위험)
-  const formatGrade = (grade?: string) => {
-    if (!grade) return '자료 부족';
-    if (grade === 'GOOD' || grade === 'EXCELLENT') return '양호';
-    if (grade === 'CAUTION' || grade === 'FAIR') return '주의';
-    if (grade === 'WARNING' || grade === 'POOR') return '위험';
-    return grade;
-  };
-
-  const climateGrade = formatGrade(report?.components?.climate?.grade ?? undefined);
-  const soilGrade = formatGrade(report?.components?.soil?.grade ?? undefined);
-  const hazardGrade = formatGrade(report?.components?.hazard?.grade ?? undefined);
-  const cultivationGrade = formatGrade(report?.components?.cultivation?.grade ?? undefined);
+  const climateGrade = formatReportLabel(report?.components?.climate?.grade ?? undefined);
+  const soilGrade = formatReportLabel(report?.components?.soil?.grade ?? undefined);
+  const hazardGrade = formatReportLabel(report?.components?.hazard?.grade ?? undefined);
+  const cultivationGrade = formatReportLabel(report?.components?.cultivation?.grade ?? undefined);
 
   const crops = report?.recommendedCrops ?? [];
 
@@ -110,11 +103,11 @@ export const RegionReportSummaryView: React.FC<RegionReportSummaryViewProps> = (
 
           {/* SVG Gauge Arc */}
           <div style={{
-            position: 'relative', width: 144, height: 144,
+            position: 'relative', width: 152, height: 152,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             marginBottom: 16
           }}>
-            <svg width="144" height="144" viewBox="0 0 144 144" style={{ transform: 'rotate(-90deg)' }}>
+            <svg width="152" height="152" viewBox="0 0 144 144" style={{ transform: 'rotate(-90deg)', overflow: 'visible' }}>
               <circle
                 cx="72"
                 cy="72"
@@ -138,13 +131,13 @@ export const RegionReportSummaryView: React.FC<RegionReportSummaryViewProps> = (
             </svg>
 
             {/* Score Typography */}
-            <div style={{ position: 'absolute', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+            <div style={{ position: 'absolute', inset: 0, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', whiteSpace: 'nowrap' }}>
               {hasScore ? (
                 <>
-                  <span style={{ fontSize: '3.1rem', fontWeight: 900, color: '#191F28', letterSpacing: '-0.05em', lineHeight: 1 }}>
-                    {score}
+                  <span style={{ fontSize: '2.45rem', fontWeight: 900, color: '#191F28', letterSpacing: '-0.065em', lineHeight: 1 }}>
+                    {displayScore}
                   </span>
-                  <span style={{ fontSize: '1.1rem', fontWeight: 800, color: '#2FA86A', marginLeft: 2 }}>점</span>
+                  <span style={{ fontSize: '0.94rem', fontWeight: 800, color: '#2FA86A', marginLeft: 4 }}>점</span>
                 </>
               ) : (
                 <div aria-label={isPartialWithoutScore ? '부분 분석 완료, 적합도 점수 자료 부족' : '적합도 점수 자료 부족'} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, maxWidth: 112 }}>
@@ -178,7 +171,7 @@ export const RegionReportSummaryView: React.FC<RegionReportSummaryViewProps> = (
           </p>
           <div style={{ width: '100%', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
             <div style={{ background: '#FFFFFF', borderRadius: 10, padding: '9px 10px' }}><span style={{ display: 'block', fontSize: '0.7rem', color: '#6E7671' }}>계절 준비도</span><strong style={{ fontSize: '0.86rem', color: '#202A24' }}>{report?.seasonReadiness === null || report?.seasonReadiness === undefined ? '자료 부족' : `${report.seasonReadiness}점`}</strong></div>
-            <div style={{ background: '#FFFFFF', borderRadius: 10, padding: '9px 10px' }}><span style={{ display: 'block', fontSize: '0.7rem', color: '#6E7671' }}>데이터 신뢰도</span><strong style={{ fontSize: '0.86rem', color: '#202A24' }}>{report?.dataConfidence.score === null || report?.dataConfidence.score === undefined ? '자료 부족' : `${report.dataConfidence.score}점`}</strong><span style={{ marginLeft: 4, fontSize: '0.68rem', color: '#6E7671' }}>{report?.dataConfidence.level ?? ''}</span></div>
+            <div style={{ background: '#FFFFFF', borderRadius: 10, padding: '9px 10px' }}><span style={{ display: 'block', fontSize: '0.7rem', color: '#6E7671' }}>데이터 신뢰도</span><strong style={{ fontSize: '0.86rem', color: '#202A24' }}>{report?.dataConfidence.score === null || report?.dataConfidence.score === undefined ? '자료 부족' : `${report.dataConfidence.score}점`}</strong><span style={{ marginLeft: 4, fontSize: '0.68rem', color: '#6E7671' }}>{formatReportLabel(report?.dataConfidence.level, '')}</span></div>
           </div>
           {report?.dataConfidence.message && <p style={{ width: '100%', margin: '10px 0 0', color: '#A66B19', fontSize: '0.75rem', lineHeight: 1.45 }}>결정 제한: {report.dataConfidence.message}</p>}
         </motion.div>
@@ -228,7 +221,7 @@ export const RegionReportSummaryView: React.FC<RegionReportSummaryViewProps> = (
             {(report?.environmentFeatures ?? []).length === 0 ? (
               <div style={{ backgroundColor: '#F8FAF8', borderRadius: 14, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10 }}><AlertTriangle size={18} color="#FF842F" /><span style={{ fontSize: '0.86rem', fontWeight: 650, color: '#6F7772' }}>환경 특징 자료가 제공되지 않았습니다.</span></div>
             ) : (report?.environmentFeatures ?? []).map((feature, index) => (
-              <div key={`${feature}-${index}`} style={{ backgroundColor: '#F8FAF8', borderRadius: 14, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10 }}><CheckCircle2 size={18} color="#2FA86A" /><span style={{ fontSize: '0.86rem', fontWeight: 650, color: '#191F28', wordBreak: 'keep-all', wordWrap: 'break-word' }}>{feature}</span></div>
+              <div key={`${feature}-${index}`} style={{ backgroundColor: '#F8FAF8', borderRadius: 14, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10 }}><CheckCircle2 size={18} color="#2FA86A" /><span style={{ fontSize: '0.86rem', fontWeight: 650, color: '#191F28', wordBreak: 'keep-all', wordWrap: 'break-word' }}>{formatReportText(feature)}</span></div>
             ))}
           </div>
         </div>
@@ -244,7 +237,7 @@ export const RegionReportSummaryView: React.FC<RegionReportSummaryViewProps> = (
             {crops.map((item, idx: number) => {
               const isFirst = idx === 0;
               const cropImg = item.iconUrl;
-              const reasonText = item.positiveReasons[0] || item.cautionReason || '근거 자료가 제공되지 않았습니다.';
+                const reasonText = formatReportText(item.positiveReasons[0] || item.cautionReason, '근거 자료가 제공되지 않았습니다.');
               
               return (
                 <div key={idx} style={{
@@ -285,7 +278,7 @@ export const RegionReportSummaryView: React.FC<RegionReportSummaryViewProps> = (
         <div style={{ borderTop: '1px solid #EEF1EF', paddingTop: 14, marginBottom: 12, color: '#6F7772', fontSize: '0.74rem', lineHeight: 1.5 }}>
           <strong style={{ color: '#4B574F' }}>데이터 근거</strong><br />
           {report?.sources[0] ? `${[report.sources[0].provider, report.sources[0].service].filter(Boolean).join(' / ') || '제공자 정보 없음'} · ${report.sources[0].dataDate ?? '날짜 정보 없음'}` : '출처 정보가 제공되지 않았습니다.'}
-          {report?.dataMode ? ` · ${report.dataMode}` : ''}
+          {report?.dataMode ? ` · ${formatReportLabel(report.dataMode)}` : ''}
           {report?.sources.some(source => source.isFallback) ? ' · 대체 데이터 포함' : ''}
         </div>
 

@@ -75,6 +75,10 @@ public class RegionAnalysisEntity extends BaseTimeEntity {
     @Column(name = "payload_json", columnDefinition = "TEXT")
     private String payloadJson; // Complete JSON payload snapshot
 
+    /** Original optional precision-location input, retained so an async job can resolve it after POST returns. */
+    @Column(name = "location_request_json", columnDefinition = "TEXT")
+    private String locationRequestJson;
+
     @Column(name = "analyzed_at", nullable = false)
     private LocalDateTime analyzedAt;
 
@@ -82,5 +86,67 @@ public class RegionAnalysisEntity extends BaseTimeEntity {
     private String dataMode; // LIVE or REPLAY
 
     @Column(name = "report_status", length = 20)
-    private String reportStatus; // COMPLETED or PARTIAL
+    private String reportStatus; // PENDING, PROCESSING, COMPLETED, PARTIAL, or FAILED
+
+    @Column(name = "current_step", length = 32)
+    private String currentStep;
+
+    /** Stable comma-separated stage codes; user-facing labels are supplied by the status DTO. */
+    @Column(name = "completed_steps", columnDefinition = "TEXT")
+    private String completedSteps;
+
+    @Column(name = "error_code", length = 100)
+    private String errorCode;
+
+    @Column(name = "error_message", columnDefinition = "TEXT")
+    private String errorMessage;
+
+    @Column(name = "retryable")
+    private Boolean retryable;
+
+    public void markProcessing(String step, String completedStepCodes) {
+        this.reportStatus = "PROCESSING";
+        this.currentStep = step;
+        this.completedSteps = completedStepCodes;
+        this.errorCode = null;
+        this.errorMessage = null;
+        this.retryable = null;
+    }
+
+    public void markCompleted(
+            String status,
+            Integer resultRegionScore,
+            String resultGrade,
+            String resultSummary,
+            String resultConfidenceGrade,
+            Integer resultConfidenceScore,
+            String resultConfidenceMessage,
+            String resultPayloadJson,
+            LocalDateTime resultAnalyzedAt,
+            String completedStepCodes) {
+        this.reportStatus = status;
+        this.currentStep = "REPORT";
+        this.completedSteps = completedStepCodes;
+        this.regionScore = resultRegionScore;
+        this.grade = resultGrade;
+        this.summary = resultSummary;
+        this.confidenceGrade = resultConfidenceGrade;
+        this.confidenceScore = resultConfidenceScore;
+        this.confidenceMessage = resultConfidenceMessage;
+        this.payloadJson = resultPayloadJson;
+        this.analyzedAt = resultAnalyzedAt;
+        this.errorCode = null;
+        this.errorMessage = null;
+        this.retryable = false;
+    }
+
+    public void markFailed(String step, String completedStepCodes, String failureCode, String failureMessage,
+                           boolean canRetry) {
+        this.reportStatus = "FAILED";
+        this.currentStep = step;
+        this.completedSteps = completedStepCodes;
+        this.errorCode = failureCode;
+        this.errorMessage = failureMessage;
+        this.retryable = canRetry;
+    }
 }

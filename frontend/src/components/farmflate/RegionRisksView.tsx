@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import type { RegionReport } from '../../services/api';
+import { formatReportDate, formatReportText } from '../../utils/reportDisplay';
 
 interface RegionRisksViewProps {
   report?: RegionReport | null;
@@ -17,10 +18,10 @@ export const RegionRisksView: React.FC<RegionRisksViewProps> = ({
 
   const dynamicRisks = rawRisks.map((r, idx) => ({
     number: r.rank ?? (idx + 1),
-    title: r.title ?? '위험 제목 정보 없음',
-    desc: r.description ?? '위험 설명 정보가 제공되지 않았습니다.',
+    title: formatReportText(r.title, '위험 정보 없음'),
+    desc: formatReportText(r.description, '위험 설명 정보가 제공되지 않았습니다.'),
     sourceUrl: r.source?.sourceUrl,
-    actions: r.actions,
+    actions: (r.actions ?? []).map(action => formatReportText(action)),
     period: r.period,
     icon: r.riskCode === 'HEAVY_RAIN' ? '/svg-assets/weather/rain.svg' : r.riskCode === 'HEAT' ? '/svg-assets/weather/sunny.svg' : '/svg-assets/ui-icons/warning-triangle.svg'
   }));
@@ -68,7 +69,7 @@ export const RegionRisksView: React.FC<RegionRisksViewProps> = ({
                 borderBottomLeftRadius: 16, padding: '6px 14px',
                 fontSize: '0.85rem', fontWeight: 900
               }}>
-                No.{risk.number}
+                  위험 {risk.number}
               </div>
 
               <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
@@ -92,7 +93,7 @@ export const RegionRisksView: React.FC<RegionRisksViewProps> = ({
                     {risk.desc}
                   </p>
 
-                  {risk.period && <p style={{ fontSize: '0.76rem', color: '#8E9892', margin: '0 0 8px' }}>위험 기간: {risk.period.start ?? '자료 부족'} ~ {risk.period.end ?? '자료 부족'}</p>}
+                  {risk.period && <p style={{ fontSize: '0.76rem', color: '#8E9892', margin: '0 0 8px' }}>위험 기간: {formatReportDate(risk.period.start)} ~ {formatReportDate(risk.period.end)}</p>}
                   {risk.actions.length > 0 && <p style={{ fontSize: '0.78rem', color: '#526157', margin: '0 0 8px' }}>권장 행동: {risk.actions.join(' · ')}</p>}
                   {risk.sourceUrl && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button onClick={() => window.open(risk.sourceUrl || undefined, '_blank', 'noopener,noreferrer')} style={{ backgroundColor: '#FFFFFF', border: '1px solid #D1DFD7', borderRadius: 10, padding: '7px 12px', fontSize: '0.78rem', fontWeight: 700, color: '#191F28', cursor: 'pointer' }}>원문 보기 →</button></div>}
                 </div>

@@ -69,6 +69,22 @@ export const MyPageView: React.FC<MyPageViewProps> = ({
   const [inquirySuccess, setInquirySuccess] = useState(false);
   const [inquiryError, setInquiryError] = useState<string | null>(null);
   const [isSubmittingInquiry, setIsSubmittingInquiry] = useState(false);
+  const [myInquiries, setMyInquiries] = useState<Array<{ id: number; inquiryText: string; category: string; status: string; createdAt: string }>>([]);
+
+  const loadInquiries = async () => {
+    try {
+      const data = await ApiService.getUserInquiries();
+      setMyInquiries(data);
+    } catch (e) {
+      console.warn('Failed to load user inquiries:', e);
+    }
+  };
+
+  React.useEffect(() => {
+    if (activeModal === 'support') {
+      void loadInquiries();
+    }
+  }, [activeModal]);
 
   const faqs = [
     {
@@ -98,6 +114,7 @@ export const MyPageView: React.FC<MyPageViewProps> = ({
       await ApiService.submitInquiry({ inquiryText: inquiryText.trim() });
       setInquirySuccess(true);
       setInquiryText('');
+      void loadInquiries();
     } catch (err) {
       console.warn('Inquiry submit failed:', err);
       setInquiryError(err instanceof Error ? err.message : '문의 접수에 실패했습니다.');
@@ -435,6 +452,30 @@ export const MyPageView: React.FC<MyPageViewProps> = ({
                     <Send size={16} /> {isSubmittingInquiry ? '접수 중...' : '문의 접수하기'}
                   </button>
                 </form>
+
+                {/* My Inquiries History List */}
+                {myInquiries.length > 0 && (
+                  <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 850, color: '#2FA86A' }}>내 문의 내역 ({myInquiries.length})</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {myInquiries.map(inq => (
+                        <div key={inq.id} style={{ backgroundColor: '#F8FAF8', borderRadius: 14, padding: '12px 14px', border: '1px solid #EAEFEA' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                            <span style={{ backgroundColor: inq.status === 'RESOLVED' ? '#E9F7EC' : '#FFF4E5', color: inq.status === 'RESOLVED' ? '#2FA86A' : '#B76E00', fontSize: '0.72rem', fontWeight: 850, padding: '2px 8px', borderRadius: 8 }}>
+                              {inq.status === 'RESOLVED' ? '처리 완료' : '접수 완료'}
+                            </span>
+                            <span style={{ fontSize: '0.72rem', color: '#8E9892' }}>
+                              {inq.createdAt ? inq.createdAt.substring(0, 10) : ''}
+                            </span>
+                          </div>
+                          <p style={{ fontSize: '0.84rem', color: '#191F28', margin: 0, fontWeight: 500, wordBreak: 'keep-all' }}>
+                            {inq.inquiryText}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </motion.div>
           </div>

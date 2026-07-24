@@ -44,6 +44,7 @@ class RegionAnalysisServiceDecisionContractTest {
     @Mock private SoilChemistryAdapter soilChemistryAdapter;
     @Mock private SoilSuitabilityAdapter soilSuitabilityAdapter;
     @Mock private LocationResolutionService locationResolutionService;
+    @Mock private org.springframework.context.ApplicationEventPublisher applicationEventPublisher;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private RegionAnalysisService service;
@@ -52,7 +53,7 @@ class RegionAnalysisServiceDecisionContractTest {
     void setUp() {
         service = new RegionAnalysisService(regionRepository, analysisRepository, new CropScoringEngine(), fixtureProvider,
                 objectMapper, shortForecastAdapter, asosAdapter, soilChemistryAdapter, soilSuitabilityAdapter,
-                locationResolutionService);
+                locationResolutionService, applicationEventPublisher);
     }
 
     @Test
@@ -78,8 +79,13 @@ class RegionAnalysisServiceDecisionContractTest {
                 .idempotencyKey("live-contract").forceRefresh(false).build());
 
         ArgumentCaptor<RegionAnalysisEntity> stored = ArgumentCaptor.forClass(RegionAnalysisEntity.class);
-        org.mockito.Mockito.verify(analysisRepository).saveAndFlush(stored.capture());
-        RegionReportResponseDto report = objectMapper.readValue(stored.getValue().getPayloadJson(), RegionReportResponseDto.class);
+        org.mockito.Mockito.verify(analysisRepository, org.mockito.Mockito.atLeastOnce()).saveAndFlush(stored.capture());
+        RegionAnalysisEntity pendingEntity = stored.getAllValues().get(stored.getAllValues().size() - 1);
+        when(analysisRepository.findById(pendingEntity.getId())).thenReturn(Optional.of(pendingEntity));
+
+        service.executePersistedAnalysis(pendingEntity.getId());
+
+        RegionReportResponseDto report = objectMapper.readValue(pendingEntity.getPayloadJson(), RegionReportResponseDto.class);
 
         assertThat(report.getStatus()).isEqualTo("COMPLETED");
         assertThat(report.getDataMode()).isEqualTo("LIVE");
@@ -121,8 +127,13 @@ class RegionAnalysisServiceDecisionContractTest {
                 .idempotencyKey("partial-contract").forceRefresh(false).build());
 
         ArgumentCaptor<RegionAnalysisEntity> stored = ArgumentCaptor.forClass(RegionAnalysisEntity.class);
-        verify(analysisRepository).saveAndFlush(stored.capture());
-        RegionReportResponseDto report = objectMapper.readValue(stored.getValue().getPayloadJson(), RegionReportResponseDto.class);
+        org.mockito.Mockito.verify(analysisRepository, org.mockito.Mockito.atLeastOnce()).saveAndFlush(stored.capture());
+        RegionAnalysisEntity pendingEntity = stored.getAllValues().get(stored.getAllValues().size() - 1);
+        when(analysisRepository.findById(pendingEntity.getId())).thenReturn(Optional.of(pendingEntity));
+
+        service.executePersistedAnalysis(pendingEntity.getId());
+
+        RegionReportResponseDto report = objectMapper.readValue(pendingEntity.getPayloadJson(), RegionReportResponseDto.class);
 
         assertThat(report.getStatus()).isEqualTo("PARTIAL");
         assertThat(report.getMissingMetrics()).contains("FORECAST_PROVIDER_FAILURE:FORECAST_TIMEOUT");
@@ -156,8 +167,13 @@ class RegionAnalysisServiceDecisionContractTest {
                 .idempotencyKey("availability-contract").forceRefresh(false).build());
 
         ArgumentCaptor<RegionAnalysisEntity> stored = ArgumentCaptor.forClass(RegionAnalysisEntity.class);
-        verify(analysisRepository).saveAndFlush(stored.capture());
-        RegionReportResponseDto report = objectMapper.readValue(stored.getValue().getPayloadJson(), RegionReportResponseDto.class);
+        org.mockito.Mockito.verify(analysisRepository, org.mockito.Mockito.atLeastOnce()).saveAndFlush(stored.capture());
+        RegionAnalysisEntity pendingEntity = stored.getAllValues().get(stored.getAllValues().size() - 1);
+        when(analysisRepository.findById(pendingEntity.getId())).thenReturn(Optional.of(pendingEntity));
+
+        service.executePersistedAnalysis(pendingEntity.getId());
+
+        RegionReportResponseDto report = objectMapper.readValue(pendingEntity.getPayloadJson(), RegionReportResponseDto.class);
 
         assertThat(report.getStatus()).isEqualTo("PARTIAL");
         assertThat(report.getRecommendedCrops()).isEmpty();
