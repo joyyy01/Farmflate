@@ -108,7 +108,7 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
           </p>
         </div>
 
-        {/* Weather Card - Refined Layout & No Awkward Word Wraps */}
+        {/* Weather Card - Ultra-sleek single-line metrics & crisp icon */}
         {isNewUser ? (
           <div
             style={{
@@ -124,37 +124,63 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
           </div>
         ) : (
           <div style={{
-            position: 'relative', width: '100%', minHeight: 116, borderRadius: 20,
+            position: 'relative', width: '100%', borderRadius: 22,
             background: 'linear-gradient(135deg, #F0F9FF 0%, #E0F2FE 100%)',
             border: '1px solid #BAE6FD',
-            padding: '18px 20px', marginBottom: 20, boxSizing: 'border-box',
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+            padding: '20px 20px', marginBottom: 20, boxSizing: 'border-box',
+            display: 'flex', flexDirection: 'column', gap: 10
           }}>
-            <div>
-              <div style={{ fontSize: '0.74rem', color: '#0369A1', fontWeight: 700, marginBottom: 2 }}>{regionName}</div>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '2px 0 4px 0' }}>
-                <span style={{ fontSize: '2.2rem', fontWeight: 800, color: '#0C4A6E', letterSpacing: '-0.06em' }}>
-                  {temp}<small style={{ fontSize: '1.1rem' }}>℃</small>
-                </span>
-                <span style={{ fontSize: '0.76rem', fontWeight: 750, color: '#0284C7' }}>
-                  {weatherStateText}
-                </span>
+            {/* Top Row: Region Name + Main Temp + Weather Icon & Forecast */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontSize: '0.76rem', color: '#0369A1', fontWeight: 750, letterSpacing: '-0.01em', marginBottom: 2 }}>
+                  {regionName}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                  <span style={{ fontSize: '2.1rem', fontWeight: 900, color: '#0C4A6E', letterSpacing: '-0.05em', lineHeight: 1 }}>
+                    {temp}<small style={{ fontSize: '1.1rem' }}>℃</small>
+                  </span>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0284C7' }}>
+                    {weatherStateText}
+                  </span>
+                </div>
               </div>
-              <div style={{ fontSize: '0.74rem', color: '#0369A1', fontWeight: 600 }}>
-                최저 {minTemp}℃ &nbsp;|&nbsp; 최고 {maxTemp}℃ &nbsp;|&nbsp; 습도 {humidity}% &nbsp;|&nbsp; 바람 {wind}m/s
+
+              {/* Right Side: Icon & Forecast Phrasing */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{
+                  width: 52, height: 48, borderRadius: 14,
+                  backgroundColor: 'rgba(255, 255, 255, 0.65)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  border: '1px solid rgba(186, 230, 253, 0.6)'
+                }}>
+                  <img
+                    src={rainProb > 50 ? '/svg-assets/weather/rain.svg' : '/svg-assets/weather/partly-cloudy.svg'}
+                    alt="날씨"
+                    style={{ width: 38, height: 38, objectFit: 'contain' }}
+                  />
+                </div>
+
+                <div style={{ width: 1, height: 42, backgroundColor: '#BAE6FD' }} />
+
+                <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0C4A6E', display: 'block', marginBottom: 2 }}>
+                    {forecastText}
+                  </span>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 900, color: '#0284C7' }}>
+                    강수확률 {rainProb}%
+                  </span>
+                </div>
               </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <img
-                src={rainProb > 50 ? '/svg-assets/weather/rain.svg' : '/svg-assets/weather/partly-cloudy.svg'}
-                alt="날씨"
-                style={{ width: 64, height: 56, objectFit: 'contain' }}
-              />
-              <div style={{ width: 1, height: 46, backgroundColor: '#BAE6FD' }} />
-              <div style={{ fontSize: '0.76rem', lineHeight: 1.5, color: '#0C4A6E', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                <span>{forecastText}</span><br />
-                <strong style={{ fontWeight: 800 }}>강수확률 {rainProb}%</strong>
-              </div>
+
+            {/* Bottom Row: Weather Metrics strictly on 1 Line (No Wrap!) */}
+            <div style={{
+              fontSize: '0.72rem', color: '#0369A1', fontWeight: 650,
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              paddingTop: 8, borderTop: '1px solid rgba(186, 230, 253, 0.5)'
+            }}>
+              최저 {minTemp}℃ &nbsp;·&nbsp; 최고 {maxTemp}℃ &nbsp;·&nbsp; 습도 {humidity}% &nbsp;·&nbsp; 바람 {wind}m/s
             </div>
           </div>
         )}
