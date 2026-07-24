@@ -108,19 +108,16 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
           </p>
         </div>
 
-        {/* Weather Card - Soft Gradient Fill */}
+        {/* Weather Card - Solid Light Sky Blue (No Routing / No Gradient) */}
         {isNewUser ? (
           <div
-            onClick={onGoToExplore}
             style={{
-              background: 'linear-gradient(135deg, #FFFFFF 0%, #F0F9FF 50%, #CBEBFC 100%)',
-              border: '1px solid #CEECFC',
-              borderRadius: 20,
-              height: 64, width: '100%', marginBottom: 20, cursor: 'pointer',
+              backgroundColor: '#C5EAFA', borderRadius: 18,
+              height: 64, width: '100%', marginBottom: 20, cursor: 'default',
               display: 'flex', alignItems: 'center', justifyContent: 'center'
             }}
           >
-            <span style={{ fontSize: '0.94rem', fontWeight: 700, color: '#191F28', letterSpacing: '-0.01em' }}>
+            <span style={{ fontSize: '0.94rem', fontWeight: 700, color: '#FFFFFF', letterSpacing: '-0.01em' }}>
               날씨 데이터가 없어요
             </span>
           </div>
@@ -217,7 +214,7 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
         {/* Thin Divider */}
         <div style={{ borderBottom: '1px solid #ECEFED', margin: '20px 0' }} />
 
-        {/* Primary Action Banner Card - Exact Screenshot Gradient Matching */}
+        {/* EXCLUSIVE REGION SETTING CLICKABLE CARD - Linear Gradient */}
         {isNewUser ? (
           <motion.div
             whileTap={{ scale: 0.98 }}
@@ -263,7 +260,7 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
         {/* Thin Divider */}
         <div style={{ borderBottom: '1px solid #ECEFED', margin: '20px 0' }} />
 
-        {/* Recommended Farming Advice Section */}
+        {/* Recommended Farming Advice Section - No Routing in New User state */}
         <div style={{ marginBottom: 16 }}>
           <h2 style={{ fontSize: '1.15rem', fontWeight: 900, color: '#191F28', marginBottom: 14, letterSpacing: '-0.02em' }}>
             {isNewUser ? '내 밭에 맞는 추천 농사 정보' : `${regionName} 추천 작물 정보`}
@@ -271,11 +268,10 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
 
           {isNewUser ? (
              <div
-               onClick={onGoToExplore}
                style={{
                  backgroundColor: '#E2F1E5', borderRadius: 18,
                  height: 60, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                 cursor: 'pointer'
+                 cursor: 'default'
                }}
              >
                <span style={{ fontSize: '0.92rem', fontWeight: 800, color: '#2E6848' }}>
