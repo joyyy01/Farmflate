@@ -31,6 +31,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -118,7 +119,7 @@ public class RegionAnalysisService {
             Optional<RegionAnalysisEntity> existing = findByScopedIdempotency(
                     ownerEmail, analysisScope, scopeSubject, request.getIdempotencyKey());
             if (existing.isPresent()) {
-                return completedStatus(existing.get().getId(), reportStatus(existing.get()), false, analysisScope);
+                return statusFor(existing.get(), false);
             }
         }
 
@@ -126,7 +127,7 @@ public class RegionAnalysisService {
             Optional<RegionAnalysisEntity> cached = findRecentSuccessful(ownerEmail, analysisScope, scopeSubject,
                     request.getSigunguCode());
             if (cached.isPresent()) {
-                return completedStatus(cached.get().getId(), reportStatus(cached.get()), true, analysisScope);
+                return statusFor(cached.get(), true);
             }
         }
 
@@ -460,7 +461,7 @@ public class RegionAnalysisService {
                     .analysisId(entity.getId())
                     .status("FAILED")
                     .analysisScope(entity.getAnalysisScope())
-                    .completedSteps(List.of())
+                    .completedSteps(completedStepCodes(entity))
                     .currentStep(entity.getCurrentStep())
                     .retryable(Boolean.TRUE.equals(entity.getRetryable()))
                     .reused(false)
@@ -472,7 +473,7 @@ public class RegionAnalysisService {
                 .analysisId(entity.getId())
                 .status(normalized)
                 .analysisScope(entity.getAnalysisScope())
-                .completedSteps(COMPLETED_STEPS)
+                .completedSteps(completedStepCodes(entity))
                 .currentStep(entity.getCurrentStep())
                 .retryable(false)
                 .reused(reused)
@@ -490,7 +491,7 @@ public class RegionAnalysisService {
     @Transactional(readOnly = true)
     public RegionAnalysisStatusDto getStatus(String ownerEmail, UUID analysisId) {
         RegionAnalysisEntity entity = findAccessibleAnalysis(ownerEmail, analysisId);
-        return completedStatus(entity.getId(), reportStatus(entity), false, entity.getAnalysisScope());
+        return statusFor(entity, false);
     }
 
     @Transactional(readOnly = true)
@@ -502,7 +503,7 @@ public class RegionAnalysisService {
     @Transactional(readOnly = true)
     public RegionAnalysisStatusDto getPublicStatus(UUID analysisId) {
         RegionAnalysisEntity entity = findPublicAnalysis(analysisId);
-        return completedStatus(entity.getId(), reportStatus(entity), false, PUBLIC_SCOPE);
+        return statusFor(entity, false);
     }
 
     @Transactional(readOnly = true)
@@ -609,6 +610,16 @@ public class RegionAnalysisService {
                 .errorCode(code)
                 .errorMessage(message)
                 .build();
+    }
+
+    private List<String> completedStepCodes(RegionAnalysisEntity entity) {
+        if (entity == null || !hasText(entity.getCompletedSteps())) {
+            return List.of();
+        }
+        return Arrays.stream(entity.getCompletedSteps().split(","))
+                .filter(COMPLETED_STEPS::contains)
+                .distinct()
+                .toList();
     }
 
     private String reportStatus(RegionAnalysisEntity entity) {

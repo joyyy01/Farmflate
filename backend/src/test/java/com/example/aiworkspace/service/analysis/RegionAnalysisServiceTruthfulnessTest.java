@@ -83,4 +83,24 @@ class RegionAnalysisServiceTruthfulnessTest {
 
         verify(fixtureProvider, never()).getGochangFixture(any(), any(), any(), any());
     }
+
+    @Test
+    void pending_persisted_analysis_is_never_reported_as_completed_before_a_payload_exists() {
+        UUID analysisId = UUID.randomUUID();
+        RegionAnalysisEntity pending = RegionAnalysisEntity.builder()
+                .id(analysisId.toString())
+                .userEmail(OWNER)
+                .analysisScope("OWNER")
+                .reportStatus("PENDING")
+                .currentStep("SOIL")
+                .completedSteps("REGION,RECENT_WEATHER,FORECAST")
+                .build();
+        when(analysisRepository.findByIdAndUserEmail(analysisId.toString(), OWNER)).thenReturn(Optional.of(pending));
+
+        var status = service.getStatus(OWNER, analysisId);
+
+        assertThat(status.getStatus()).isEqualTo("PROCESSING");
+        assertThat(status.getCurrentStep()).isEqualTo("SOIL");
+        assertThat(status.getCompletedSteps()).containsExactly("REGION", "RECENT_WEATHER", "FORECAST");
+    }
 }
