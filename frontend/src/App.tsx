@@ -523,7 +523,11 @@ export function App() {
     <div className="mobile-wrapper min-h-screen bg-white" data-preview-mode={isPreviewMode ? 'true' : undefined}>
       {/* 0. Splash Screen */}
       {viewStep === 'splash' && (
-        <SplashView onComplete={() => safeSetViewStep('landing')} />
+        <SplashView onComplete={() => {
+          if (!checkHasToken()) {
+            safeSetViewStep('landing');
+          }
+        }} />
       )}
 
       {/* 1. Landing Screen (Kakao OAuth Login) */}
