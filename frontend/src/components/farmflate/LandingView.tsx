@@ -13,9 +13,9 @@ export const LandingView: React.FC<LandingViewProps> = () => {
   return (
     <div className="full-screen-view" style={{
       justifyContent: 'space-between',
-      padding: '40px 20px 36px 20px',
+      padding: '36px 20px 32px 20px',
       backgroundColor: '#FFFFFF',
-      background: 'radial-gradient(circle at 50% 0%, #E9F7EC 0%, #FFFFFF 65%)'
+      background: 'radial-gradient(circle at 50% 10%, #E9F7EC 0%, #FFFFFF 75%)'
     }}>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', width: '100%' }}>
         
@@ -24,7 +24,7 @@ export const LandingView: React.FC<LandingViewProps> = () => {
           initial={{ scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ duration: 0.4 }}
-          style={{ position: 'relative', marginBottom: 14 }}
+          style={{ position: 'relative', marginBottom: 12 }}
         >
           {/* Sparkle decorative SVGs */}
           <img src="/svg-assets/ui-icons/star.svg" alt="" style={{ position: 'absolute', top: -6, left: -22, width: 16, height: 16 }} />
@@ -47,7 +47,7 @@ export const LandingView: React.FC<LandingViewProps> = () => {
         </motion.div>
 
         {/* Pure Vector Brand Wordmark Logo */}
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 14 }}>
           <img
             src="/svg-assets/brand/wordmark.svg"
             alt="Farmflate"
@@ -59,11 +59,12 @@ export const LandingView: React.FC<LandingViewProps> = () => {
         {/* Main Headline */}
         <h1 style={{
           fontSize: '1.65rem',
-          lineHeight: 1.42,
+          lineHeight: 1.4,
           fontWeight: 900,
           color: '#154f36',
-          marginBottom: 8,
-          margin: 0
+          marginBottom: 6,
+          margin: 0,
+          letterSpacing: '-0.03em'
         }}>
           내 땅에,<br />이 작물 심어도 될까요?
         </h1>
@@ -71,43 +72,41 @@ export const LandingView: React.FC<LandingViewProps> = () => {
         {/* Subtitle */}
         <p style={{
           fontSize: '0.84rem',
-          lineHeight: 1.65,
+          lineHeight: 1.6,
           color: '#6F7772',
           fontWeight: 500,
-          marginBottom: 24,
-          margin: '8px 0 24px 0'
+          marginBottom: 20,
+          margin: '6px 0 20px 0',
+          letterSpacing: '-0.01em'
         }}>
           지역과 작물을 선택하면 토양과 날씨를 분석해<br />재배 적합도와 위험 요소를 미리 알려드려요.
         </p>
 
-        {/* Hero Card Container */}
+        {/* Seamless High-Resolution Borderless Hero Container */}
         <motion.div
           initial={{ y: 12, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.15, duration: 0.5 }}
           style={{
             width: '100%',
-            maxWidth: 360,
-            aspectRatio: '360 / 230',
-            backgroundColor: '#FFFFFF',
+            maxWidth: 380,
             borderRadius: 24,
-            border: '1px solid #E1E8E4',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: 8,
-            marginBottom: 24,
-            overflow: 'hidden',
-            flexShrink: 1
+            marginBottom: 20,
+            overflow: 'hidden'
           }}
         >
           <img
-            src="/assets/landing-hero.png"
+            src="/assets/landing-hero-hd.jpg"
             alt="농장과 분석 화면 일러스트"
             style={{
               width: '100%',
-              height: '100%',
-              objectFit: 'contain'
+              height: 'auto',
+              maxHeight: 220,
+              objectFit: 'cover',
+              borderRadius: 24
             }}
           />
         </motion.div>
@@ -118,7 +117,7 @@ export const LandingView: React.FC<LandingViewProps> = () => {
           alignItems: 'center',
           justifyContent: 'center',
           gap: 12,
-          marginBottom: 12,
+          marginBottom: 10,
           width: '100%'
         }}>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 76 }}>
