@@ -3,18 +3,22 @@ import { motion, AnimatePresence } from 'framer-motion';
 import type { PanInfo } from 'framer-motion';
 import { ArrowUp, ChevronRight, X, Sparkles } from 'lucide-react';
 import { ApiError, ApiService } from '../../services/api';
-import type { Message } from '../../types/chat';
+import type { ChatPageContext, Message } from '../../types/chat';
 
 interface AIChatModalProps {
   isOpen: boolean;
   onClose: () => void;
   selectedRegion?: string;
   selectedCropInfo?: string;
+  pageContext?: ChatPageContext;
 }
 
 export const AIChatModal: React.FC<AIChatModalProps> = ({
   isOpen,
-  onClose
+  onClose,
+  selectedRegion,
+  selectedCropInfo,
+  pageContext
 }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -51,12 +55,25 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
     setLoading(true);
 
     try {
-      const response = await ApiService.sendChatMessage({ message: promptText });
+      const response = await ApiService.sendChatMessage({
+        message: promptText,
+        history: messages.slice(-12).map(message => ({
+          role: message.sender,
+          content: message.content
+        })),
+        context: {
+          ...pageContext,
+          region: pageContext?.region || selectedRegion,
+          selected_crop: pageContext?.selected_crop || selectedCropInfo
+        }
+      });
       const aiMsg: Message = {
         id: crypto.randomUUID(),
         sender: 'assistant',
         content: response.reply,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        sources: response.sources,
+        grounded: response.status === 'grounded'
       };
       setMessages(prev => [...prev, aiMsg]);
     } catch (err) {
@@ -261,6 +278,16 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
                       }}
                     >
                       <div>{msg.content}</div>
+                      {msg.sender === 'assistant' && msg.sources && msg.sources.length > 0 && (
+                        <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #E2E8F0', fontSize: '0.7rem', color: '#667085', lineHeight: 1.45 }}>
+                          <strong style={{ color: '#2e9f5b' }}>답변 근거</strong>
+                          {msg.sources.slice(0, 2).map((source, index) => (
+                            <div key={`${msg.id}-source-${index}`} style={{ marginTop: 2 }}>
+                              {source.title}{source.detail ? ` · ${source.detail}` : ''}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       <div style={{ fontSize: '0.66rem', marginTop: 4, opacity: 0.7, textAlign: 'right' }}>
                         {msg.timestamp}
                       </div>

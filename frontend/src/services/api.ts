@@ -10,7 +10,8 @@ import type {
 
 const viteEnv = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env ?? {};
 const SPRING_BACKEND_URL = (viteEnv.VITE_API_BASE_URL ?? 'http://localhost:8080/api').replace(/\/$/, '');
-const AI_API_URL = viteEnv.VITE_AI_API_BASE_URL?.replace(/\/$/, '');
+const AI_API_URL = viteEnv.VITE_AI_API_BASE_URL?.replace(/\/$/, '')
+  ?? (import.meta.env.DEV ? 'http://localhost:8000/api/v1' : undefined);
 
 export type {
   CreateFieldRequest,
@@ -305,6 +306,11 @@ export const ApiService = {
 
   async submitInquiry(payload: { inquiryText: string; category?: string }): Promise<{ status: string; inquiryId: string }> {
     return requestJson<{ status: string; inquiryId: string }>('/users/inquiries', { method: 'POST', headers: jsonHeaders(), body: JSON.stringify(payload) });
+  },
+
+  async getUserInquiries(): Promise<Array<{ id: number; userEmail: string; inquiryText: string; category: string; status: string; createdAt: string }>> {
+    const response = await requestJson<unknown>('/users/inquiries', { headers: getAuthHeaders() });
+    return Array.isArray(response) ? response as Array<{ id: number; userEmail: string; inquiryText: string; category: string; status: string; createdAt: string }> : [];
   },
 
   async sendChatMessage(payload: ChatRequest): Promise<ChatResponse> {
