@@ -82,7 +82,7 @@ export const LandingView: React.FC<LandingViewProps> = () => {
           지역과 작물을 선택하면 토양과 날씨를 분석해<br />재배 적합도와 위험 요소를 미리 알려드려요.
         </p>
 
-        {/* Seamless High-Resolution Borderless Hero Container */}
+        {/* Original Hero Illustration (Borderless & Blended) */}
         <motion.div
           initial={{ y: 12, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
@@ -90,7 +90,6 @@ export const LandingView: React.FC<LandingViewProps> = () => {
           style={{
             width: '100%',
             maxWidth: 380,
-            borderRadius: 24,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -99,14 +98,14 @@ export const LandingView: React.FC<LandingViewProps> = () => {
           }}
         >
           <img
-            src="/assets/landing-hero-hd.jpg"
+            src="/assets/landing-hero.png"
             alt="농장과 분석 화면 일러스트"
             style={{
               width: '100%',
               height: 'auto',
               maxHeight: 220,
-              objectFit: 'cover',
-              borderRadius: 24
+              objectFit: 'contain',
+              borderRadius: 20
             }}
           />
         </motion.div>
@@ -136,7 +135,7 @@ export const LandingView: React.FC<LandingViewProps> = () => {
             <span style={{ fontSize: '0.76rem', fontWeight: 750, color: '#154F36' }}>작물 선택</span>
           </div>
 
-          <span style={{ color: '#A8DCC8', fontSize: '1.3rem', fontWeight: 800, marginBottom: 18 }}>›</span>
+          <span style={{ color: '#A8DCC8', fontSize: '1.3rem', fontWeight 800, marginBottom: 18 }}>›</span>
 
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 76 }}>
             <div style={{ width: 48, height: 48, borderRadius: '50%', backgroundColor: '#E9F7EC', border: '1px solid #A8DCC8', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 6 }}>
