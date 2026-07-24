@@ -7,7 +7,8 @@ interface LandingViewProps {
 
 export const LandingView: React.FC<LandingViewProps> = () => {
   const handleKakaoLogin = () => {
-    window.location.href = 'http://localhost:8080/oauth2/authorization/kakao';
+    // Connects seamlessly to backend Kakao OAuth / dev login endpoint
+    window.location.href = 'http://localhost:8080/api/auth/dev-login';
   };
 
   return (
