@@ -26,7 +26,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
         <span>홈</span>
       </button>
 
-      {/* 2. 내 밭 (My Field) */}
+      {/* 2. 마이 팜 (My Field) */}
       <button
         type="button"
         onClick={() => onTabChange('myfield')}
@@ -35,7 +35,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
         <div style={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Sprout size={22} color={activeTab === 'myfield' ? '#2FA86A' : '#8E9892'} strokeWidth={activeTab === 'myfield' ? 2.5 : 2} />
         </div>
-        <span>내 밭</span>
+        <span>마이 팜</span>
       </button>
 
       {/* 3. 커뮤니티 (Community) */}
