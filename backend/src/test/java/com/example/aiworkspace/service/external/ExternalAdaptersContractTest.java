@@ -21,6 +21,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ExternalAdaptersContractTest {
@@ -103,6 +105,77 @@ class ExternalAdaptersContractTest {
     }
 
     @Test
+    void valid_xml_crop_variants_are_not_misclassified_as_a_provider_failure() {
+        ExternalResult<Map<String, CropCodeAdapter.CropCodeMapping>> result = cropCodes.parse(cropVariantsXml(), "application/xml");
+
+        assertThat(result.status()).isEqualTo(ExternalResult.Status.EMPTY);
+        assertThat(result.errorCode()).isNull();
+    }
+
+    @Test
+    void crop_code_parser_reads_the_provider_crop_cd_field_when_an_exact_crop_exists() {
+        ExternalResult<Map<String, CropCodeAdapter.CropCodeMapping>> result = cropCodes.parse("""
+                <response><header><result_Code>200</result_Code></header>
+                <body><items><item><crop_Cd>00017</crop_Cd><crop_Nm>감자</crop_Nm></item></items></body>
+                </response>
+                """, "application/xml");
+
+        assertThat(result.status()).isEqualTo(ExternalResult.Status.SUCCESS);
+        assertThat(result.value().get("POTATO").apiCropCode).isEqualTo("00017");
+        assertThat(result.value().get("POTATO").resolved).isTrue();
+    }
+
+    @Test
+    void area_only_soil_statistics_are_explicitly_unsupported_for_ph() {
+        ExternalResult<Double> result = soil.parse(areaOnlySoilXml(), "application/xml");
+
+        assertThat(result.status()).isEqualTo(ExternalResult.Status.FAILURE);
+        assertThat(result.errorCode()).isEqualTo("SOIL_CHEMISTRY_UNSUPPORTED_FOR_PH");
+    }
+
+    @Test
+    void soil_chemistry_uses_authoritative_legal_dong_instead_of_invalid_sigungu_input() {
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        LegalDistrictAdapter legalDistrict = mock(LegalDistrictAdapter.class);
+        LegalDistrictAdapter.LegalDistrict district = new LegalDistrictAdapter.LegalDistrict();
+        district.regionCd = "4111710600";
+        when(legalDistrict.getDistrictCodes("경기도", "수원시")).thenReturn(ExternalResult.success(List.of(district)));
+        when(restTemplate.getForObject(anyString(), eq(String.class))).thenReturn(areaOnlySoilXml());
+
+        ExternalResult<SoilChemistryAdapter.SoilChemistryResult> result =
+                new SoilChemistryAdapter(restTemplate, "fixture-key", legalDistrict, 30, 0, "LIVE")
+                        .getSoilChemistry("41110", "경기도", "수원시");
+
+        assertThat(result.status()).isEqualTo(ExternalResult.Status.FAILURE);
+        assertThat(result.errorCode()).isEqualTo("SOIL_CHEMISTRY_UNSUPPORTED_FOR_PH");
+        org.mockito.ArgumentCaptor<String> urls = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(restTemplate, times(1)).getForObject(urls.capture(), eq(String.class));
+        assertThat(urls.getAllValues()).allSatisfy(url -> assertThat(url).contains("STDG_CD=4111710600"));
+    }
+
+    @Test
+    void official_soil_fit_no_data_is_empty_after_legal_dong_resolution() {
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        LegalDistrictAdapter legalDistrict = mock(LegalDistrictAdapter.class);
+        CropCodeAdapter cropCodeAdapter = mock(CropCodeAdapter.class);
+        LegalDistrictAdapter.LegalDistrict district = new LegalDistrictAdapter.LegalDistrict();
+        district.regionCd = "4111710600";
+        CropCodeAdapter.CropCodeMapping mapping = cropMapping("POTATO", "00017", "감자(남부,봄재배)");
+        when(cropCodeAdapter.getCropCodeMappings()).thenReturn(ExternalResult.success(Map.of("POTATO", mapping)));
+        when(legalDistrict.getDistrictCodes("경기도", "수원시")).thenReturn(ExternalResult.success(List.of(district)));
+        when(restTemplate.getForObject(anyString(), eq(String.class))).thenReturn(soilFitNoDataXml());
+
+        ExternalResult<Map<String, SoilSuitabilityAdapter.SoilSuitabilityResult>> result =
+                new SoilSuitabilityAdapter(restTemplate, "fixture-key", legalDistrict, cropCodeAdapter, 90, 0, "LIVE")
+                        .getSoilSuitability("41110", "경기도", "수원시");
+
+        assertThat(result.status()).isEqualTo(ExternalResult.Status.EMPTY);
+        org.mockito.ArgumentCaptor<String> urls = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(restTemplate, times(1)).getForObject(urls.capture(), eq(String.class));
+        assertThat(urls.getAllValues()).allSatisfy(url -> assertThat(url).contains("STDG_CD=4111710600"));
+    }
+
+    @Test
     void retry_count_one_retries_a_network_exception_exactly_once() {
         AtomicInteger attempts = new AtomicInteger();
 
@@ -138,7 +211,7 @@ class ExternalAdaptersContractTest {
     private static ExternalResult<?> mixedCropCodeFailure() {
         RestTemplate restTemplate = mock(RestTemplate.class);
         AtomicInteger calls = new AtomicInteger();
-        when(restTemplate.getForObject(anyString(), eq(Map.class))).thenAnswer(invocation -> switch (calls.getAndIncrement()) {
+        when(restTemplate.getForObject(anyString(), eq(String.class))).thenAnswer(invocation -> switch (calls.getAndIncrement()) {
             case 0 -> cropPayload("사과", "1001");
             case 1 -> throw new ResourceAccessException("fixture timeout");
             case 2 -> cropPayload("오이", "1003");
@@ -152,7 +225,7 @@ class ExternalAdaptersContractTest {
     private static ExternalResult<?> mixedSoilChemistryFailure() {
         RestTemplate restTemplate = mock(RestTemplate.class);
         AtomicInteger calls = new AtomicInteger();
-        when(restTemplate.getForObject(anyString(), eq(Map.class))).thenAnswer(invocation -> {
+        when(restTemplate.getForObject(anyString(), eq(String.class))).thenAnswer(invocation -> {
             if (calls.getAndIncrement() == 1) {
                 throw new ResourceAccessException("fixture timeout");
             }
@@ -160,6 +233,8 @@ class ExternalAdaptersContractTest {
         });
 
         LegalDistrictAdapter legalDistrict = mock(LegalDistrictAdapter.class);
+        when(legalDistrict.getDistrictCodes("전북특별자치도", "고창군"))
+                .thenReturn(ExternalResult.success(List.of(legalDistrict("5279031000"))));
         return new SoilChemistryAdapter(restTemplate, "fixture-key", legalDistrict, 30, 0, "LIVE")
                 .getSoilChemistry("52180", "전북특별자치도", "고창군");
     }
@@ -167,7 +242,7 @@ class ExternalAdaptersContractTest {
     private static ExternalResult<?> mixedSoilSuitabilityFailure() {
         RestTemplate restTemplate = mock(RestTemplate.class);
         AtomicInteger calls = new AtomicInteger();
-        when(restTemplate.getForObject(anyString(), eq(Map.class))).thenAnswer(invocation -> {
+        when(restTemplate.getForObject(anyString(), eq(String.class))).thenAnswer(invocation -> {
             if (calls.getAndIncrement() == 1) {
                 throw new ResourceAccessException("fixture timeout");
             }
@@ -181,6 +256,8 @@ class ExternalAdaptersContractTest {
         when(cropCodeAdapter.getCropCodeMappings()).thenReturn(ExternalResult.success(mappings));
 
         LegalDistrictAdapter legalDistrict = mock(LegalDistrictAdapter.class);
+        when(legalDistrict.getDistrictCodes("전북특별자치도", "고창군"))
+                .thenReturn(ExternalResult.success(List.of(legalDistrict("5279031000"))));
         return new SoilSuitabilityAdapter(restTemplate, "fixture-key", legalDistrict, cropCodeAdapter, 90, 0, "LIVE")
                 .getSoilSuitability("52180", "전북특별자치도", "고창군");
     }
@@ -194,22 +271,54 @@ class ExternalAdaptersContractTest {
         return mapping;
     }
 
-    private static Map<String, Object> cropPayload(String cropName, String cropCode) {
-        return responseWithItems(Map.of("crop_Nm", cropName, "soil_Crop_CD", cropCode));
+    private static LegalDistrictAdapter.LegalDistrict legalDistrict(String regionCode) {
+        LegalDistrictAdapter.LegalDistrict district = new LegalDistrictAdapter.LegalDistrict();
+        district.regionCd = regionCode;
+        return district;
     }
 
-    private static Map<String, Object> soilPayload(String value) {
-        return responseWithItems(Map.of("vl", value));
+    private static String cropPayload(String cropName, String cropCode) {
+        return "<response><header><result_Code>200</result_Code></header><body><items><item>"
+                + "<crop_Nm>" + cropName + "</crop_Nm><crop_Cd>" + cropCode + "</crop_Cd>"
+                + "</item></items></body></response>";
     }
 
-    private static Map<String, Object> suitabilityPayload(String grade, String area) {
-        return responseWithItems(Map.of("soil_Grd_Nm", grade, "soil_Grd_Area", area));
+    private static String soilPayload(String value) {
+        return "<response><header><result_Code>200</result_Code></header><body><items><item>"
+                + "<vl>" + value + "</vl></item></items></body></response>";
     }
 
-    private static Map<String, Object> responseWithItems(Map<String, Object> item) {
-        return Map.of("response", Map.of(
-                "header", Map.of("resultCode", "00"),
-                "body", Map.of("items", Map.of("item", List.of(item)))));
+    private static String suitabilityPayload(String grade, String area) {
+        return "<response><header><result_Code>200</result_Code></header><body><items><item>"
+                + "<soil_Grd_Nm>" + grade + "</soil_Grd_Nm><soil_Grd_Area>" + area + "</soil_Grd_Area>"
+                + "</item></items></body></response>";
+    }
+
+    private static String cropVariantsXml() {
+        return """
+                <response>
+                  <header><result_Code>200</result_Code><result_Msg>정상</result_Msg></header>
+                  <body><items><item><crop_Cd>00061</crop_Cd><crop_Nm>사과(1-4년생)</crop_Nm></item></items></body>
+                </response>
+                """;
+    }
+
+    private static String areaOnlySoilXml() {
+        return """
+                <response>
+                  <header><result_Code>200</result_Code><result_Msg>정상</result_Msg></header>
+                  <body><items><item><stdg_Cd>4111710600</stdg_Cd><acid_Rfld1_Area>1</acid_Rfld1_Area><acid_Rfld2_Area>0</acid_Rfld2_Area></item></items></body>
+                </response>
+                """;
+    }
+
+    private static String soilFitNoDataXml() {
+        return """
+                <response>
+                  <header><result_Code>301</result_Code><result_Msg>요청 데이터 없음</result_Msg></header>
+                  <body><items/></body>
+                </response>
+                """;
     }
 
     private static String fixture(String name) {

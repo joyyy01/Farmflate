@@ -10,8 +10,8 @@ import java.time.LocalDateTime;
 @Table(
     name = "region_analyses",
     indexes = {
-        @Index(name = "uq_region_analysis_owner_idempotency", columnList = "user_email, idempotency_key", unique = true),
-        @Index(name = "ix_region_analysis_reuse", columnList = "user_email, sigungu_code, rule_version, analyzed_at")
+        @Index(name = "uq_region_analysis_scope_idempotency", columnList = "analysis_scope, scope_subject, idempotency_key", unique = true),
+        @Index(name = "ix_region_analysis_scope_reuse", columnList = "analysis_scope, scope_subject, sigungu_code, rule_version, analyzed_at")
     }
 )
 @Getter
@@ -30,8 +30,17 @@ public class RegionAnalysisEntity extends BaseTimeEntity {
     @Column(name = "rule_version", nullable = false, length = 64)
     private String ruleVersion;
 
-    @Column(name = "user_email", nullable = false, length = 255)
+    /** Present only for a private owner analysis; public regional snapshots carry no user identity. */
+    @Column(name = "user_email", length = 255)
     private String userEmail;
+
+    /** OWNER or PUBLIC.  This is an explicit access/cache scope, never a synthetic user account. */
+    @Column(name = "analysis_scope", nullable = false, length = 20)
+    private String analysisScope;
+
+    /** Owner e-mail for OWNER, fixed non-personal scope subject for PUBLIC. */
+    @Column(name = "scope_subject", nullable = false, length = 255)
+    private String scopeSubject;
 
     @Column(name = "sido_code", nullable = false, length = 20)
     private String sidoCode;

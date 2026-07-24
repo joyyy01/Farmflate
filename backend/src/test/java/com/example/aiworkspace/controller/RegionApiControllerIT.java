@@ -6,6 +6,7 @@ import com.example.aiworkspace.security.CustomOAuth2UserService;
 import com.example.aiworkspace.security.JwtTokenProvider;
 import com.example.aiworkspace.security.OAuth2SuccessHandler;
 import com.example.aiworkspace.security.SecurityConfig;
+import com.example.aiworkspace.security.UserPrincipal;
 import com.example.aiworkspace.service.analysis.RegionAnalysisService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,16 +14,20 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.UUID;
+import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -63,7 +68,7 @@ class RegionApiControllerIT {
                         .build());
 
         mockMvc.perform(post("/api/regions/analysis")
-                        .with(user(OWNER_EMAIL))
+                        .with(owner())
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(validRequestJson()))
@@ -74,12 +79,20 @@ class RegionApiControllerIT {
     }
 
     @Test
-    void unauthenticated_canonical_create_returns_unauthorized() throws Exception {
+    void unauthenticated_canonical_create_uses_public_analysis_scope() throws Exception {
+        UUID analysisId = UUID.randomUUID();
+        when(regionAnalysisService.createPublic(any()))
+                .thenReturn(RegionAnalysisStatusDto.builder().analysisId(analysisId.toString()).status("PARTIAL").build());
+
         mockMvc.perform(post("/api/regions/analysis")
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(validRequestJson()))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.analysisId").value(analysisId.toString()))
+                .andExpect(jsonPath("$.status").value("PARTIAL"));
+
+        verify(regionAnalysisService).createPublic(any());
     }
 
     @Test
@@ -89,7 +102,7 @@ class RegionApiControllerIT {
                 .thenThrow(RegionAnalysisService.RegionAnalysisException.analysisNotFound(otherUsersAnalysisId));
 
         mockMvc.perform(get("/api/regions/reports/{id}", otherUsersAnalysisId)
-                        .with(user(OWNER_EMAIL)))
+                        .with(owner()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("REGION_ANALYSIS_NOT_FOUND"));
 
@@ -103,7 +116,7 @@ class RegionApiControllerIT {
                 .thenThrow(RegionAnalysisService.RegionAnalysisException.analysisNotFound(otherUsersAnalysisId));
 
         mockMvc.perform(get("/api/regions/analysis/{id}/status", otherUsersAnalysisId)
-                        .with(user(OWNER_EMAIL)))
+                        .with(owner()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("REGION_ANALYSIS_NOT_FOUND"));
 
@@ -116,12 +129,17 @@ class RegionApiControllerIT {
                 .thenThrow(RegionAnalysisService.RegionAnalysisException.mappingNotConfigured("52", "52180"));
 
         mockMvc.perform(post("/api/regions/analysis")
-                        .with(user(OWNER_EMAIL))
+                        .with(owner())
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(validRequestJson()))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.code").value("REGION_MAPPING_NOT_CONFIGURED"));
+    }
+
+    private RequestPostProcessor owner() {
+        UserPrincipal principal = new UserPrincipal(1L, OWNER_EMAIL, List.of(new SimpleGrantedAuthority("ROLE_USER")));
+        return authentication(new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities()));
     }
 
     private String validRequestJson() {

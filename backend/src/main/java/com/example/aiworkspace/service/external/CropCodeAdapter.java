@@ -75,7 +75,7 @@ public class CropCodeAdapter {
 
     /** Testable raw-payload boundary for fixture-backed contract tests. */
     public ExternalResult<Map<String, CropCodeMapping>> parse(String body, String contentType) {
-        ExternalResult<Map<String, Object>> parsed = ExternalAdapterSupport.parseJsonObject(body, contentType);
+        ExternalResult<Map<String, Object>> parsed = ExternalAdapterSupport.parseProviderObject(body, contentType);
         if (parsed.isFailure()) {
             return ExternalResult.failure(parsed.errorCode(), parsed.metrics());
         }
@@ -113,7 +113,6 @@ public class CropCodeAdapter {
         return ExternalResult.empty(metrics);
     }
 
-    @SuppressWarnings("unchecked")
     private ExternalResult<String> lookupCropCode(String cropName) {
         String url = UriComponentsBuilder.fromHttpUrl(BASE_URL)
                 .queryParam("serviceKey", serviceKey)
@@ -122,10 +121,14 @@ public class CropCodeAdapter {
                 .queryParam("crop_Nm", cropName)
                 .build(false)
                 .toUriString();
-        ExternalResult<Map<String, Object>> response = ExternalAdapterSupport.executeRequest(
-                retryCount, "CROP_CODE_REQUEST_FAILED", () -> restTemplate.getForObject(url, Map.class));
+        ExternalResult<String> payload = ExternalAdapterSupport.executeRequest(
+                retryCount, "CROP_CODE_REQUEST_FAILED", () -> restTemplate.getForObject(url, String.class));
+        if (payload.isFailure()) {
+            log.warn("Crop code lookup failed for {}: {}", cropName, payload.errorCode());
+            return ExternalResult.failure(payload.errorCode(), payload.metrics());
+        }
+        ExternalResult<Map<String, Object>> response = ExternalAdapterSupport.parseProviderObject(payload.value(), null);
         if (response.isFailure()) {
-            log.warn("Crop code lookup failed for {}: {}", cropName, response.errorCode());
             return ExternalResult.failure(response.errorCode(), response.metrics());
         }
         return extractCode(response.value(), cropName);
@@ -135,12 +138,15 @@ public class CropCodeAdapter {
         if (response == null) {
             return ExternalResult.failure("EMPTY_PROVIDER_RESPONSE");
         }
+        String providerCode = ExternalAdapterSupport.providerResultCode(response);
+        if (providerCode != null && !ExternalAdapterSupport.isProviderSuccessCode(providerCode)) {
+            if (ExternalAdapterSupport.isProviderNoDataCode(providerCode)) {
+                return ExternalResult.empty();
+            }
+            return ExternalResult.failure("CROP_CODE_PROVIDER_" + providerCode);
+        }
         Map<String, Object> envelope = ExternalAdapterSupport.map(response.get("response"));
         if (envelope != null) {
-            Map<String, Object> header = ExternalAdapterSupport.map(envelope.get("header"));
-            if (header != null && !"00".equals(String.valueOf(header.get("resultCode")))) {
-                return ExternalResult.failure("CROP_CODE_PROVIDER_" + header.get("resultCode"));
-            }
             Map<String, Object> body = ExternalAdapterSupport.map(envelope.get("body"));
             if (body == null) {
                 return ExternalResult.failure("MALFORMED_PROVIDER_RESPONSE");
@@ -197,7 +203,7 @@ public class CropCodeAdapter {
     }
 
     private String cropCode(Map<String, Object> item) {
-        return string(item, "soil_Crop_CD", "soilCropCd", "SOIL_CROP_CD", "crop_cd", "cropCd");
+        return string(item, "soil_Crop_CD", "soilCropCd", "SOIL_CROP_CD", "crop_Cd", "crop_cd", "cropCd", "CROP_CD");
     }
 
     private List<NormalizedMetric> metricsFor(Map<String, CropCodeMapping> mappings) {

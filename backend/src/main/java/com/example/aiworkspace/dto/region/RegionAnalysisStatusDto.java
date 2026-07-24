@@ -13,6 +13,8 @@ import java.util.List;
 public class RegionAnalysisStatusDto {
     private String analysisId;
     private String status; // PROCESSING, COMPLETED, FAILED
+    /** OWNER for an authenticated private snapshot, PUBLIC for anonymous regional exploration. */
+    private String analysisScope;
     private List<String> completedSteps;
     private String currentStep;
     private Boolean retryable;

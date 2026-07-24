@@ -26,6 +26,8 @@ public class RegionReportResponseDto {
     private String analysisId;
     /** COMPLETED only when every required provider returned usable data; otherwise PARTIAL. */
     private String status;
+    /** OWNER or PUBLIC; public reports contain no user identity. */
+    private String analysisScope;
     private RegionDto region;
     private LocationResolution location;
 

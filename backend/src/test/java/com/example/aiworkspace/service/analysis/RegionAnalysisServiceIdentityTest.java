@@ -120,6 +120,27 @@ class RegionAnalysisServiceIdentityTest {
                         any(LocalDateTime.class));
     }
 
+    @Test
+    void public_idempotency_uses_a_non_personal_scope_and_never_reuses_an_owner_entry() {
+        RegionAnalysisEntity publicAnalysis = RegionAnalysisEntity.builder()
+                .id("fd426c62-20c4-423d-8797-c6d3bf055ca4")
+                .analysisScope("PUBLIC")
+                .scopeSubject("PUBLIC_REGION")
+                .sidoCode("52").sidoName("전북특별자치도")
+                .sigunguCode("52180").sigunguName("고창군")
+                .idempotencyKey(IDEMPOTENCY_KEY).ruleVersion(CropScoringEngine.RULE_VERSION)
+                .reportStatus("PARTIAL").analyzedAt(LocalDateTime.now()).build();
+        when(analysisRepository.findByAnalysisScopeAndScopeSubjectAndIdempotencyKey(
+                "PUBLIC", "PUBLIC_REGION", IDEMPOTENCY_KEY)).thenReturn(Optional.of(publicAnalysis));
+
+        var result = service.createPublic(request());
+
+        assertThat(result.getAnalysisId()).isEqualTo(publicAnalysis.getId());
+        assertThat(result.getStatus()).isEqualTo("PARTIAL");
+        verify(analysisRepository).findByAnalysisScopeAndScopeSubjectAndIdempotencyKey(
+                "PUBLIC", "PUBLIC_REGION", IDEMPOTENCY_KEY);
+    }
+
     private RegionAnalysisRequestDto request() {
         return RegionAnalysisRequestDto.builder()
                 .sidoCode("52")

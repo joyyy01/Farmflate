@@ -14,7 +14,6 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
-import java.security.Principal;
 import java.util.List;
 import java.util.UUID;
 
@@ -59,24 +58,26 @@ public class RegionApiController {
 
     @PostMapping("/regions/analysis")
     public ResponseEntity<RegionAnalysisStatusDto> create(
-            Principal principal,
+            @AuthenticationPrincipal UserPrincipal userPrincipal,
             @RequestBody RegionAnalysisRequestDto request) {
         validateRequest(request);
-        return ResponseEntity.ok(regionAnalysisService.create(principal.getName(), request));
+        return ResponseEntity.ok(userPrincipal == null
+                ? regionAnalysisService.createPublic(request)
+                : regionAnalysisService.create(userPrincipal.getEmail(), request));
     }
 
     @GetMapping("/regions/analysis/{analysisId}/status")
     public ResponseEntity<RegionAnalysisStatusDto> getStatus(
-            Principal principal,
+            @AuthenticationPrincipal UserPrincipal userPrincipal,
             @PathVariable UUID analysisId) {
-        return ResponseEntity.ok(regionAnalysisService.getStatus(principal.getName(), analysisId));
+        return ResponseEntity.ok(regionAnalysisService.getStatus(userPrincipal == null ? null : userPrincipal.getEmail(), analysisId));
     }
 
     @GetMapping("/regions/reports/{analysisId}")
     public ResponseEntity<RegionReportResponseDto> getReport(
-            Principal principal,
+            @AuthenticationPrincipal UserPrincipal userPrincipal,
             @PathVariable UUID analysisId) {
-        return ResponseEntity.ok(regionAnalysisService.getReport(principal.getName(), analysisId));
+        return ResponseEntity.ok(regionAnalysisService.getReport(userPrincipal == null ? null : userPrincipal.getEmail(), analysisId));
     }
 
     @ExceptionHandler(RegionAnalysisService.RegionAnalysisException.class)

@@ -83,7 +83,7 @@ public class SoilChemistryAdapter {
 
     /** Testable raw-payload boundary for fixture-backed contract tests. */
     public ExternalResult<Double> parse(String body, String contentType) {
-        ExternalResult<Map<String, Object>> parsed = ExternalAdapterSupport.parseJsonObject(body, contentType);
+        ExternalResult<Map<String, Object>> parsed = ExternalAdapterSupport.parseProviderObject(body, contentType);
         if (parsed.isFailure()) {
             return ExternalResult.failure(parsed.errorCode(), parsed.metrics());
         }
@@ -95,6 +95,13 @@ public class SoilChemistryAdapter {
         CachedSoil cached = cache.get(cacheKey);
         if (cached != null && Duration.between(cached.cachedAt(), Instant.now()).toDays() < cacheDays) {
             return cached.result().asCached();
+        }
+
+        // SoilExamStat V2 rejects five-digit SIGUNGU codes.  Resolve a legal-dong code
+        // from the authoritative MOIS source instead of forwarding an invalid location.
+        if (!isLegalDongCode(sigunguCode)) {
+            ExternalResult<SoilChemistryResult> legalDong = fetchLegalDongAggregate(sidoName, sigunguName);
+            return completeLegalDongResult(legalDong, sigunguCode, cacheKey, null);
         }
 
         ExternalResult<SoilChemistryResult> direct = fetchDirect(sigunguCode);
@@ -116,6 +123,12 @@ public class SoilChemistryAdapter {
         }
 
         ExternalResult<SoilChemistryResult> fallback = fetchLegalDongAggregate(sidoName, sigunguName);
+        return completeLegalDongResult(fallback, sigunguCode, cacheKey, direct);
+    }
+
+    private ExternalResult<SoilChemistryResult> completeLegalDongResult(
+            ExternalResult<SoilChemistryResult> fallback, String sigunguCode, String cacheKey,
+            ExternalResult<SoilChemistryResult> direct) {
         if (fallback.isFailure()) {
             if (fallback.value() != null) {
                 fallback.value().spatialLevel = "LEGAL_DONG_AGGREGATE";
@@ -125,7 +138,7 @@ public class SoilChemistryAdapter {
             return fallback;
         }
         if (fallback.isEmpty()) {
-            if (direct.isSuccess() && direct.value() != null) {
+            if (direct != null && direct.isSuccess() && direct.value() != null) {
                 SoilChemistryResult value = direct.value();
                 value.spatialLevel = "SIGUNGU_AGGREGATE";
                 value.partial = true;
@@ -178,10 +191,10 @@ public class SoilChemistryAdapter {
     private ExternalResult<SoilChemistryResult> fetchLegalDongAggregate(String sidoName, String sigunguName) {
         ExternalResult<List<LegalDistrictAdapter.LegalDistrict>> legal = legalDistrictAdapter.getDistrictCodes(sidoName, sigunguName);
         if (legal.isFailure()) {
-            return ExternalResult.failure(legal.errorCode(), legal.metrics());
+            return ExternalResult.failure("SOIL_CHEMISTRY_LOCATION_LOOKUP_FAILED", legal.metrics());
         }
         if (legal.isEmpty()) {
-            return ExternalResult.empty(legal.metrics());
+            return ExternalResult.failure("SOIL_CHEMISTRY_LOCATION_NOT_RESOLVED", legal.metrics());
         }
 
         SoilChemistryResult result = new SoilChemistryResult();
@@ -198,6 +211,9 @@ public class SoilChemistryAdapter {
             for (int index = 0; index < OPERATIONS.size(); index++) {
                 ExternalResult<Double> value = callSoilApi(OPERATIONS.get(index), district.regionCd);
                 if (value.isFailure()) {
+                    if ("SOIL_CHEMISTRY_UNSUPPORTED_FOR_PH".equals(value.errorCode())) {
+                        return ExternalResult.failure(value.errorCode());
+                    }
                     failures++;
                 } else if (value.isSuccess()) {
                     if (isValidMetric(index, value.value())) {
@@ -234,17 +250,20 @@ public class SoilChemistryAdapter {
                 : ExternalResult.empty();
     }
 
-    @SuppressWarnings("unchecked")
     private ExternalResult<Double> callSoilApi(String operation, String regionCode) {
         String url = UriComponentsBuilder.fromHttpUrl(BASE_URL + "/" + operation)
                 .queryParam("serviceKey", serviceKey)
                 .queryParam("STDG_CD", regionCode)
                 .build(false)
                 .toUriString();
-        ExternalResult<Map<String, Object>> response = ExternalAdapterSupport.executeRequest(
-                retryCount, "SOIL_CHEMISTRY_REQUEST_FAILED", () -> restTemplate.getForObject(url, Map.class));
+        ExternalResult<String> payload = ExternalAdapterSupport.executeRequest(
+                retryCount, "SOIL_CHEMISTRY_REQUEST_FAILED", () -> restTemplate.getForObject(url, String.class));
+        if (payload.isFailure()) {
+            log.debug("Soil API {} failed for {}: {}", operation, regionCode, payload.errorCode());
+            return ExternalResult.failure(payload.errorCode(), payload.metrics());
+        }
+        ExternalResult<Map<String, Object>> response = ExternalAdapterSupport.parseProviderObject(payload.value(), null);
         if (response.isFailure()) {
-            log.debug("Soil API {} failed for {}: {}", operation, regionCode, response.errorCode());
             return ExternalResult.failure(response.errorCode(), response.metrics());
         }
         return extractSoilValue(response.value());
@@ -254,12 +273,12 @@ public class SoilChemistryAdapter {
         if (response == null) {
             return ExternalResult.failure("EMPTY_PROVIDER_RESPONSE");
         }
-        Map<String, Object> envelope = ExternalAdapterSupport.map(response.get("response"));
-        if (envelope != null) {
-            Map<String, Object> header = ExternalAdapterSupport.map(envelope.get("header"));
-            if (header != null && !"00".equals(String.valueOf(header.get("resultCode")))) {
-                return ExternalResult.failure("SOIL_CHEMISTRY_PROVIDER_" + header.get("resultCode"));
+        String providerCode = ExternalAdapterSupport.providerResultCode(response);
+        if (providerCode != null && !ExternalAdapterSupport.isProviderSuccessCode(providerCode)) {
+            if (ExternalAdapterSupport.isProviderNoDataCode(providerCode)) {
+                return ExternalResult.empty();
             }
+            return ExternalResult.failure("SOIL_CHEMISTRY_PROVIDER_" + providerCode);
         }
         Map<String, Object> body = findBody(response);
         if (body == null) {
@@ -272,6 +291,11 @@ public class SoilChemistryAdapter {
         List<Map<String, Object>> rows = ExternalAdapterSupport.mapList(items.get("item"));
         if (rows.isEmpty()) {
             return ExternalResult.empty();
+        }
+        if (rows.stream().anyMatch(this::isAreaDistribution)) {
+            // V2 exposes band-area distributions, not an observed pH or mean.  A
+            // synthetic midpoint would look precise while being unsupported.
+            return ExternalResult.failure("SOIL_CHEMISTRY_UNSUPPORTED_FOR_PH");
         }
         for (Map<String, Object> row : rows) {
             Double value = extractMainValue(row);
@@ -297,13 +321,15 @@ public class SoilChemistryAdapter {
                 return value;
             }
         }
-        for (Object candidate : row.values()) {
-            Double value = parseDouble(candidate);
-            if (value != null && value >= 0 && value < 10000) {
-                return value;
-            }
-        }
         return null;
+    }
+
+    private boolean isAreaDistribution(Map<String, Object> row) {
+        return row.keySet().stream().anyMatch(key -> key != null && key.toLowerCase().endsWith("_area"));
+    }
+
+    private boolean isLegalDongCode(String regionCode) {
+        return regionCode != null && regionCode.matches("\\d{10}");
     }
 
     private boolean setMetricValue(SoilChemistryResult result, int index, Double value) {

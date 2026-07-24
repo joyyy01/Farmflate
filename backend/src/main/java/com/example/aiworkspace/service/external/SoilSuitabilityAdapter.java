@@ -76,7 +76,7 @@ public class SoilSuitabilityAdapter {
 
     /** Testable raw-payload boundary for fixture-backed contract tests. */
     public ExternalResult<Map<String, Double>> parse(String body, String contentType) {
-        ExternalResult<Map<String, Object>> parsed = ExternalAdapterSupport.parseJsonObject(body, contentType);
+        ExternalResult<Map<String, Object>> parsed = ExternalAdapterSupport.parseProviderObject(body, contentType);
         if (parsed.isFailure()) {
             return ExternalResult.failure(parsed.errorCode(), parsed.metrics());
         }
@@ -110,10 +110,11 @@ public class SoilSuitabilityAdapter {
                 continue;
             }
 
-            ExternalResult<Map<String, Double>> direct = fetchGradeAreas(sigunguCode, mapping.apiCropCode);
-            ExternalResult<Map<String, Double>> gradeAreas = direct;
-            boolean fallback = false;
-            if (direct.isEmpty()) {
+            boolean fallback = !isLegalDongCode(sigunguCode);
+            ExternalResult<Map<String, Double>> gradeAreas = fallback
+                    ? fetchLegalDongAggregate(sidoName, sigunguName, mapping.apiCropCode)
+                    : fetchGradeAreas(sigunguCode, mapping.apiCropCode);
+            if (!fallback && gradeAreas.isEmpty()) {
                 gradeAreas = fetchLegalDongAggregate(sidoName, sigunguName, mapping.apiCropCode);
                 fallback = true;
             }
@@ -156,7 +157,6 @@ public class SoilSuitabilityAdapter {
         return ExternalResult.empty(metrics);
     }
 
-    @SuppressWarnings("unchecked")
     private ExternalResult<Map<String, Double>> fetchGradeAreas(String regionCode, String apiCropCode) {
         String url = UriComponentsBuilder.fromHttpUrl(BASE_URL)
                 .queryParam("serviceKey", serviceKey)
@@ -164,11 +164,15 @@ public class SoilSuitabilityAdapter {
                 .queryParam("soil_Crop_CD", apiCropCode)
                 .build(false)
                 .toUriString();
-        ExternalResult<Map<String, Object>> response = ExternalAdapterSupport.executeRequest(
-                retryCount, "SOIL_SUITABILITY_REQUEST_FAILED", () -> restTemplate.getForObject(url, Map.class));
-        if (response.isFailure()) {
+        ExternalResult<String> payload = ExternalAdapterSupport.executeRequest(
+                retryCount, "SOIL_SUITABILITY_REQUEST_FAILED", () -> restTemplate.getForObject(url, String.class));
+        if (payload.isFailure()) {
             log.debug("Soil suitability fetch failed for stdg={}, crop={}: {}", regionCode, apiCropCode,
-                    response.errorCode());
+                    payload.errorCode());
+            return ExternalResult.failure(payload.errorCode(), payload.metrics());
+        }
+        ExternalResult<Map<String, Object>> response = ExternalAdapterSupport.parseProviderObject(payload.value(), null);
+        if (response.isFailure()) {
             return ExternalResult.failure(response.errorCode(), response.metrics());
         }
         return extractGradeAreas(response.value());
@@ -178,10 +182,10 @@ public class SoilSuitabilityAdapter {
             String sidoName, String sigunguName, String apiCropCode) {
         ExternalResult<List<LegalDistrictAdapter.LegalDistrict>> legal = legalDistrictAdapter.getDistrictCodes(sidoName, sigunguName);
         if (legal.isFailure()) {
-            return ExternalResult.failure(legal.errorCode(), legal.metrics());
+            return ExternalResult.failure("SOIL_SUITABILITY_LOCATION_LOOKUP_FAILED", legal.metrics());
         }
         if (legal.isEmpty()) {
-            return ExternalResult.empty(legal.metrics());
+            return ExternalResult.failure("SOIL_SUITABILITY_LOCATION_NOT_RESOLVED", legal.metrics());
         }
         Map<String, Double> aggregate = new LinkedHashMap<>();
         int failures = 0;
@@ -205,12 +209,12 @@ public class SoilSuitabilityAdapter {
         if (response == null) {
             return ExternalResult.failure("EMPTY_PROVIDER_RESPONSE");
         }
-        Map<String, Object> envelope = ExternalAdapterSupport.map(response.get("response"));
-        if (envelope != null) {
-            Map<String, Object> header = ExternalAdapterSupport.map(envelope.get("header"));
-            if (header != null && !"00".equals(String.valueOf(header.get("resultCode")))) {
-                return ExternalResult.failure("SOIL_SUITABILITY_PROVIDER_" + header.get("resultCode"));
+        String providerCode = ExternalAdapterSupport.providerResultCode(response);
+        if (providerCode != null && !ExternalAdapterSupport.isProviderSuccessCode(providerCode)) {
+            if (ExternalAdapterSupport.isProviderNoDataCode(providerCode)) {
+                return ExternalResult.empty();
             }
+            return ExternalResult.failure("SOIL_SUITABILITY_PROVIDER_" + providerCode);
         }
         Map<String, Object> body = findBody(response);
         if (body == null) {
@@ -329,6 +333,10 @@ public class SoilSuitabilityAdapter {
         } catch (NumberFormatException exception) {
             return null;
         }
+    }
+
+    private boolean isLegalDongCode(String regionCode) {
+        return regionCode != null && regionCode.matches("\\d{10}");
     }
 
     private static Map<String, Integer> gradeScores() {

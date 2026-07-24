@@ -50,6 +50,9 @@ public class RegionAnalysisService {
 
     private static final List<String> COMPLETED_STEPS = List.of(
             "REGION", "RECENT_WEATHER", "FORECAST", "SOIL", "CROP", "REPORT");
+    private static final String OWNER_SCOPE = "OWNER";
+    private static final String PUBLIC_SCOPE = "PUBLIC";
+    private static final String PUBLIC_SCOPE_SUBJECT = "PUBLIC_REGION";
 
     private final RegionRepository regionRepository;
     private final RegionAnalysisRepository analysisRepository;
@@ -91,18 +94,36 @@ public class RegionAnalysisService {
 
     @Transactional
     public RegionAnalysisStatusDto create(String userEmail, RegionAnalysisRequestDto request) {
+        return createInScope(userEmail, OWNER_SCOPE, userEmail, request);
+    }
+
+    /**
+     * Public regional exploration has no user identity and is never eligible for
+     * field registration.  Its explicit scope makes idempotency/cache behavior
+     * predictable without masquerading as a logged-in owner.
+     */
+    @Transactional
+    public RegionAnalysisStatusDto createPublic(RegionAnalysisRequestDto request) {
+        return createInScope(null, PUBLIC_SCOPE, PUBLIC_SCOPE_SUBJECT, request);
+    }
+
+    private RegionAnalysisStatusDto createInScope(String ownerEmail, String analysisScope,
+                                                   String scopeSubject, RegionAnalysisRequestDto request) {
         if (hasText(request.getIdempotencyKey())) {
-            Optional<RegionAnalysisEntity> existing = analysisRepository
-                    .findByUserEmailAndIdempotencyKey(userEmail, request.getIdempotencyKey());
+            Optional<RegionAnalysisEntity> existing = OWNER_SCOPE.equals(analysisScope)
+                    ? analysisRepository.findByUserEmailAndIdempotencyKey(ownerEmail, request.getIdempotencyKey())
+                    : analysisRepository.findByAnalysisScopeAndScopeSubjectAndIdempotencyKey(
+                            analysisScope, scopeSubject, request.getIdempotencyKey());
             if (existing.isPresent()) {
-                return completedStatus(existing.get().getId(), reportStatus(existing.get()), false);
+                return completedStatus(existing.get().getId(), reportStatus(existing.get()), false, analysisScope);
             }
         }
 
         if (!Boolean.TRUE.equals(request.getForceRefresh()) && !hasExplicitLocation(request)) {
-            Optional<RegionAnalysisEntity> cached = findRecentSuccessful(userEmail, request.getSigunguCode());
+            Optional<RegionAnalysisEntity> cached = findRecentSuccessful(ownerEmail, analysisScope, scopeSubject,
+                    request.getSigunguCode());
             if (cached.isPresent()) {
-                return completedStatus(cached.get().getId(), reportStatus(cached.get()), true);
+                return completedStatus(cached.get().getId(), reportStatus(cached.get()), true, analysisScope);
             }
         }
 
@@ -120,29 +141,33 @@ public class RegionAnalysisService {
                     .isReplay(true)
                     .location(location)
                     .build();
-            return saveAndReturn(explicitReplay, region, userEmail, request.getIdempotencyKey(), "REPLAY");
+            return saveAndReturn(explicitReplay, region, ownerEmail, analysisScope, scopeSubject,
+                    request.getIdempotencyKey(), "REPLAY");
         }
 
         try {
             RegionReportResponseDto report = executeLiveAnalysis(region, location);
-            return saveAndReturn(report, region, userEmail, request.getIdempotencyKey(), "LIVE");
+            return saveAndReturn(report, region, ownerEmail, analysisScope, scopeSubject,
+                    request.getIdempotencyKey(), "LIVE");
         } catch (RegionAnalysisException exception) {
             if ("AUTO".equals(mode)) {
-                Optional<RegionAnalysisEntity> cached = findRecentSuccessful(userEmail, request.getSigunguCode());
+                Optional<RegionAnalysisEntity> cached = findRecentSuccessful(ownerEmail, analysisScope, scopeSubject,
+                        request.getSigunguCode());
                 if (cached.isPresent()) {
-                    return completedStatus(cached.get().getId(), reportStatus(cached.get()), true);
+                    return completedStatus(cached.get().getId(), reportStatus(cached.get()), true, analysisScope);
                 }
             }
-            return failedStatus(exception.getCode(), exception.getMessage(), exception.isRetryable());
+            return failedStatus(exception.getCode(), exception.getMessage(), exception.isRetryable(), analysisScope);
         } catch (Exception exception) {
             log.error("Region analysis failed for {} {}", region.getSidoCode(), region.getSigunguCode(), exception);
             if ("AUTO".equals(mode)) {
-                Optional<RegionAnalysisEntity> cached = findRecentSuccessful(userEmail, request.getSigunguCode());
+                Optional<RegionAnalysisEntity> cached = findRecentSuccessful(ownerEmail, analysisScope, scopeSubject,
+                        request.getSigunguCode());
                 if (cached.isPresent()) {
-                    return completedStatus(cached.get().getId(), reportStatus(cached.get()), true);
+                    return completedStatus(cached.get().getId(), reportStatus(cached.get()), true, analysisScope);
                 }
             }
-            return failedStatus("REGION_ANALYSIS_UNAVAILABLE", "공공 데이터 분석을 완료하지 못했습니다.", true);
+            return failedStatus("REGION_ANALYSIS_UNAVAILABLE", "공공 데이터 분석을 완료하지 못했습니다.", true, analysisScope);
         }
     }
 
@@ -240,7 +265,7 @@ public class RegionAnalysisService {
                 .topRisks(risks)
                 .safeWorkWindows(toSafeWorkWindows(output.decisionOutput.safeWorkWindows))
                 .prioritizedActions(toPrioritizedActions(output.decisionOutput.prioritizedActions))
-                .tips(buildOfficialTips())
+                .tips(buildOfficialTips(missingMetrics))
                 .sources(sources)
                 .missingMetrics(missingMetrics)
                 .analyzedAt(LocalDateTime.now().format(DateTimeFormatter.ISO_DATE_TIME))
@@ -256,10 +281,18 @@ public class RegionAnalysisService {
 
     private void appendProviderState(List<String> missingMetrics, String metric, ExternalResult<?> result) {
         if (result.isFailure()) {
-            missingMetrics.add(metric + "_PROVIDER_FAILURE:" + result.errorCode());
+            String state = isAvailabilityLimitation(result) ? "_UNAVAILABLE:" : "_PROVIDER_FAILURE:";
+            missingMetrics.add(metric + state + result.errorCode());
         } else if (result.isEmpty()) {
             missingMetrics.add(metric + "_NO_RECORDS");
         }
+    }
+
+    private boolean isAvailabilityLimitation(ExternalResult<?> result) {
+        String errorCode = result.errorCode();
+        return errorCode != null && (errorCode.endsWith("_UNSUPPORTED_FOR_PH")
+                || errorCode.contains("_LOCATION_NOT_RESOLVED")
+                || errorCode.contains("_LOCATION_LOOKUP_FAILED"));
     }
 
     private String providerFailureSummary(Collection<ExternalResult<?>> results) {
@@ -267,46 +300,65 @@ public class RegionAnalysisService {
     }
 
     private RegionAnalysisStatusDto saveAndReturn(RegionReportResponseDto report, Region region, String ownerEmail,
+                                                   String analysisScope, String scopeSubject,
                                                    String idempotencyKey, String mode) {
+        RegionReportResponseDto scopedReport = report.toBuilder().analysisScope(analysisScope).build();
         String payload;
         try {
-            payload = objectMapper.writeValueAsString(report);
+            payload = objectMapper.writeValueAsString(scopedReport);
         } catch (Exception exception) {
             throw RegionAnalysisException.reportPayloadUnavailable("리포트를 저장할 수 없습니다.");
         }
         RegionAnalysisEntity entity = RegionAnalysisEntity.builder()
-                .id(report.getAnalysisId())
+                .id(scopedReport.getAnalysisId())
                 .idempotencyKey(idempotencyKey)
                 .ruleVersion(CropScoringEngine.RULE_VERSION)
                 .userEmail(ownerEmail)
+                .analysisScope(analysisScope)
+                .scopeSubject(scopeSubject)
                 .sidoCode(region.getSidoCode())
                 .sidoName(region.getSidoName())
                 .sigunguCode(region.getSigunguCode())
                 .sigunguName(region.getSigunguName())
-                .regionScore(report.getRegionScore())
-                .grade(report.getGrade())
-                .summary(report.getSummary())
-                .confidenceGrade(report.getDataConfidence() != null ? report.getDataConfidence().getLevel() : null)
-                .confidenceScore(report.getDataConfidence() != null ? report.getDataConfidence().getScore() : null)
-                .confidenceMessage(report.getDataConfidence() != null ? report.getDataConfidence().getMessage() : null)
+                .regionScore(scopedReport.getRegionScore())
+                .grade(scopedReport.getGrade())
+                .summary(scopedReport.getSummary())
+                .confidenceGrade(scopedReport.getDataConfidence() != null ? scopedReport.getDataConfidence().getLevel() : null)
+                .confidenceScore(scopedReport.getDataConfidence() != null ? scopedReport.getDataConfidence().getScore() : null)
+                .confidenceMessage(scopedReport.getDataConfidence() != null ? scopedReport.getDataConfidence().getMessage() : null)
                 .payloadJson(payload)
                 .analyzedAt(LocalDateTime.now())
                 .dataMode(mode)
-                .reportStatus(report.getStatus())
+                .reportStatus(scopedReport.getStatus())
                 .build();
         analysisRepository.save(entity);
-        return completedStatus(report.getAnalysisId(), report.getStatus(), false);
+        return completedStatus(scopedReport.getAnalysisId(), scopedReport.getStatus(), false, analysisScope);
     }
 
     @Transactional(readOnly = true)
     public RegionAnalysisStatusDto getStatus(String ownerEmail, UUID analysisId) {
-        RegionAnalysisEntity entity = findOwnedAnalysis(ownerEmail, analysisId);
-        return completedStatus(entity.getId(), reportStatus(entity), false);
+        RegionAnalysisEntity entity = findAccessibleAnalysis(ownerEmail, analysisId);
+        return completedStatus(entity.getId(), reportStatus(entity), false, entity.getAnalysisScope());
     }
 
     @Transactional(readOnly = true)
     public RegionReportResponseDto getReport(String ownerEmail, UUID analysisId) {
-        RegionAnalysisEntity entity = findOwnedAnalysis(ownerEmail, analysisId);
+        RegionAnalysisEntity entity = findAccessibleAnalysis(ownerEmail, analysisId);
+        return readReport(entity, analysisId);
+    }
+
+    @Transactional(readOnly = true)
+    public RegionAnalysisStatusDto getPublicStatus(UUID analysisId) {
+        RegionAnalysisEntity entity = findPublicAnalysis(analysisId);
+        return completedStatus(entity.getId(), reportStatus(entity), false, PUBLIC_SCOPE);
+    }
+
+    @Transactional(readOnly = true)
+    public RegionReportResponseDto getPublicReport(UUID analysisId) {
+        return readReport(findPublicAnalysis(analysisId), analysisId);
+    }
+
+    private RegionReportResponseDto readReport(RegionAnalysisEntity entity, UUID analysisId) {
         if (!hasText(entity.getPayloadJson())) {
             throw RegionAnalysisException.reportPayloadUnavailable("저장된 분석 스냅샷이 없습니다.");
         }
@@ -369,18 +421,24 @@ public class RegionAnalysisService {
                 .build();
     }
 
-    private Optional<RegionAnalysisEntity> findRecentSuccessful(String ownerEmail, String sigunguCode) {
+    private Optional<RegionAnalysisEntity> findRecentSuccessful(String ownerEmail, String analysisScope,
+                                                                String scopeSubject, String sigunguCode) {
         LocalDateTime sixHoursAgo = LocalDateTime.now().minusHours(6);
-        return analysisRepository.findFirstByUserEmailAndSigunguCodeAndRuleVersionAndAnalyzedAtAfterOrderByAnalyzedAtDesc(
+        Optional<RegionAnalysisEntity> candidate = OWNER_SCOPE.equals(analysisScope)
+                ? analysisRepository.findFirstByUserEmailAndSigunguCodeAndRuleVersionAndAnalyzedAtAfterOrderByAnalyzedAtDesc(
                         ownerEmail, sigunguCode, CropScoringEngine.RULE_VERSION, sixHoursAgo)
+                : analysisRepository.findFirstByAnalysisScopeAndScopeSubjectAndSigunguCodeAndRuleVersionAndAnalyzedAtAfterOrderByAnalyzedAtDesc(
+                        analysisScope, scopeSubject, sigunguCode, CropScoringEngine.RULE_VERSION, sixHoursAgo);
+        return candidate
                 .filter(entity -> "COMPLETED".equals(reportStatus(entity)));
     }
 
-    private RegionAnalysisStatusDto completedStatus(String analysisId, String status, boolean reused) {
+    private RegionAnalysisStatusDto completedStatus(String analysisId, String status, boolean reused, String analysisScope) {
         String normalized = "PARTIAL".equalsIgnoreCase(status) ? "PARTIAL" : "COMPLETED";
         return RegionAnalysisStatusDto.builder()
                 .analysisId(analysisId)
                 .status(normalized)
+                .analysisScope(analysisScope)
                 .completedSteps(COMPLETED_STEPS)
                 .currentStep(normalized)
                 .retryable(false)
@@ -388,10 +446,11 @@ public class RegionAnalysisService {
                 .build();
     }
 
-    private RegionAnalysisStatusDto failedStatus(String code, String message, boolean retryable) {
+    private RegionAnalysisStatusDto failedStatus(String code, String message, boolean retryable, String analysisScope) {
         return RegionAnalysisStatusDto.builder()
                 .analysisId(UUID.randomUUID().toString())
                 .status("FAILED")
+                .analysisScope(analysisScope)
                 .completedSteps(List.of())
                 .currentStep("ANALYSIS")
                 .retryable(retryable)
@@ -404,8 +463,16 @@ public class RegionAnalysisService {
         return hasText(entity.getReportStatus()) ? entity.getReportStatus() : "COMPLETED";
     }
 
-    private RegionAnalysisEntity findOwnedAnalysis(String ownerEmail, UUID analysisId) {
-        return analysisRepository.findByIdAndUserEmail(analysisId.toString(), ownerEmail)
+    private RegionAnalysisEntity findAccessibleAnalysis(String ownerEmail, UUID analysisId) {
+        if (hasText(ownerEmail)) {
+            Optional<RegionAnalysisEntity> ownerAnalysis = analysisRepository.findByIdAndUserEmail(analysisId.toString(), ownerEmail);
+            if (ownerAnalysis.isPresent()) return ownerAnalysis.get();
+        }
+        return findPublicAnalysis(analysisId);
+    }
+
+    private RegionAnalysisEntity findPublicAnalysis(UUID analysisId) {
+        return analysisRepository.findByIdAndAnalysisScope(analysisId.toString(), PUBLIC_SCOPE)
                 .orElseThrow(() -> RegionAnalysisException.analysisNotFound(analysisId));
     }
 
@@ -534,14 +601,14 @@ public class RegionAnalysisService {
         return values;
     }
 
-    private List<RegionReportResponseDto.TipDto> buildOfficialTips() {
+    private List<RegionReportResponseDto.TipDto> buildOfficialTips(List<String> missingMetrics) {
         RegionReportResponseDto.SourceDto nongsaro = RegionReportResponseDto.SourceDto.builder()
                 .provider("농촌진흥청").service("농사로 영농기술").sourceUrl("https://www.nongsaro.go.kr")
                 .dataDate(LocalDate.now().toString()).evidenceLevel("OFFICIAL_GUIDE").build();
         RegionReportResponseDto.SourceDto soil = RegionReportResponseDto.SourceDto.builder()
                 .provider("농촌진흥청").service("흙토람 토양검정").sourceUrl("https://soil.rda.go.kr")
                 .dataDate(LocalDate.now().toString()).evidenceLevel("OFFICIAL_GUIDE").build();
-        return List.of(
+        List<RegionReportResponseDto.TipDto> tips = new ArrayList<>(List.of(
                 RegionReportResponseDto.TipDto.builder().rank(1).tipCode("DRAINAGE_BEFORE_RAIN")
                         .title("강수 전 배수로 확인").summary("작업 전 밭 주변 배수 경로와 막힌 구간을 점검하세요.")
                         .reason("공식 영농기술 자료 참고").sourceType("OFFICIAL_GUIDE").sourceName("농사로 공식자료")
@@ -551,16 +618,30 @@ public class RegionAnalysisService {
                         .title("토양검정 결과 확인").summary("필지별 pH와 비료 처방은 토양검정 결과로 확인하세요.")
                         .reason("공식 토양검정 안내 참고").sourceType("OFFICIAL_GUIDE").sourceName("농촌진흥청 흙토람")
                         .sourceUrl(soil.getSourceUrl()).actionLabel("흙토람 보기")
-                        .dataDate(soil.getDataDate()).sourceRefs(List.of(soil)).build());
+                        .dataDate(soil.getDataDate()).sourceRefs(List.of(soil)).build()));
+        if (missingMetrics != null && missingMetrics.contains(
+                "SOIL_CHEMISTRY_UNAVAILABLE:SOIL_CHEMISTRY_UNSUPPORTED_FOR_PH")) {
+            tips.add(RegionReportResponseDto.TipDto.builder().rank(3).tipCode("SOIL_STATISTICS_LIMITATION")
+                    .title("지역 토양통계의 pH 한계 안내")
+                    .summary("이번 지역 통계 응답은 pH 원값이 아닌 구간별 면적만 제공해 점수로 환산하지 않았습니다. 필지별 토양검정 결과를 확인하세요.")
+                    .reason("농촌진흥청 토양통계 응답 형식").sourceType("DATA_LIMITATION")
+                    .sourceName("농촌진흥청 토양통계").sourceUrl(soil.getSourceUrl())
+                    .actionLabel("흙토람 보기").dataDate(soil.getDataDate()).sourceRefs(List.of(soil)).build());
+        }
+        return tips;
     }
 
     private RegionReportResponseDto.SourceDto providerSource(String provider, String service, String url,
-                                                              ExternalResult<?> result) {
+                                                               ExternalResult<?> result) {
+        boolean availabilityLimitation = isAvailabilityLimitation(result);
         String fallback = result.isFailure() ? result.errorCode() : result.isEmpty() ? "NO_RECORDS" : null;
+        List<String> transformations = availabilityLimitation
+                ? List.of("AREA_DISTRIBUTION_NOT_COERCED_TO_PH")
+                : result.isEmpty() ? List.of("OFFICIAL_NO_RECORDS") : List.of();
         return RegionReportResponseDto.SourceDto.builder().provider(provider).service(service).sourceUrl(url)
-                .dataDate(LocalDate.now().toString()).status(result.status().name())
+                .dataDate(LocalDate.now().toString()).status(availabilityLimitation ? "UNAVAILABLE" : result.status().name())
                 .evidenceLevel(result.isSuccess() ? "PROVIDER_NORMALIZED" : "UNAVAILABLE")
-                .isFallback(false).fallbackReason(fallback).build();
+                .isFallback(false).fallbackReason(fallback).transformations(transformations).build();
     }
 
     private List<RegionReportResponseDto.SourceDto> sourceRefs(List<String> refs) {

@@ -4,9 +4,18 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
 
+import javax.xml.XMLConstants;
+import javax.xml.parsers.DocumentBuilderFactory;
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -21,6 +30,14 @@ final class ExternalAdapterSupport {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private ExternalAdapterSupport() {
+    }
+
+    /** Parses the actual payload format returned by a public provider without guessing from the endpoint name. */
+    static ExternalResult<Map<String, Object>> parseProviderObject(String body, String contentType) {
+        if (body == null || body.isBlank()) {
+            return ExternalResult.failure("EMPTY_PROVIDER_RESPONSE");
+        }
+        return body.trim().startsWith("<") ? parseXmlObject(body, contentType) : parseJsonObject(body, contentType);
     }
 
     static ExternalResult<Map<String, Object>> parseJsonObject(String body, String contentType) {
@@ -44,9 +61,100 @@ final class ExternalAdapterSupport {
         }
     }
 
+    static ExternalResult<Map<String, Object>> parseXmlObject(String body, String contentType) {
+        if (body == null || body.isBlank()) {
+            return ExternalResult.failure("EMPTY_PROVIDER_RESPONSE");
+        }
+        String normalizedContentType = contentType == null ? "" : contentType.toLowerCase(Locale.ROOT);
+        String trimmed = body.trim();
+        if (normalizedContentType.contains("html") || trimmed.regionMatches(true, 0, "<html", 0, 5)) {
+            return ExternalResult.failure("UNEXPECTED_HTML_RESPONSE");
+        }
+        if (!trimmed.startsWith("<")) {
+            return ExternalResult.failure("MALFORMED_PROVIDER_RESPONSE");
+        }
+        try {
+            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+            factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+            factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+            factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
+            factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
+            factory.setXIncludeAware(false);
+            factory.setExpandEntityReferences(false);
+            Document document = factory.newDocumentBuilder().parse(
+                    new ByteArrayInputStream(trimmed.getBytes(StandardCharsets.UTF_8)));
+            Element root = document.getDocumentElement();
+            if (root == null || "html".equalsIgnoreCase(root.getTagName())) {
+                return ExternalResult.failure("UNEXPECTED_HTML_RESPONSE");
+            }
+            Map<String, Object> parsed = new LinkedHashMap<>();
+            parsed.put(root.getTagName(), elementValue(root));
+            return ExternalResult.success(parsed);
+        } catch (Exception exception) {
+            return ExternalResult.failure("MALFORMED_PROVIDER_RESPONSE");
+        }
+    }
+
+    static String providerResultCode(Map<String, Object> response) {
+        Map<String, Object> envelope = map(response == null ? null : response.get("response"));
+        Map<String, Object> header = map(envelope == null ? null : envelope.get("header"));
+        if (header == null) {
+            header = map(response == null ? null : response.get("header"));
+        }
+        return string(header, "resultCode", "result_Code", "result_code", "code");
+    }
+
+    static boolean isProviderSuccessCode(String code) {
+        return "00".equals(code) || "200".equals(code);
+    }
+
+    static boolean isProviderNoDataCode(String code) {
+        return "301".equals(code);
+    }
+
     @SuppressWarnings("unchecked")
     static Map<String, Object> map(Object value) {
         return value instanceof Map<?, ?> raw ? (Map<String, Object>) raw : null;
+    }
+
+    private static Object elementValue(Element element) {
+        Map<String, List<Object>> childValues = new LinkedHashMap<>();
+        StringBuilder text = new StringBuilder();
+        NodeList children = element.getChildNodes();
+        for (int index = 0; index < children.getLength(); index++) {
+            Node child = children.item(index);
+            if (child.getNodeType() == Node.ELEMENT_NODE) {
+                Element childElement = (Element) child;
+                childValues.computeIfAbsent(childElement.getTagName(), ignored -> new ArrayList<>())
+                        .add(elementValue(childElement));
+            } else if (child.getNodeType() == Node.TEXT_NODE || child.getNodeType() == Node.CDATA_SECTION_NODE) {
+                text.append(child.getTextContent());
+            }
+        }
+        if (childValues.isEmpty()) {
+            return text.toString().trim();
+        }
+        Map<String, Object> value = new LinkedHashMap<>();
+        childValues.forEach((name, values) -> value.put(name, values.size() == 1 ? values.get(0) : values));
+        return value;
+    }
+
+    private static String string(Map<String, Object> values, String... keys) {
+        if (values == null) {
+            return null;
+        }
+        for (String key : keys) {
+            Object value = values.get(key);
+            if (value != null) {
+                String text = String.valueOf(value).trim();
+                if (!text.isEmpty()) {
+                    return text;
+                }
+            }
+        }
+        return null;
     }
 
     @SuppressWarnings("unchecked")
