@@ -32,6 +32,7 @@ export function App() {
 
   /* User State & Selections */
   const [userName, setUserName] = useState('사용자님');
+  const [userEmail, setUserEmail] = useState('user@farmflate.com');
   const [selectedProvince, setSelectedProvince] = useState('전북특별자치도');
   const [selectedDistrict, setSelectedDistrict] = useState('고창군');
   const [selectedCropName, setSelectedCropName] = useState('감자');
@@ -80,6 +81,9 @@ export function App() {
         setHomeData(resData);
         if (resData?.user?.displayName) {
           setUserName(resData.user.displayName);
+        }
+        if (resData?.user?.email) {
+          setUserEmail(resData.user.email);
         }
         if (resData?.latestRegionAnalysis) {
           setIsNewUser(false);
@@ -387,6 +391,7 @@ export function App() {
       {viewStep === 'mypage' && (
         <MyPageView
           userName={userName}
+          userEmail={userEmail}
           userRegion={apiReport?.region?.sidoName && apiReport?.region?.sigunguName ? `${apiReport.region.sidoName} ${apiReport.region.sigunguName}` : `${selectedProvince} ${selectedDistrict}`}
           posts={posts}
           onOpenAIChat={() => setIsAIChatOpen(true)}

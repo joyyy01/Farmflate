@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronRight, HelpCircle, X, Check, Bookmark, MessageSquare, Send, ShieldCheck, Mail, Calendar } from 'lucide-react';
 import type { TabState, CommunityPost } from '../../types/farmflate';
 import { BottomNavigation } from '../common/BottomNavigation';
 import { CommunityPostDetailModal } from './CommunityPostDetailModal';
+import { ApiService } from '../../services/api';
 
 interface MyPageViewProps {
   userName?: string;
+  userEmail?: string;
   userRegion?: string;
   posts?: CommunityPost[];
   onOpenAIChat: () => void;
@@ -21,6 +23,7 @@ interface MyPageViewProps {
 
 export const MyPageView: React.FC<MyPageViewProps> = ({
   userName = '사용자님',
+  userEmail = 'user@farmflate.com',
   userRegion = '전북 고창군',
   posts = [],
   onOpenAIChat,
@@ -35,7 +38,7 @@ export const MyPageView: React.FC<MyPageViewProps> = ({
   const [activeModal, setActiveModal] = useState<'account' | 'crops' | 'saved' | 'my_posts' | 'support' | null>(null);
   const [selectedPost, setSelectedPost] = useState<CommunityPost | null>(null);
 
-  /* Favorite Crops State */
+  /* Real Favorite Crops State from LocalStorage */
   const availableCrops = [
     { name: '감자', icon: '/svg-assets/crops/potato.svg' },
     { name: '상추', icon: '/svg-assets/crops/lettuce.svg' },
@@ -46,12 +49,25 @@ export const MyPageView: React.FC<MyPageViewProps> = ({
     { name: '토마토', icon: '/svg-assets/crops/tomato.svg' },
     { name: '배추', icon: '/svg-assets/crops/cabbage.svg' }
   ];
-  const [favoriteCrops, setFavoriteCrops] = useState<string[]>(['감자', '상추']);
 
-  /* Support FAQ State */
+  const [favoriteCrops, setFavoriteCrops] = useState<string[]>(() => {
+    const saved = localStorage.getItem('farmflate_favorite_crops');
+    return saved ? JSON.parse(saved) : ['감자', '상추'];
+  });
+
+  const toggleFavoriteCrop = (cropName: string) => {
+    setFavoriteCrops(prev => {
+      const next = prev.includes(cropName) ? prev.filter(c => c !== cropName) : [...prev, cropName];
+      localStorage.setItem('farmflate_favorite_crops', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  /* Support FAQ State & Inquiry */
   const [expandedFaq, setExpandedFaq] = useState<number | null>(0);
   const [inquiryText, setInquiryText] = useState('');
   const [inquirySuccess, setInquirySuccess] = useState(false);
+  const [isSubmittingInquiry, setIsSubmittingInquiry] = useState(false);
 
   const faqs = [
     {
@@ -71,18 +87,21 @@ export const MyPageView: React.FC<MyPageViewProps> = ({
   const savedPosts = posts.filter(p => p.isSaved);
   const myAuthoredPosts = posts.filter(p => p.author === userName || p.author.includes('초보농부') || p.author.includes('사용자'));
 
-  const toggleFavoriteCrop = (cropName: string) => {
-    setFavoriteCrops(prev =>
-      prev.includes(cropName) ? prev.filter(c => c !== cropName) : [...prev, cropName]
-    );
-  };
-
-  const handleInquirySubmit = (e: React.FormEvent) => {
+  const handleInquirySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inquiryText.trim()) return;
-    setInquirySuccess(true);
-    setInquiryText('');
-    setTimeout(() => setInquirySuccess(false), 3000);
+    if (!inquiryText.trim() || isSubmittingInquiry) return;
+    
+    setIsSubmittingInquiry(true);
+    try {
+      await ApiService.submitInquiry({ inquiryText: inquiryText.trim() });
+      setInquirySuccess(true);
+      setInquiryText('');
+      setTimeout(() => setInquirySuccess(false), 3500);
+    } catch (err) {
+      console.warn('Inquiry submit failed:', err);
+    } finally {
+      setIsSubmittingInquiry(false);
+    }
   };
 
   return (
@@ -232,11 +251,11 @@ export const MyPageView: React.FC<MyPageViewProps> = ({
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 24 }}>
                 <div style={{ backgroundColor: '#F8FAF8', borderRadius: 16, padding: '14px 16px', border: '1px solid #EAEFEA', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '0.86rem', color: '#6E7671', fontWeight: 600 }}><ShieldCheck size={18} color="#2FA86A" /> 가입 유형</div>
-                  <span style={{ backgroundColor: '#E9F7EC', color: '#2FA86A', fontSize: '0.78rem', fontWeight: 850, padding: '4px 10px', borderRadius: 10 }}>카카오 간편인증</span>
+                  <span style={{ backgroundColor: '#E9F7EC', color: '#2FA86A', fontSize: '0.78rem', fontWeight: 850, padding: '4px 10px', borderRadius: 10 }}>카카오 간편인증 계정</span>
                 </div>
                 <div style={{ backgroundColor: '#F8FAF8', borderRadius: 16, padding: '14px 16px', border: '1px solid #EAEFEA', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '0.86rem', color: '#6E7671', fontWeight: 600 }}><Mail size={18} color="#2FA86A" /> 이메일</div>
-                  <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#191F28' }}>user@farmflate.com</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '0.86rem', color: '#6E7671', fontWeight: 600 }}><Mail size={18} color="#2FA86A" /> 계정 이메일</div>
+                  <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#191F28' }}>{userEmail}</span>
                 </div>
                 <div style={{ backgroundColor: '#F8FAF8', borderRadius: 16, padding: '14px 16px', border: '1px solid #EAEFEA', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '0.86rem', color: '#6E7671', fontWeight: 600 }}><Calendar size={18} color="#2FA86A" /> 분석 등록 지역</div>
@@ -402,11 +421,11 @@ export const MyPageView: React.FC<MyPageViewProps> = ({
                   />
                   {inquirySuccess && (
                     <div style={{ backgroundColor: '#E9F7EC', color: '#2FA86A', borderRadius: 12, padding: '10px 14px', fontSize: '0.82rem', fontWeight: 800, textAlign: 'center' }}>
-                      ✓ 문의사항이 정상 접수되었습니다!
+                      ✓ 문의사항이 성공적으로 접수되었습니다!
                     </div>
                   )}
-                  <button type="submit" disabled={!inquiryText.trim()} className="btn-farm-primary" style={{ width: '100%', height: 46, borderRadius: 14, fontSize: '0.9rem', gap: 6 }}>
-                    <Send size={16} /> 문의 접수하기
+                  <button type="submit" disabled={!inquiryText.trim() || isSubmittingInquiry} className="btn-farm-primary" style={{ width: '100%', height: 46, borderRadius: 14, fontSize: '0.9rem', gap: 6 }}>
+                    <Send size={16} /> {isSubmittingInquiry ? '접수 중...' : '문의 접수하기'}
                   </button>
                 </form>
               </div>
