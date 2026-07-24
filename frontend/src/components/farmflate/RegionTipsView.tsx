@@ -7,6 +7,7 @@ interface RegionTipsViewProps {
   districtName: string;
   report?: RegionReport | null;
   onBack: () => void;
+  onSave: () => void;
   onGoToCreateField: () => void;
   onOpenAIChat: () => void;
 }
@@ -15,6 +16,7 @@ export const RegionTipsView: React.FC<RegionTipsViewProps> = ({
   districtName,
   report,
   onBack,
+  onSave,
   onGoToCreateField,
   onOpenAIChat: _onOpenAIChat
 }) => {
@@ -176,13 +178,22 @@ export const RegionTipsView: React.FC<RegionTipsViewProps> = ({
         </div>
       </div>
 
-      {/* Fixed Bottom CTA Button */}
-      <div style={{ padding: '16px 20px 32px 20px', backgroundColor: '#FFFFFF', borderTop: '1px solid #F0F2F5', position: 'relative', zIndex: 10 }}>
+      {/* Fixed Bottom CTA Buttons */}
+      <div style={{ padding: '16px 20px 32px 20px', backgroundColor: '#FFFFFF', borderTop: '1px solid #F0F2F5', position: 'relative', zIndex: 10, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <motion.button
+          whileTap={{ scale: 0.98 }}
+          className="btn-farm-primary"
+          onClick={onSave}
+          style={{ width: '100%', height: 56, fontSize: '1.05rem', borderRadius: 16 }}
+        >
+          저장
+        </motion.button>
+
         <motion.button
           whileTap={{ scale: 0.98 }}
           className="btn-farm-primary"
           onClick={onGoToCreateField}
-          style={{ width: '100%', height: 56, fontSize: '1.05rem', borderRadius: 16 }}
+          style={{ width: '100%', height: 56, fontSize: '1.05rem', borderRadius: 16, backgroundColor: '#EEF8F1', color: '#2FA86A' }}
         >
           마이 팜으로 이동
         </motion.button>

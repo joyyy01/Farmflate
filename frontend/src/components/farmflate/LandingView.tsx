@@ -26,33 +26,6 @@ export const LandingView: React.FC<LandingViewProps> = ({ onLogin }) => {
     }}>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', width: '100%' }}>
         
-        {/* Brand Mascot & Logo Header */}
-        <motion.div
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ duration: 0.4 }}
-          style={{ position: 'relative', marginBottom: 12 }}
-        >
-          {/* Sparkle decorative SVGs */}
-          <img src="/svg-assets/ui-icons/star.svg" alt="" style={{ position: 'absolute', top: -6, left: -22, width: 16, height: 16 }} />
-          <img src="/svg-assets/ui-icons/star.svg" alt="" style={{ position: 'absolute', top: 12, right: -24, width: 14, height: 14 }} />
-
-          {/* Joy Mascot Character Avatar */}
-          <div style={{
-            width: 76, height: 76, borderRadius: '50%',
-            backgroundColor: '#FFFFFF',
-            border: '2.5px solid #2FA86A',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            overflow: 'hidden'
-          }}>
-            <img
-              src="/svg-assets/brand/mascot/joy.svg"
-              alt="Farmflate 마스코트"
-              style={{ width: 64, height: 64, objectFit: 'contain' }}
-            />
-          </div>
-        </motion.div>
-
         {/* Pure Vector Brand Wordmark Logo */}
         <div style={{ marginBottom: 14 }}>
           <img
@@ -146,7 +119,6 @@ export const LandingView: React.FC<LandingViewProps> = ({ onLogin }) => {
 
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 76 }}>
             <div style={{ width: 48, height: 48, borderRadius: '50%', backgroundColor: '#E9F7EC', border: '1px solid #A8DCC8', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 6 }}>
-              <img src="/svg-assets/brand/mascot/guide.svg" alt="분석 & 안내" style={{ width: 30, height: 30 }} />
             </div>
             <span style={{ fontSize: '0.76rem', fontWeight: 750, color: '#154F36' }}>분석 &amp; 안내</span>
           </div>

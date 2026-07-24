@@ -113,15 +113,27 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
         {isNewUser ? (
           <div
             style={{
-              backgroundColor: '#C5EAFA', borderRadius: 20,
+              position: 'relative',
+              borderRadius: 20,
               border: '1px solid rgba(255, 255, 255, 0.4)',
-              height: 62, width: '100%', marginBottom: 20, cursor: 'default',
-              display: 'flex', alignItems: 'center', justifyContent: 'center'
+              height: 140, width: '100%', marginBottom: 20, cursor: 'default',
+              display: 'flex', alignItems: 'center',
+              overflow: 'hidden'
             }}
           >
-            <span style={{ fontSize: '0.94rem', fontWeight: 750, color: '#FFFFFF', letterSpacing: '-0.02em' }}>
-              날씨 데이터가 없어요
-            </span>
+            <img
+              src="/assets/home-weather-empty.png"
+              alt=""
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+            <div style={{ position: 'relative', padding: '0 0 0 22px', maxWidth: '62%' }}>
+              <div style={{ fontSize: '0.94rem', fontWeight: 800, color: '#0369A1', letterSpacing: '-0.02em', marginBottom: 5 }}>
+                날씨 데이터가 없어요
+              </div>
+              <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#3A5A6B', letterSpacing: '-0.01em', lineHeight: 1.45 }}>
+                기상 정보를 입력하면 맞춤 관리가 가능해요
+              </div>
+            </div>
           </div>
         ) : (
           <div style={{
@@ -242,22 +254,27 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
             whileTap={{ scale: 0.98 }}
             onClick={onGoToExplore}
             style={{
-              position: 'relative', width: '100%', borderRadius: 26,
-              background: 'linear-gradient(135deg, #FFFFFF 0%, #F1F9FE 45%, #D2F0FF 100%)',
+              position: 'relative', width: '100%', height: 180, borderRadius: 26,
               border: '1px solid #C4E9FC',
               padding: '28px 24px 24px 24px', marginBottom: 20, cursor: 'pointer',
-              boxSizing: 'border-box'
+              boxSizing: 'border-box', overflow: 'hidden'
             }}
           >
-            <h2 style={{ fontSize: '1.38rem', fontWeight: 900, color: '#191F28', margin: '0 0 6px 0', lineHeight: 1.32, letterSpacing: '-0.03em' }}>
+            <img
+              src="/assets/home-region-input.png"
+              alt=""
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+
+            <h2 style={{ position: 'relative', fontSize: '1.38rem', fontWeight: 900, color: '#191F28', margin: '0 0 6px 0', lineHeight: 1.32, letterSpacing: '-0.03em' }}>
               지역 입력하고<br />맞춤형 정보 받아보기
             </h2>
-            <p style={{ fontSize: '0.84rem', color: '#557285', margin: 0, fontWeight: 500, letterSpacing: '-0.01em' }}>
+            <p style={{ position: 'relative', fontSize: '0.84rem', color: '#557285', margin: 0, fontWeight: 500, letterSpacing: '-0.01em' }}>
               재배 희망지역, 희망작물 입력 후 점수 확인하기
             </p>
-            
+
             {/* Bottom Right Arrow in Circular White Button Backdrop */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
+            <div style={{ position: 'relative', display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
               <div style={{
                 width: 42, height: 42, borderRadius: '50%',
                 backgroundColor: '#FFFFFF', border: '1px solid #C4E9FC',
