@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Sprout, MessageSquare, Settings } from 'lucide-react';
+import { Home, Sprout, MessageSquare, User } from 'lucide-react';
 import type { TabState } from '../../types/farmflate';
 
 interface BottomNavigationProps {
@@ -26,7 +26,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
         <span>홈</span>
       </button>
 
-      {/* 2. 마이 팜 (My Field) */}
+      {/* 2. 내 밭 (My Field) */}
       <button
         type="button"
         onClick={() => onTabChange('myfield')}
@@ -35,7 +35,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
         <div style={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Sprout size={22} color={activeTab === 'myfield' ? '#2FA86A' : '#8E9892'} strokeWidth={activeTab === 'myfield' ? 2.5 : 2} />
         </div>
-        <span>마이 팜</span>
+        <span>내 밭</span>
       </button>
 
       {/* 3. 커뮤니티 (Community) */}
@@ -50,16 +50,16 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
         <span>커뮤니티</span>
       </button>
 
-      {/* 4. 설정 (Settings) */}
+      {/* 4. 마이 (Settings / MyPage) */}
       <button
         type="button"
         onClick={() => onTabChange('settings')}
         className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`}
       >
         <div style={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Settings size={22} color={activeTab === 'settings' ? '#2FA86A' : '#8E9892'} strokeWidth={activeTab === 'settings' ? 2.5 : 2} />
+          <User size={22} color={activeTab === 'settings' ? '#2FA86A' : '#8E9892'} strokeWidth={activeTab === 'settings' ? 2.5 : 2} />
         </div>
-        <span>설정</span>
+        <span>마이</span>
       </button>
     </nav>
   );
