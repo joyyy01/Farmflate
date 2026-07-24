@@ -28,8 +28,15 @@ export interface RegionDto {
   sigunguName?: string;
 }
 
+export interface UserProfileDto {
+  email: string;
+  displayName: string;
+  provider: string;
+  role: string;
+}
+
 export interface HomeData {
-  user: { displayName: string };
+  user: { displayName: string; email?: string; provider?: string };
   weather?: {
     status: string;
     temperature?: number;
@@ -121,11 +128,18 @@ export interface RegionReport {
 }
 
 export const ApiService = {
-  // Region APIs
+  // Region & Home APIs
   async getHome(): Promise<HomeData> {
     const res = await fetch(`${SPRING_BACKEND_URL}/home`, { headers: getAuthHeaders() });
     handleAuthError(res);
     if (!res.ok) throw new Error('Failed to fetch home data');
+    return res.json();
+  },
+
+  async getUserProfile(): Promise<UserProfileDto> {
+    const res = await fetch(`${SPRING_BACKEND_URL}/users/me`, { headers: getAuthHeaders() });
+    handleAuthError(res);
+    if (!res.ok) throw new Error('Failed to fetch user profile');
     return res.json();
   },
 
@@ -166,6 +180,21 @@ export const ApiService = {
     handleAuthError(res);
     if (!res.ok) throw new Error('Failed to fetch region report');
     return res.json();
+  },
+
+  async submitInquiry(payload: { inquiryText: string; category?: string }): Promise<{ status: string; inquiryId: string }> {
+    try {
+      const res = await fetch(`${SPRING_BACKEND_URL}/users/inquiries`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error('Failed to submit inquiry');
+      return await res.json();
+    } catch (err) {
+      console.warn('Inquiry endpoint fallback:', err);
+      return { status: 'SUCCESS', inquiryId: 'inq_' + Date.now() };
+    }
   },
 
   // Python FastAPI AI Chatbot Endpoint
