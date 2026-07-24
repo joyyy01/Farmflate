@@ -497,6 +497,8 @@ export function App() {
       {viewStep === 'analyzing' && (
         <AnalyzingView
           regionName={selectedProvince && selectedDistrict ? `${selectedProvince} ${selectedDistrict}` : '선택한 지역'}
+          cropName={selectedCropName}
+          analysisType={isFieldRegistrationFlow || pendingCropRegistration ? 'crop' : 'region'}
           state={analysisState}
           onRetry={() => {
             if ((analysisState.kind === 'ERROR' || analysisState.kind === 'UNAUTHORIZED') && analysisState.pendingAction === 'FIELD') {
