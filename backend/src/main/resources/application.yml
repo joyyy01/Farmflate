@@ -15,8 +15,8 @@ spring:
       client:
         registration:
           kakao:
-            client-id: ${KAKAO_CLIENT_ID}
-            client-secret: ${KAKAO_CLIENT_SECRET}
+            client-id: ${KAKAO_CLIENT_ID:local_kakao_client_id_placeholder}
+            client-secret: ${KAKAO_CLIENT_SECRET:local_kakao_client_secret_placeholder}
             redirect-uri: "{baseUrl}/login/oauth2/code/kakao"
             client-authentication-method: client_secret_post
             authorization-grant-type: authorization_code
@@ -34,14 +34,14 @@ spring:
 app:
   frontend-url: ${APP_FRONTEND_URL:http://localhost:5173}
   jwt:
-    secret: ${JWT_SECRET}
+    secret: ${JWT_SECRET:farmflate_local_development_jwt_secret_key_2026_farmflate_security_key_must_be_long}
     expiration: 86400000 # 24 hours in ms
   external:
     data-go-kr:
-      service-key: ${DATA_GO_KR_SERVICE_KEY}
+      service-key: ${DATA_GO_KR_SERVICE_KEY:local_data_go_kr_key}
     vworld:
-      api-key: ${VWORLD_API_KEY}
+      api-key: ${VWORLD_API_KEY:local_vworld_key}
     nongsaro:
-      api-key: ${NONGSARO_API_KEY}
+      api-key: ${NONGSARO_API_KEY:local_nongsaro_key}
   python-server:
     url: ${PYTHON_SERVER_URL:http://localhost:8000}

@@ -388,6 +388,7 @@ export function App() {
         <MyPageView
           userName={userName}
           userRegion={apiReport?.region?.sidoName && apiReport?.region?.sigunguName ? `${apiReport.region.sidoName} ${apiReport.region.sigunguName}` : `${selectedProvince} ${selectedDistrict}`}
+          posts={posts}
           onOpenAIChat={() => setIsAIChatOpen(true)}
           activeTab={activeTab}
           onTabChange={handleTabChange}
@@ -396,6 +397,9 @@ export function App() {
             localStorage.clear();
             safeSetViewStep('landing');
           }}
+          onToggleLike={handleToggleLike}
+          onToggleSave={handleToggleSave}
+          onAddComment={handleAddComment}
         />
       )}
 
