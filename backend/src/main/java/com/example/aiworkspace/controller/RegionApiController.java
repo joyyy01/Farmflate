@@ -106,7 +106,6 @@ public class RegionApiController {
                 || !hasTextWithin(request.getSigunguCode(), 20)
                 || !hasTextWithin(request.getSigunguName(), 100)
                 || !hasTextWithin(request.getIdempotencyKey(), 128)
-                || request.getForceRefresh() == null
                 || (request.getLocation() != null && !request.getLocation().hasExactlyOnePrimaryLocator())) {
             throw RegionAnalysisService.RegionAnalysisException.invalidRequest();
         }

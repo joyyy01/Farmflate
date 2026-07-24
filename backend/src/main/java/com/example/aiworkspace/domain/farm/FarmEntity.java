@@ -4,6 +4,8 @@ import com.example.aiworkspace.domain.common.BaseTimeEntity;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.LocalDate;
+
 @Entity
 @Table(name = "farms")
 @Getter
@@ -22,6 +24,24 @@ public class FarmEntity extends BaseTimeEntity {
 
     @Column(name = "crop_name", nullable = false, length = 50)
     private String cropName;
+
+    @Column(name = "crop_code", length = 50)
+    private String cropCode;
+
+    @Column(name = "region_analysis_id", length = 36)
+    private String regionAnalysisId;
+
+    @Column(name = "location_json", columnDefinition = "TEXT")
+    private String locationJson;
+
+    @Column(name = "cultivation_method", length = 30)
+    private String cultivationMethod;
+
+    @Column(name = "cultivation_start_date")
+    private LocalDate cultivationStartDate;
+
+    @Column(nullable = false)
+    private Boolean active = true;
 
     @Column(name = "days_planted")
     private int daysPlanted = 1;
@@ -42,10 +62,20 @@ public class FarmEntity extends BaseTimeEntity {
     private String reportTime;
 
     @Builder
-    public FarmEntity(String userEmail, String fieldName, String cropName, int daysPlanted, String stage, String statusBadge, String statusBadgeColor, String todayTask, String reportTime) {
+    public FarmEntity(Long id, String userEmail, String fieldName, String cropName, String cropCode,
+                      String regionAnalysisId, String locationJson, String cultivationMethod,
+                      LocalDate cultivationStartDate, Boolean active, int daysPlanted, String stage,
+                      String statusBadge, String statusBadgeColor, String todayTask, String reportTime) {
+        this.id = id;
         this.userEmail = userEmail;
         this.fieldName = fieldName;
         this.cropName = cropName;
+        this.cropCode = cropCode;
+        this.regionAnalysisId = regionAnalysisId;
+        this.locationJson = locationJson;
+        this.cultivationMethod = cultivationMethod;
+        this.cultivationStartDate = cultivationStartDate;
+        this.active = active == null || active;
         this.daysPlanted = daysPlanted;
         this.stage = stage != null ? stage : "생장 초기";
         this.statusBadge = statusBadge != null ? statusBadge : "물주기 필요";

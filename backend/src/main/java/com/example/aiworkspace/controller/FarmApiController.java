@@ -5,9 +5,11 @@ import com.example.aiworkspace.domain.farm.FarmRepository;
 import com.example.aiworkspace.security.UserPrincipal;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -20,7 +22,7 @@ public class FarmApiController {
 
     @GetMapping
     public ResponseEntity<List<FarmEntity>> getMyFarms(@AuthenticationPrincipal UserPrincipal userPrincipal) {
-        String userEmail = userPrincipal != null ? userPrincipal.getEmail() : "user@farmflate.com";
+        String userEmail = requireOwner(userPrincipal);
         List<FarmEntity> farms = farmRepository.findByUserEmailOrderByCreatedAtDesc(userEmail);
         return ResponseEntity.ok(farms);
     }
@@ -30,7 +32,7 @@ public class FarmApiController {
             @AuthenticationPrincipal UserPrincipal userPrincipal,
             @RequestBody CreateFarmRequest request) {
 
-        String userEmail = userPrincipal != null ? userPrincipal.getEmail() : "user@farmflate.com";
+        String userEmail = requireOwner(userPrincipal);
 
         FarmEntity farm = FarmEntity.builder()
                 .userEmail(userEmail)
@@ -46,6 +48,13 @@ public class FarmApiController {
 
         FarmEntity saved = farmRepository.save(farm);
         return ResponseEntity.ok(saved);
+    }
+
+    private String requireOwner(UserPrincipal userPrincipal) {
+        if (userPrincipal == null || userPrincipal.getEmail() == null || userPrincipal.getEmail().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "인증이 필요합니다.");
+        }
+        return userPrincipal.getEmail();
     }
 
     @Data

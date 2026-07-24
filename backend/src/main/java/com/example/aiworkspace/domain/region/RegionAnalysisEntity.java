@@ -71,4 +71,7 @@ public class RegionAnalysisEntity extends BaseTimeEntity {
 
     @Column(name = "data_mode", length = 20)
     private String dataMode; // LIVE or REPLAY
+
+    @Column(name = "report_status", length = 20)
+    private String reportStatus; // COMPLETED or PARTIAL
 }
