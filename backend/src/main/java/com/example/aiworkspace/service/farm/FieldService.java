@@ -25,8 +25,10 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -72,15 +74,15 @@ public class FieldService {
                 .findByIdAndUserEmail(request.getRegionAnalysisId(), ownerEmail)
                 .orElseThrow(() -> FieldException.analysisNotFound(request.getRegionAnalysisId()));
         RegionReportResponseDto regionReport = readRegionReport(analysis);
-        String cropCode = resolveCropCode(request, regionReport);
-        FieldSuitabilityReportDto suitability = buildSuitability(regionReport, cropCode, request.getCropName(), request);
+        CropResolution crop = resolveCrop(request, regionReport);
+        FieldSuitabilityReportDto suitability = buildSuitability(regionReport, crop.cropCode(), crop.cropName(), request);
         LocationResolution location = regionReport.getLocation();
 
         FarmEntity field = FarmEntity.builder()
                 .userEmail(ownerEmail)
                 .fieldName(request.getFieldName().trim())
-                .cropCode(cropCode)
-                .cropName(request.getCropName().trim())
+                .cropCode(crop.cropCode())
+                .cropName(crop.cropName())
                 .regionAnalysisId(request.getRegionAnalysisId())
                 .locationJson(write(location))
                 .cultivationMethod(request.getCultivationMethod().trim())
@@ -107,7 +109,10 @@ public class FieldService {
     @Transactional(readOnly = true)
     public List<FieldProfileResponseDto> getFields(String ownerEmail) {
         return farmRepository.findByUserEmailOrderByCreatedAtDesc(ownerEmail).stream()
-                .map(field -> toProfile(field, readLocation(field.getLocationJson()), null, latestReport(field, ownerEmail)))
+                .map(field -> {
+                    FieldDailyReportDto latest = latestReport(field, ownerEmail);
+                    return toProfile(field, readLocation(field.getLocationJson()), recoverSuitability(field, ownerEmail, latest), latest);
+                })
                 .toList();
     }
 
@@ -134,7 +139,8 @@ public class FieldService {
                         .fieldName(field.getFieldName()).cropCode(field.getCropCode()).cropName(field.getCropName())
                         .cultivationMethod(field.getCultivationMethod()).cultivationStartDate(field.getCultivationStartDate())
                         .stage(field.getStage()).regionAnalysisId(field.getRegionAnalysisId()).build();
-                FieldSuitabilityReportDto suitability = buildSuitability(regionReport, field.getCropCode(), field.getCropName(), fieldInput);
+                CropResolution crop = resolveCrop(fieldInput, regionReport);
+                FieldSuitabilityReportDto suitability = buildSuitability(regionReport, crop.cropCode(), crop.cropName(), fieldInput);
                 LocalDateTime generatedAt = reportDate.atTime(6, 0);
                 FieldDailyReportDto daily = dailyReport(field, suitability, reportDate, generatedAt, "DAILY_0600");
                 dailyReportRepository.save(FieldDailyReportEntity.builder()
@@ -153,7 +159,7 @@ public class FieldService {
         RegionReportResponseDto.RecommendedCropDto recommended = findRecommendedCrop(report, cropCode, cropName);
         Integer score = crop != null ? crop.getScore() : recommended == null ? null : recommended.getScore();
         if (score == null) {
-            throw FieldException.cropNotCalculable(cropName);
+            throw FieldException.cropNotEligible(cropName);
         }
 
         Integer climateScore = crop == null ? componentScore(report.getComponents() == null ? null : report.getComponents().getClimate())
@@ -244,19 +250,97 @@ public class FieldService {
                 .flatMap(entity -> read(entity.getPayloadJson(), FieldDailyReportDto.class)).orElse(null);
     }
 
+    /**
+     * A field remains tied to one immutable region-analysis snapshot.  Rebuilding
+     * from that stored snapshot keeps GET /fields as complete as POST /fields
+     * without manufacturing a new provider result after a browser refresh.
+     */
+    private FieldSuitabilityReportDto recoverSuitability(FarmEntity field, String ownerEmail, FieldDailyReportDto latest) {
+        if (!hasText(field.getRegionAnalysisId())) return suitabilityFromLatest(field, latest);
+        try {
+            RegionAnalysisEntity analysis = regionAnalysisRepository
+                    .findByIdAndUserEmail(field.getRegionAnalysisId(), ownerEmail)
+                    .orElseThrow(() -> FieldException.analysisNotFound(field.getRegionAnalysisId()));
+            RegionReportResponseDto regionReport = readRegionReport(analysis);
+            CreateFieldRequestDto storedInput = CreateFieldRequestDto.builder()
+                    .fieldName(field.getFieldName()).cropCode(field.getCropCode()).cropName(field.getCropName())
+                    .cultivationMethod(field.getCultivationMethod()).cultivationStartDate(field.getCultivationStartDate())
+                    .stage(field.getStage()).regionAnalysisId(field.getRegionAnalysisId()).build();
+            CropResolution crop = resolveCrop(storedInput, regionReport);
+            return buildSuitability(regionReport, crop.cropCode(), crop.cropName(), storedInput);
+        } catch (FieldException exception) {
+            log.warn("Returning only a durable field snapshot for field {}: {}", field.getId(), exception.getCode());
+            return suitabilityFromLatest(field, latest);
+        }
+    }
+
+    private FieldSuitabilityReportDto suitabilityFromLatest(FarmEntity field, FieldDailyReportDto latest) {
+        if (latest == null || latest.getSuitabilityScore() == null) return null;
+        return FieldSuitabilityReportDto.builder().suitabilityScore(latest.getSuitabilityScore())
+                .grade(grade(latest.getSuitabilityScore())).summary(latest.getSummary())
+                .regionAnalysisId(field.getRegionAnalysisId()).conditions(copyOrEmpty(latest.getConditions()))
+                .keyRisks(copyOrEmpty(latest.getKeyRisks())).prePlantChecklist(List.of())
+                .currentManagementPoints(copyOrEmpty(latest.getPrioritizedActions())).build();
+    }
+
     private RegionReportResponseDto readRegionReport(RegionAnalysisEntity analysis) {
         if (!hasText(analysis.getPayloadJson())) throw FieldException.analysisPayloadUnavailable();
         return read(analysis.getPayloadJson(), RegionReportResponseDto.class)
                 .orElseThrow(FieldException::analysisPayloadUnavailable);
     }
 
-    private String resolveCropCode(CreateFieldRequestDto request, RegionReportResponseDto report) {
-        if (hasText(request.getCropCode())) return request.getCropCode().trim().toUpperCase(Locale.ROOT);
-        RegionReportResponseDto.CropDecisionDto crop = findCropDecision(report, null, request.getCropName());
-        if (crop != null && hasText(crop.getCropCode())) return crop.getCropCode();
-        RegionReportResponseDto.RecommendedCropDto recommended = findRecommendedCrop(report, null, request.getCropName());
-        if (recommended != null && hasText(recommended.getCropCode())) return recommended.getCropCode();
-        throw FieldException.cropNotCalculable(request.getCropName());
+    private CropResolution resolveCrop(CreateFieldRequestDto request, RegionReportResponseDto report) {
+        List<CropResolution> eligible = eligibleCrops(report);
+        CropResolution codeMatch = hasText(request.getCropCode())
+                ? findEligibleByCode(eligible, request.getCropCode()) : null;
+        CropResolution nameMatch = findEligibleByName(eligible, request.getCropName());
+
+        if (hasText(request.getCropCode()) && hasText(request.getCropName())) {
+            if (codeMatch == null && nameMatch == null) throw FieldException.cropNotEligible(request.getCropName());
+            if (codeMatch == null || nameMatch == null || !sameCrop(codeMatch, nameMatch)) {
+                throw FieldException.cropCodeNameMismatch(request.getCropCode(), request.getCropName());
+            }
+            return codeMatch;
+        }
+        CropResolution resolved = codeMatch == null ? nameMatch : codeMatch;
+        if (resolved == null) throw FieldException.cropNotEligible(request.getCropName());
+        return resolved;
+    }
+
+    private List<CropResolution> eligibleCrops(RegionReportResponseDto report) {
+        Map<String, CropResolution> values = new LinkedHashMap<>();
+        if (report.getCropResults() != null) {
+            report.getCropResults().stream()
+                    .filter(crop -> crop.getScore() != null)
+                    .forEach(crop -> addEligibleCrop(values, crop.getCropCode(), crop.getCropName()));
+        }
+        if (report.getRecommendedCrops() != null) {
+            report.getRecommendedCrops().stream()
+                    .filter(crop -> crop.getScore() != null)
+                    .forEach(crop -> addEligibleCrop(values, crop.getCropCode(), crop.getCropName()));
+        }
+        return List.copyOf(values.values());
+    }
+
+    private void addEligibleCrop(Map<String, CropResolution> values, String cropCode, String cropName) {
+        if (!hasText(cropCode) || !hasText(cropName)) return;
+        String canonicalCode = cropCode.trim().toUpperCase(Locale.ROOT);
+        values.putIfAbsent(canonicalCode, new CropResolution(canonicalCode, cropName.trim()));
+    }
+
+    private CropResolution findEligibleByCode(List<CropResolution> candidates, String cropCode) {
+        if (!hasText(cropCode)) return null;
+        String canonical = cropCode.trim().toUpperCase(Locale.ROOT);
+        return candidates.stream().filter(candidate -> candidate.cropCode().equals(canonical)).findFirst().orElse(null);
+    }
+
+    private CropResolution findEligibleByName(List<CropResolution> candidates, String cropName) {
+        if (!hasText(cropName)) return null;
+        return candidates.stream().filter(candidate -> candidate.cropName().equalsIgnoreCase(cropName.trim())).findFirst().orElse(null);
+    }
+
+    private boolean sameCrop(CropResolution left, CropResolution right) {
+        return left.cropCode().equals(right.cropCode()) && left.cropName().equalsIgnoreCase(right.cropName());
     }
 
     private RegionReportResponseDto.CropDecisionDto findCropDecision(RegionReportResponseDto report, String cropCode, String cropName) {
@@ -272,8 +356,10 @@ public class FieldService {
     }
 
     private boolean matchesCrop(String candidateCode, String candidateName, String cropCode, String cropName) {
-        return (hasText(cropCode) && hasText(candidateCode) && candidateCode.equalsIgnoreCase(cropCode))
-                || (hasText(cropName) && hasText(candidateName) && candidateName.equalsIgnoreCase(cropName));
+        if (hasText(cropCode)) {
+            return hasText(candidateCode) && candidateCode.equalsIgnoreCase(cropCode);
+        }
+        return hasText(cropName) && hasText(candidateName) && candidateName.equalsIgnoreCase(cropName);
     }
 
     private FieldSuitabilityReportDto.ConditionDto condition(String key, String label, Integer score, String description) {
@@ -328,7 +414,7 @@ public class FieldService {
         return values == null || values.isEmpty() || !hasText(values.get(0)) ? fallback : values.get(0);
     }
 
-    private List<String> copyOrEmpty(List<String> values) {
+    private <T> List<T> copyOrEmpty(List<T> values) {
         return values == null ? List.of() : List.copyOf(values);
     }
 
@@ -374,6 +460,9 @@ public class FieldService {
         return value != null && !value.isBlank();
     }
 
+    private record CropResolution(String cropCode, String cropName) {
+    }
+
     public static class FieldException extends RuntimeException {
         private final HttpStatus httpStatus;
         private final String code;
@@ -396,9 +485,14 @@ public class FieldService {
             return new FieldException(HttpStatus.CONFLICT, "REGION_ANALYSIS_PAYLOAD_UNAVAILABLE", "지역 분석 스냅샷을 읽을 수 없습니다.");
         }
 
-        static FieldException cropNotCalculable(String cropName) {
-            return new FieldException(HttpStatus.UNPROCESSABLE_ENTITY, "FIELD_CROP_NOT_CALCULABLE",
-                    "선택한 작물의 계산 가능한 지역 분석 결과가 없습니다: " + cropName);
+        static FieldException cropNotEligible(String cropName) {
+            return new FieldException(HttpStatus.UNPROCESSABLE_ENTITY, "FIELD_CROP_NOT_ELIGIBLE",
+                    "선택한 작물은 연결된 지역 분석의 계산 가능한 작물이 아닙니다: " + cropName);
+        }
+
+        static FieldException cropCodeNameMismatch(String cropCode, String cropName) {
+            return new FieldException(HttpStatus.UNPROCESSABLE_ENTITY, "FIELD_CROP_CODE_NAME_MISMATCH",
+                    "작물 코드와 이름이 연결된 지역 분석에서 같은 작물을 가리키지 않습니다: " + cropCode + "/" + cropName);
         }
 
         static FieldException persistenceUnavailable() {
