@@ -8,8 +8,10 @@ interface RegionTipsViewProps {
   report?: RegionReport | null;
   onBack: () => void;
   onSave: () => void;
-  onGoToCreateField: () => void;
   onOpenAIChat: () => void;
+  variant?: 'default' | 'cropRegister' | 'view';
+  onRegisterCrop?: () => void;
+  onConfirm?: () => void;
 }
 
 export const RegionTipsView: React.FC<RegionTipsViewProps> = ({
@@ -17,8 +19,10 @@ export const RegionTipsView: React.FC<RegionTipsViewProps> = ({
   report,
   onBack,
   onSave,
-  onGoToCreateField,
-  onOpenAIChat: _onOpenAIChat
+  onOpenAIChat: _onOpenAIChat,
+  variant = 'default',
+  onRegisterCrop,
+  onConfirm
 }) => {
   // Extract short district name (e.g. "전주시" from "전북특별자치도 전주시")
   const shortDistrict = districtName.split(' ').pop() || districtName;
@@ -50,36 +54,21 @@ export const RegionTipsView: React.FC<RegionTipsViewProps> = ({
     }
     return {
       icon: '/svg-assets/weather/rain.svg',
-      category: '배수 관리',
+      category: '농사 TIP',
       badgeBg: '#E9F7EC',
       badgeColor: '#2FA86A'
     };
   };
 
-  const rawTips = report?.tips && report.tips.length > 0 ? report.tips : [
-    {
-      tipCode: 'DRAINAGE_BEFORE_RAIN',
-      title: '장마철 배수 관리가 중요해요',
-      summary: '이 지역은 여름철 많은 비가 몰릴 수 있어 밭 주변 배수로 점검이 필요해요.',
-      sourceName: '농사로 공식자료',
-      sourceUrl: 'https://www.nongsaro.go.kr'
-    },
-    {
-      tipCode: 'SOIL_TEST_GUIDE',
-      title: '시군구 농업기술센터 토양검정 활용',
-      summary: '무료 토양 검정 서비스를 통해 정확한 pH와 비료 처방전을 받아보세요.',
-      sourceName: '농촌진흥청 흙토람',
-      sourceUrl: 'https://soil.rda.go.kr'
-    }
-  ];
+  const rawTips = report?.tips?.length ? report.tips : (report?.prioritizedActions ?? []);
 
   const dynamicTips = rawTips.map(t => {
-    const meta = getTipMeta(t.title, t.tipCode);
+    const meta = getTipMeta(t.title ?? '', t.tipCode ?? undefined);
     return {
-      title: t.title,
-      desc: t.summary,
-      linkText: `${t.sourceName || '공식 자료'} 보기`,
-      sourceUrl: t.sourceUrl || 'https://www.nongsaro.go.kr',
+      title: t.title ?? 'TIP 제목 정보 없음',
+      desc: t.reason ?? 'TIP 설명 정보가 제공되지 않았습니다.',
+      linkText: `${t.sourceName || '출처'} 보기`,
+      sourceUrl: t.sourceUrl,
       icon: meta.icon,
       category: meta.category,
       badgeBg: meta.badgeBg,
@@ -91,7 +80,7 @@ export const RegionTipsView: React.FC<RegionTipsViewProps> = ({
     <div className="full-screen-view" style={{ backgroundColor: '#FFFFFF', display: 'flex', flexDirection: 'column', height: '100%', padding: 0 }}>
       {/* Scrollable Content Area */}
       <div className="no-scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '24px 20px 24px 20px' }}>
-        
+
         {/* Back button */}
         <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginBottom: 24, display: 'flex' }}>
           <ArrowLeft size={24} color="#191F28" />
@@ -105,15 +94,16 @@ export const RegionTipsView: React.FC<RegionTipsViewProps> = ({
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <CheckCircle2 size={16} color="#2FA86A" />
             <p style={{ fontSize: '0.84rem', color: '#6E7671', fontWeight: 600, margin: 0 }}>
-              농사로 공식 자료를 바탕으로 정리했어요
+              제공된 분석 자료를 바탕으로 정리했어요
             </p>
           </div>
         </div>
 
         {/* Premium Diversified Tip Cards */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {dynamicTips.length === 0 && <div style={{ backgroundColor: '#F8FAF8', borderRadius: 20, padding: '20px', border: '1px solid #EAEFEA', color: '#6E7671', fontSize: '0.86rem' }}>현재 리포트에 제공된 농사 TIP이 없습니다.</div>}
           {dynamicTips.map((tip, idx) => (
-            <motion.div 
+            <motion.div
               key={idx}
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
@@ -139,14 +129,14 @@ export const RegionTipsView: React.FC<RegionTipsViewProps> = ({
               </div>
 
               <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
-                <div style={{ 
+                <div style={{
                   width: 46, height: 46, borderRadius: 14, backgroundColor: '#FFFFFF',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   boxShadow: '0 2px 8px rgba(0,0,0,0.04)', flexShrink: 0
                 }}>
                   <img src={tip.icon} alt="아이콘" style={{ width: 26, height: 26, objectFit: 'contain' }} />
                 </div>
-                
+
                 <div style={{ flex: 1, marginTop: 2 }}>
                   <h3 style={{ fontSize: '1.08rem', fontWeight: 850, color: '#191F28', margin: '0 0 6px 0', paddingRight: 75, lineHeight: 1.4 }}>
                     {tip.title}
@@ -158,8 +148,8 @@ export const RegionTipsView: React.FC<RegionTipsViewProps> = ({
                     {tip.desc}
                   </p>
 
-                  <button
-                    onClick={() => window.open(tip.sourceUrl, '_blank')}
+                  {tip.sourceUrl && <button
+                    onClick={() => window.open(tip.sourceUrl || undefined, '_blank')}
                     style={{
                       backgroundColor: '#FFFFFF', border: '1px solid #D1DFD7',
                       borderRadius: 10, padding: '8px 14px',
@@ -170,7 +160,7 @@ export const RegionTipsView: React.FC<RegionTipsViewProps> = ({
                     }}
                   >
                     {tip.linkText} <ChevronRight size={14} color="#2FA86A" />
-                  </button>
+                  </button>}
                 </div>
               </div>
             </motion.div>
@@ -180,23 +170,34 @@ export const RegionTipsView: React.FC<RegionTipsViewProps> = ({
 
       {/* Fixed Bottom CTA Buttons */}
       <div style={{ padding: '16px 20px 32px 20px', backgroundColor: '#FFFFFF', borderTop: '1px solid #F0F2F5', position: 'relative', zIndex: 10, display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <motion.button
-          whileTap={{ scale: 0.98 }}
-          className="btn-farm-primary"
-          onClick={onSave}
-          style={{ width: '100%', height: 56, fontSize: '1.05rem', borderRadius: 16 }}
-        >
-          저장
-        </motion.button>
-
-        <motion.button
-          whileTap={{ scale: 0.98 }}
-          className="btn-farm-primary"
-          onClick={onGoToCreateField}
-          style={{ width: '100%', height: 56, fontSize: '1.05rem', borderRadius: 16, backgroundColor: '#EEF8F1', color: '#2FA86A' }}
-        >
-          마이 팜으로 이동
-        </motion.button>
+        {variant === 'cropRegister' ? (
+          <motion.button
+            whileTap={{ scale: 0.98 }}
+            className="btn-farm-primary"
+            onClick={onRegisterCrop}
+            style={{ width: '100%', height: 56, fontSize: '1.05rem', borderRadius: 16 }}
+          >
+            농작물 등록하기
+          </motion.button>
+        ) : variant === 'view' ? (
+          <motion.button
+            whileTap={{ scale: 0.98 }}
+            className="btn-farm-primary"
+            onClick={onConfirm}
+            style={{ width: '100%', height: 56, fontSize: '1.05rem', borderRadius: 16 }}
+          >
+            확인
+          </motion.button>
+        ) : (
+          <motion.button
+            whileTap={{ scale: 0.98 }}
+            className="btn-farm-primary"
+            onClick={onSave}
+            style={{ width: '100%', height: 56, fontSize: '1.05rem', borderRadius: 16 }}
+          >
+            저장
+          </motion.button>
+        )}
       </div>
     </div>
   );

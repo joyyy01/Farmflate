@@ -11,7 +11,7 @@ export default function OAuth2Callback() {
 
     if (token) {
       localStorage.setItem('jwtToken', token);
-      navigate('/?view=dashboard', { replace: true });
+      navigate('/', { replace: true });
     } else {
       navigate('/', { replace: true });
     }

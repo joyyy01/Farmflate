@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, MessageSquare as MsgIcon, Heart } from 'lucide-react';
+import { Plus, MessageSquare as MsgIcon, Heart, Bot } from 'lucide-react';
 import type { CommunityPost, TabState } from '../../types/farmflate';
 import { BottomNavigation } from '../common/BottomNavigation';
 import { CommunityPostDetailModal } from './CommunityPostDetailModal';
 
 interface CommunityListViewProps {
   posts: CommunityPost[];
+  loadError?: string | null;
   onOpenAIChat: () => void;
   onOpenWrite?: () => void;
   activeTab: TabState;
@@ -18,6 +19,7 @@ interface CommunityListViewProps {
 
 export const CommunityListView: React.FC<CommunityListViewProps> = ({
   posts,
+  loadError,
   onOpenAIChat,
   onOpenWrite,
   activeTab,
@@ -40,7 +42,7 @@ export const CommunityListView: React.FC<CommunityListViewProps> = ({
 
   // Active post detail reference
   const activeDetailPost = selectedPost
-    ? posts.find(p => p.id === selectedPost.id) || selectedPost
+    ? posts.find(p => p.id === selectedPost.id) ?? null
     : null;
 
   return (
@@ -48,30 +50,38 @@ export const CommunityListView: React.FC<CommunityListViewProps> = ({
       <div className="full-screen-view no-scrollbar" style={{ padding: '32px 20px 96px 20px', overflowY: 'auto' }}>
 
         {/* Top Header: '커뮤니티' + '+ 글쓰기' green pill button */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 900, color: '#191F28', margin: 0, letterSpacing: '-0.03em' }}>
+        <div style={{ marginBottom: 20 }}>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 900, color: '#191F28', margin: 0, marginTop: -10, letterSpacing: '-0.03em' }}>
             커뮤니티
           </h2>
-          <motion.button
-            whileTap={{ scale: 0.95 }}
-            onClick={onOpenWrite}
-            style={{
-              backgroundColor: '#2FA86A', color: '#FFFFFF', border: 'none',
-              borderRadius: 20, padding: '8px 16px', fontSize: '0.84rem',
-              fontWeight: 850, cursor: 'pointer', display: 'flex',
-              alignItems: 'center', gap: 4
-            }}
-          >
-            <Plus size={16} /> 글쓰기
-          </motion.button>
+          <div style={{ height: 1, backgroundColor: '#E5E8EB', width: '100%', marginTop: 5 }} />
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              onClick={onOpenWrite}
+              style={{
+                backgroundColor: '#2FA86A', color: '#FFFFFF', border: 'none',
+                borderRadius: 20, padding: '8px 16px', fontSize: '0.84rem',
+                fontWeight: 900, cursor: 'pointer', display: 'flex',
+                alignItems: 'center', gap: 4
+              }}
+            >
+              <Plus size={16} /> 글쓰기
+            </motion.button>
+          </div>
         </div>
 
         {/* Post Cards List or Empty State */}
+        {loadError && (
+          <div role="alert" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px', marginBottom: 16, textAlign: 'center', borderRadius: 16, backgroundColor: '#FFF4F0' }}>
+            <h4 style={{ fontSize: '1.05rem', fontWeight: 850, color: '#191F28', margin: '0 0 6px 0' }}>게시글을 불러오지 못했습니다.</h4>
+            <p style={{ fontSize: '0.82rem', color: '#B54708', margin: 0 }}>{loadError}</p>
+          </div>
+        )}
         {posts.length === 0 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 20px', textAlign: 'center' }}>
-            <img src="/svg-assets/brand/mascot/guide.svg" alt="마스코트" style={{ width: 64, height: 64, marginBottom: 16 }} />
-            <h4 style={{ fontSize: '1.05rem', fontWeight: 850, color: '#191F28', margin: '0 0 6px 0' }}>아직 등록된 게시글이 없습니다.</h4>
-            <p style={{ fontSize: '0.82rem', color: '#6E7671', margin: '0 0 20px 0' }}>첫 번째 농가 노하우나 궁금한 질문을 남겨보세요!</p>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 20px', textAlign: 'center' }}>
+            <h4 style={{ fontSize: '1.05rem', fontWeight: 840, color: '#191F28', margin: '0 0 6px 0' }}>아직 등록된 게시글이 없습니다.</h4>
+            <p style={{ fontSize: '0.82rem', color: '#6E7671', margin: '0 0 50px 0' }}>첫 번째 농가 노하우나 궁금한 질문을 남겨보세요!</p>
             <button onClick={onOpenWrite} className="btn-farm-primary" style={{ height: 44, padding: '0 20px', borderRadius: 14, fontSize: '0.85rem' }}>
               + 첫 글 작성하기
             </button>
@@ -152,7 +162,7 @@ export const CommunityListView: React.FC<CommunityListViewProps> = ({
 
       {/* Floating AI Button matching all other screens 100% */}
       <button className="floating-ai-btn" onClick={onOpenAIChat} title="AI Assistant">
-        <img src="/svg-assets/ui-icons/ai-chat.svg" alt="AI 채팅" style={{ width: 26, height: 26, filter: 'brightness(0) invert(1)' }} />
+        <Bot size={26} color="#FFFFFF" />
       </button>
 
       {/* Bottom Navigation */}

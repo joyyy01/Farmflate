@@ -2,24 +2,29 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { PanInfo } from 'framer-motion';
 import { ArrowUp, ChevronRight, X, Sparkles } from 'lucide-react';
-import { ApiService } from '../../services/api';
-import type { Message } from '../../types/chat';
+import { ApiError, ApiService } from '../../services/api';
+import type { ChatPageContext, Message } from '../../types/chat';
 
 interface AIChatModalProps {
   isOpen: boolean;
   onClose: () => void;
   selectedRegion?: string;
   selectedCropInfo?: string;
+  pageContext?: ChatPageContext;
 }
 
 export const AIChatModal: React.FC<AIChatModalProps> = ({
   isOpen,
-  onClose
+  onClose,
+  selectedRegion,
+  selectedCropInfo,
+  pageContext
 }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [hasStartedChat, setHasStartedChat] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const detailedQuestions = [
@@ -38,8 +43,9 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
   const handleSendPrompt = async (promptText: string) => {
     if (!promptText.trim() || loading) return;
     setHasStartedChat(true);
+    setErrorMessage(null);
     const userMsg: Message = {
-      id: Date.now().toString(),
+      id: crypto.randomUUID(),
       sender: 'user',
       content: promptText,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -49,16 +55,30 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
     setLoading(true);
 
     try {
-      const response = await ApiService.sendChatMessage({ message: promptText });
+      const response = await ApiService.sendChatMessage({
+        message: promptText,
+        history: messages.slice(-12).map(message => ({
+          role: message.sender,
+          content: message.content
+        })),
+        context: {
+          ...pageContext,
+          region: pageContext?.region || selectedRegion,
+          selected_crop: pageContext?.selected_crop || selectedCropInfo
+        }
+      });
       const aiMsg: Message = {
-        id: (Date.now() + 1).toString(),
+        id: crypto.randomUUID(),
         sender: 'assistant',
         content: response.reply,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        sources: response.sources,
+        grounded: response.status === 'grounded'
       };
       setMessages(prev => [...prev, aiMsg]);
     } catch (err) {
       console.error(err);
+      setErrorMessage(err instanceof ApiError ? err.message : 'AI 답변을 불러오지 못했습니다.');
     } finally {
       setLoading(false);
     }
@@ -67,6 +87,7 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
   const handleReset = () => {
     setHasStartedChat(false);
     setMessages([]);
+    setErrorMessage(null);
   };
 
   const handleDragEnd = (_: any, info: PanInfo) => {
@@ -257,6 +278,16 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
                       }}
                     >
                       <div>{msg.content}</div>
+                      {msg.sender === 'assistant' && msg.sources && msg.sources.length > 0 && (
+                        <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #E2E8F0', fontSize: '0.7rem', color: '#667085', lineHeight: 1.45 }}>
+                          <strong style={{ color: '#2e9f5b' }}>답변 근거</strong>
+                          {msg.sources.slice(0, 2).map((source, index) => (
+                            <div key={`${msg.id}-source-${index}`} style={{ marginTop: 2 }}>
+                              {source.title}{source.detail ? ` · ${source.detail}` : ''}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       <div style={{ fontSize: '0.66rem', marginTop: 4, opacity: 0.7, textAlign: 'right' }}>
                         {msg.timestamp}
                       </div>
@@ -266,6 +297,11 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
                   {loading && (
                     <div style={{ alignSelf: 'flex-start', padding: '12px 16px', backgroundColor: '#F8FAFC', borderRadius: 18, fontSize: '0.84rem', color: '#6B7280', display: 'flex', alignItems: 'center', gap: 8 }}>
                       <Sparkles size={16} color="#2e9f5b" /> AI 답변을 생성하고 있어요...
+                    </div>
+                  )}
+                  {errorMessage && (
+                    <div role="alert" style={{ alignSelf: 'flex-start', maxWidth: '85%', padding: '12px 16px', backgroundColor: '#FFF4F0', border: '1px solid #FFD5C8', borderRadius: 18, fontSize: '0.84rem', color: '#B54708', lineHeight: 1.5 }}>
+                      {errorMessage}
                     </div>
                   )}
                   <div ref={chatEndRef} />

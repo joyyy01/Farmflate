@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, CheckCircle2, AlertTriangle } from 'lucide-react';
 import type { RegionReport } from '../../services/api';
+import { formatReportLabel, formatReportText } from '../../utils/reportDisplay';
 
 export interface RegionReportSummaryViewProps {
   regionName: string;
@@ -18,65 +19,24 @@ export const RegionReportSummaryView: React.FC<RegionReportSummaryViewProps> = (
   onNext,
   onOpenAIChat: _onOpenAIChat
 }) => {
-  const score = report?.regionScore ?? 82;
+  const score = report?.baseFitness ?? report?.regionScore ?? null;
+  const hasScore = typeof score === 'number';
+  const numericScore = hasScore ? score : 0;
+  const displayScore = hasScore ? (Number.isInteger(score) ? String(score) : score.toFixed(1)) : null;
+  const isPartialWithoutScore = report?.status === 'PARTIAL' && !hasScore;
+  const cleanSummary = formatReportText(report?.summary);
 
-  // Extract short region name (e.g., "군산시" from "전북특별자치도 군산시")
-  const shortRegionName = regionName.split(' ').pop() || regionName;
+  const climateGrade = formatReportLabel(report?.components?.climate?.grade ?? undefined);
+  const soilGrade = formatReportLabel(report?.components?.soil?.grade ?? undefined);
+  const hazardGrade = formatReportLabel(report?.components?.hazard?.grade ?? undefined);
+  const cultivationGrade = formatReportLabel(report?.components?.cultivation?.grade ?? undefined);
 
-  // Helper function to attach natural Korean particles (은/는) based on Hangul batchim
-  const getSubjectName = (name: string): string => {
-    if (!name) return '이 지역은';
-    const lastChar = name.charCodeAt(name.length - 1);
-    if (lastChar >= 0xAC00 && lastChar <= 0xD7A3) {
-      const hasJongsung = (lastChar - 0xAC00) % 28 !== 0;
-      return `${name}${hasJongsung ? '은' : '는'}`;
-    }
-    return `${name}는`;
-  };
-
-  const cleanSubject = getSubjectName(shortRegionName);
-
-  // Clean, human-phrased summary sentence without any awkward AI template syntax
-  const rawSummary = report?.summary || '';
-  const cleanSummary = rawSummary
-    ? rawSummary.replace(/고창군은\(는\)|고창군은|고창군은\(는\)|[가-힣]+은\(는\)/g, cleanSubject)
-    : `${cleanSubject} 현재 계절에 여러 작물을 재배하기 양호한 환경이지만, 배수 관리에 신경 써주세요.`;
-
-  // Translate English grades (GOOD, CAUTION, WARNING) to Korean (양호, 주의, 위험)
-  const formatGrade = (grade?: string) => {
-    if (!grade) return '양호';
-    if (grade === 'GOOD' || grade === 'EXCELLENT') return '양호';
-    if (grade === 'CAUTION' || grade === 'FAIR') return '주의';
-    if (grade === 'WARNING' || grade === 'POOR') return '위험';
-    return grade;
-  };
-
-  const climateGrade = formatGrade(report?.components?.climate?.grade);
-  const soilGrade = formatGrade(report?.components?.soil?.grade);
-  const hazardGrade = formatGrade(report?.components?.hazard?.grade);
-  const cultivationGrade = formatGrade(report?.components?.cultivation?.grade);
-
-  const getCropIcon = (cropName: string) => {
-    if (cropName.includes('상추')) return '/svg-assets/crops/lettuce.svg';
-    if (cropName.includes('사과')) return '/svg-assets/crops/apple.svg';
-    if (cropName.includes('배')) return '/svg-assets/crops/pear.svg';
-    if (cropName.includes('고추')) return '/svg-assets/crops/pepper.svg';
-    if (cropName.includes('토마토')) return '/svg-assets/crops/tomato.svg';
-    if (cropName.includes('배추')) return '/svg-assets/crops/cabbage.svg';
-    if (cropName.includes('오이')) return '/svg-assets/crops/cucumber.svg';
-    return '/svg-assets/crops/potato.svg';
-  };
-
-  const crops = report?.recommendedCrops && report.recommendedCrops.length > 0 ? report.recommendedCrops : [
-    { rank: 1, cropName: '감자', score: Math.min(score + 5, 98), positiveReasons: ['서늘한 기후 조건과 배수가 우수한 토양 생육 환경에 잘 맞습니다.'] },
-    { rank: 2, cropName: '상추', score: score + 1, positiveReasons: ['토양 유기물 함량과 배수 상태가 우수합니다.'] },
-    { rank: 3, cropName: '사과', score: score - 6, positiveReasons: ['풍부한 일조시간과 기후 일교차 조건이 부합해요.'] }
-  ];
+  const crops = report?.recommendedCrops ?? [];
 
   // SVG Gauge Calculations
   const radius = 56;
   const circumference = 2 * Math.PI * radius;
-  const strokeDashoffset = circumference - (circumference * Math.min(score, 100)) / 100;
+  const strokeDashoffset = circumference - (circumference * numericScore) / 100;
 
   return (
     <div className="full-screen-view" style={{ backgroundColor: '#FFFFFF', display: 'flex', flexDirection: 'column', height: '100%', position: 'relative', overflow: 'hidden' }}>
@@ -138,16 +98,16 @@ export const RegionReportSummaryView: React.FC<RegionReportSummaryViewProps> = (
             borderRadius: 14, padding: '4px 14px',
             fontSize: '0.78rem', fontWeight: 800, marginBottom: 16
           }}>
-            농사 환경 종합 점수
+            기초 재배 적합도
           </div>
 
           {/* SVG Gauge Arc */}
           <div style={{
-            position: 'relative', width: 144, height: 144,
+            position: 'relative', width: 152, height: 152,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             marginBottom: 16
           }}>
-            <svg width="144" height="144" viewBox="0 0 144 144" style={{ transform: 'rotate(-90deg)' }}>
+            <svg width="152" height="152" viewBox="0 0 144 144" style={{ transform: 'rotate(-90deg)', overflow: 'visible' }}>
               <circle
                 cx="72"
                 cy="72"
@@ -171,13 +131,24 @@ export const RegionReportSummaryView: React.FC<RegionReportSummaryViewProps> = (
             </svg>
 
             {/* Score Typography */}
-            <div style={{ position: 'absolute', display: 'flex', alignItems: 'baseline', gap: 2 }}>
-              <span style={{ fontSize: '3.1rem', fontWeight: 900, color: '#191F28', letterSpacing: '-0.05em', lineHeight: 1 }}>
-                {score}
-              </span>
-              <span style={{ fontSize: '1.1rem', fontWeight: 800, color: '#2FA86A' }}>
-                점
-              </span>
+            <div style={{ position: 'absolute', inset: 0, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', whiteSpace: 'nowrap' }}>
+              {hasScore ? (
+                <>
+                  <span style={{ fontSize: '1.85rem', fontWeight: 900, color: '#191F28', letterSpacing: '-0.05em', lineHeight: 1 }}>
+                    {displayScore}
+                  </span>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#2FA86A', marginLeft: 3 }}>점</span>
+                </>
+              ) : (
+                <div aria-label={isPartialWithoutScore ? '부분 분석 완료, 적합도 점수 자료 부족' : '적합도 점수 자료 부족'} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, maxWidth: 112 }}>
+                  <strong style={{ fontSize: '0.92rem', fontWeight: 850, color: '#334155', lineHeight: 1.25 }}>
+                    {isPartialWithoutScore ? '부분 분석 완료' : '점수 자료 부족'}
+                  </strong>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#6E7671', lineHeight: 1.35 }}>
+                    적합도 산출 자료가 제공되지 않았습니다.
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -198,6 +169,11 @@ export const RegionReportSummaryView: React.FC<RegionReportSummaryViewProps> = (
           }}>
             {cleanSummary}
           </p>
+          <div style={{ width: '100%', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
+            <div style={{ background: '#FFFFFF', borderRadius: 10, padding: '9px 10px' }}><span style={{ display: 'block', fontSize: '0.7rem', color: '#6E7671' }}>계절 준비도</span><strong style={{ fontSize: '0.86rem', color: '#202A24' }}>{report?.seasonReadiness === null || report?.seasonReadiness === undefined ? '자료 부족' : `${report.seasonReadiness}점`}</strong></div>
+            <div style={{ background: '#FFFFFF', borderRadius: 10, padding: '9px 10px' }}><span style={{ display: 'block', fontSize: '0.7rem', color: '#6E7671' }}>데이터 신뢰도</span><strong style={{ fontSize: '0.86rem', color: '#202A24' }}>{report?.dataConfidence.score === null || report?.dataConfidence.score === undefined ? '자료 부족' : `${report.dataConfidence.score}점`}</strong><span style={{ marginLeft: 4, fontSize: '0.68rem', color: '#6E7671' }}>{formatReportLabel(report?.dataConfidence.level, '')}</span></div>
+          </div>
+          {report?.dataConfidence.message && <p style={{ width: '100%', margin: '10px 0 0', color: '#A66B19', fontSize: '0.75rem', lineHeight: 1.45 }}>결정 제한: {report.dataConfidence.message}</p>}
         </motion.div>
 
         {/* 4 Category Status Chips */}
@@ -242,18 +218,11 @@ export const RegionReportSummaryView: React.FC<RegionReportSummaryViewProps> = (
           </h3>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ backgroundColor: '#F8FAF8', borderRadius: 14, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <CheckCircle2 size={18} color="#2FA86A" />
-              <span style={{ fontSize: '0.86rem', fontWeight: 650, color: '#191F28', wordBreak: 'keep-all', wordWrap: 'break-word' }}>{shortRegionName} 대표 토양 pH가 적정 산성도 범주입니다.</span>
-            </div>
-            <div style={{ backgroundColor: '#F8FAF8', borderRadius: 14, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <CheckCircle2 size={18} color="#2FA86A" />
-              <span style={{ fontSize: '0.86rem', fontWeight: 650, color: '#191F28', wordBreak: 'keep-all', wordWrap: 'break-word' }}>계절별 일조시간 및 기후가 원활한 생육을 지원해요.</span>
-            </div>
-            <div style={{ backgroundColor: '#F8FAF8', borderRadius: 14, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <AlertTriangle size={18} color="#FF842F" />
-              <span style={{ fontSize: '0.86rem', fontWeight: 650, color: '#191F28', wordBreak: 'keep-all', wordWrap: 'break-word' }}>여름철 집중호우 시 배수로 점검이 필수적입니다.</span>
-            </div>
+            {(report?.environmentFeatures ?? []).length === 0 ? (
+              <div style={{ backgroundColor: '#F8FAF8', borderRadius: 14, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10 }}><AlertTriangle size={18} color="#FF842F" /><span style={{ fontSize: '0.86rem', fontWeight: 650, color: '#6F7772' }}>환경 특징 자료가 제공되지 않았습니다.</span></div>
+            ) : (report?.environmentFeatures ?? []).map((feature, index) => (
+              <div key={`${feature}-${index}`} style={{ backgroundColor: '#F8FAF8', borderRadius: 14, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10 }}><CheckCircle2 size={18} color="#2FA86A" /><span style={{ fontSize: '0.86rem', fontWeight: 650, color: '#191F28', wordBreak: 'keep-all', wordWrap: 'break-word' }}>{formatReportText(feature)}</span></div>
+            ))}
           </div>
         </div>
 
@@ -264,10 +233,11 @@ export const RegionReportSummaryView: React.FC<RegionReportSummaryViewProps> = (
           </h3>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {crops.map((item: any, idx: number) => {
+            {crops.length === 0 && <div style={{ color: '#6F7772', fontSize: '0.86rem' }}>추천 작물 자료가 제공되지 않았습니다.</div>}
+            {crops.map((item, idx: number) => {
               const isFirst = idx === 0;
-              const cropImg = getCropIcon(item.cropName);
-              const reasonText = item.positiveReasons?.[0] || '지역 환경 적합도가 우수함';
+              const cropImg = item.iconUrl;
+                const reasonText = formatReportText(item.positiveReasons[0] || item.cautionReason, '근거 자료가 제공되지 않았습니다.');
               
               return (
                 <div key={idx} style={{
@@ -275,10 +245,10 @@ export const RegionReportSummaryView: React.FC<RegionReportSummaryViewProps> = (
                   padding: '16px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 1, minWidth: 0 }}>
-                    <img src={cropImg} alt={item.cropName} style={{ width: 44, height: 44, objectFit: 'contain', flexShrink: 0 }} />
+                    {cropImg && <img src={cropImg} alt={item.cropName ?? ''} style={{ width: 44, height: 44, objectFit: 'contain', flexShrink: 0 }} />}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: '0.96rem', fontWeight: 900, color: isFirst ? '#154F36' : '#191F28', marginBottom: 3 }}>
-                        {item.rank || idx + 1}위. {item.cropName}
+                        {item.rank ?? idx + 1}위. {item.cropName ?? '작물명 자료 부족'}
                       </div>
                       <div style={{
                         fontSize: '0.78rem', color: '#6E7671', fontWeight: 500,
@@ -297,12 +267,19 @@ export const RegionReportSummaryView: React.FC<RegionReportSummaryViewProps> = (
                     whiteSpace: 'nowrap', flexShrink: 0,
                     display: 'inline-flex', alignItems: 'baseline', gap: 1
                   }}>
-                    {item.score}<span style={{ fontSize: '0.74rem', fontWeight: 700 }}>점</span>
+                    {item.score === null || item.score === undefined ? '자료 부족' : <>{item.score}<span style={{ fontSize: '0.74rem', fontWeight: 700 }}>점</span></>}
                   </div>
                 </div>
               );
             })}
           </div>
+        </div>
+
+        <div style={{ borderTop: '1px solid #EEF1EF', paddingTop: 14, marginBottom: 12, color: '#6F7772', fontSize: '0.74rem', lineHeight: 1.5 }}>
+          <strong style={{ color: '#4B574F' }}>데이터 근거</strong><br />
+          {report?.sources[0] ? `${[report.sources[0].provider, report.sources[0].service].filter(Boolean).join(' / ') || '제공자 정보 없음'} · ${report.sources[0].dataDate ?? '날짜 정보 없음'}` : '출처 정보가 제공되지 않았습니다.'}
+          {report?.dataMode ? ` · ${formatReportLabel(report.dataMode)}` : ''}
+          {report?.sources.some(source => source.isFallback) ? ' · 대체 데이터 포함' : ''}
         </div>
 
       </div>

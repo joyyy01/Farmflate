@@ -6,12 +6,14 @@ interface CommunityCreatePostViewProps {
   onCancel: () => void;
   onSubmitPost: (title: string, content: string, category?: string, locationTag?: string, imageUrl?: string) => void | Promise<void>;
   userRegion?: string;
+  errorMessage?: string | null;
 }
 
 export const CommunityCreatePostView: React.FC<CommunityCreatePostViewProps> = ({
   onCancel,
   onSubmitPost,
-  userRegion = '전북 고창군'
+  userRegion = '지역 정보 없음',
+  errorMessage
 }) => {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -130,6 +132,11 @@ export const CommunityCreatePostView: React.FC<CommunityCreatePostViewProps> = (
             </motion.button>
           </div>
         </div>
+        {errorMessage && (
+          <p role="alert" style={{ margin: '0 0 16px', borderRadius: 12, padding: '10px 14px', backgroundColor: '#FFF4F0', color: '#B54708', fontSize: '0.82rem', fontWeight: 700 }}>
+            {errorMessage}
+          </p>
+        )}
 
         {/* Title Input */}
         <div style={{ marginBottom: 16 }}>

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronRight, HelpCircle, X, Check, Bookmark, MessageSquare, Send, ShieldCheck, Mail, Calendar } from 'lucide-react';
+import { ChevronRight, HelpCircle, X, Check, Bookmark, MessageSquare, Send, ShieldCheck, Mail, Calendar, Bot } from 'lucide-react';
 import type { TabState, CommunityPost } from '../../types/farmflate';
 import { BottomNavigation } from '../common/BottomNavigation';
 import { CommunityPostDetailModal } from './CommunityPostDetailModal';
@@ -16,6 +16,7 @@ interface MyPageViewProps {
   onTabChange: (tab: TabState) => void;
   onLogout?: () => void;
   onGoToExplore?: () => void;
+  onUpdateUserName?: (name: string) => void;
   onToggleLike?: (postId: string) => void;
   onToggleSave?: (postId: string) => void;
   onAddComment?: (postId: string, commentText: string) => void;
@@ -23,14 +24,15 @@ interface MyPageViewProps {
 
 export const MyPageView: React.FC<MyPageViewProps> = ({
   userName = '사용자님',
-  userEmail = 'user@farmflate.com',
-  userRegion = '전북 고창군',
+  userEmail = '이메일 정보 없음',
+  userRegion = '지역 정보 없음',
   posts = [],
   onOpenAIChat,
   activeTab,
   onTabChange,
   onLogout,
   onGoToExplore,
+  onUpdateUserName,
   onToggleLike = () => {},
   onToggleSave = () => {},
   onAddComment = () => {}
@@ -38,7 +40,7 @@ export const MyPageView: React.FC<MyPageViewProps> = ({
   const [activeModal, setActiveModal] = useState<'account' | 'crops' | 'saved' | 'my_posts' | 'support' | null>(null);
   const [selectedPost, setSelectedPost] = useState<CommunityPost | null>(null);
 
-  /* Real Favorite Crops State from LocalStorage */
+  /* User-selected favorites are not analysis recommendations. */
   const availableCrops = [
     { name: '감자', icon: '/svg-assets/crops/potato.svg' },
     { name: '상추', icon: '/svg-assets/crops/lettuce.svg' },
@@ -52,7 +54,7 @@ export const MyPageView: React.FC<MyPageViewProps> = ({
 
   const [favoriteCrops, setFavoriteCrops] = useState<string[]>(() => {
     const saved = localStorage.getItem('farmflate_favorite_crops');
-    return saved ? JSON.parse(saved) : ['감자', '상추'];
+    return saved ? JSON.parse(saved) : [];
   });
 
   const toggleFavoriteCrop = (cropName: string) => {
@@ -67,38 +69,80 @@ export const MyPageView: React.FC<MyPageViewProps> = ({
   const [expandedFaq, setExpandedFaq] = useState<number | null>(0);
   const [inquiryText, setInquiryText] = useState('');
   const [inquirySuccess, setInquirySuccess] = useState(false);
+  const [inquiryError, setInquiryError] = useState<string | null>(null);
   const [isSubmittingInquiry, setIsSubmittingInquiry] = useState(false);
+  const [myInquiries, setMyInquiries] = useState<Array<{ id: number; inquiryText: string; category: string; status: string; createdAt: string }>>([]);
+
+  const [editingNickname, setEditingNickname] = useState(userName);
+  const [isUpdatingNickname, setIsUpdatingNickname] = useState(false);
+  const [nicknameSuccess, setNicknameSuccess] = useState(false);
+  const [nicknameError, setNicknameError] = useState<string | null>(null);
+
+  const handleSaveProfile = async () => {
+    if (!editingNickname.trim()) return;
+    setIsUpdatingNickname(true);
+    setNicknameError(null);
+    setNicknameSuccess(false);
+    try {
+      await ApiService.updateUserProfile({ nickname: editingNickname.trim() });
+      localStorage.setItem('farmflate_user_name', editingNickname.trim());
+      if (onUpdateUserName) onUpdateUserName(editingNickname.trim());
+      setNicknameSuccess(true);
+      setTimeout(() => setNicknameSuccess(false), 3000);
+    } catch (e) {
+      setNicknameError(e instanceof Error ? e.message : '프로필을 변경하지 못했습니다.');
+    } finally {
+      setIsUpdatingNickname(false);
+    }
+  };
+
+  const loadInquiries = async () => {
+    try {
+      const data = await ApiService.getUserInquiries();
+      setMyInquiries(data);
+    } catch (e) {
+      console.warn('Failed to load user inquiries:', e);
+    }
+  };
+
+  React.useEffect(() => {
+    if (activeModal === 'support') {
+      void loadInquiries();
+    }
+  }, [activeModal]);
 
   const faqs = [
     {
-      q: '토양 및 날씨 분석 정보는 어떻게 얻어오나요?',
-      a: '농촌진흥청(흙람보) 토양분석 공공 데이터 API 및 기상청 단기예보 실시간 데이터를 연동하여 고창군 등 각 지역 환경을 가중치 엔진으로 분석합니다.'
+      q: '지역 분석 결과는 어떻게 확인하나요?',
+      a: '지역 분석 화면에서 서버가 제공한 결과와 데이터 근거를 확인할 수 있습니다. 정보가 없으면 자료 부족으로 표시됩니다.'
     },
     {
-      q: '추천 작물 점수는 어떤 기준으로 계산되나요?',
-      a: '지역 대표 토양 pH, 유기물 함량, 일조시간, 계절 강수확률, 서리/집중호우 위험도를 4대 평가 지표로 합산해 100점 만점으로 시뮬레이션합니다.'
+      q: '추천 작물 정보가 없으면 어떻게 하나요?',
+      a: '분석이 완료된 뒤 서버에서 추천 작물 정보를 제공하면 리포트에 표시됩니다.'
     },
     {
       q: '1:1 문의 응답은 얼마나 걸리나요?',
-      a: '영업일 기준 24시간 이내에 가입하신 카카오 이메일 계정으로 상세 답변을 보내드립니다.'
+      a: '문의 내용은 접수 후 서비스 운영 정책에 따라 확인됩니다.'
     }
   ];
 
   const savedPosts = posts.filter(p => p.isSaved);
-  const myAuthoredPosts = posts.filter(p => p.author === userName || p.author.includes('초보농부') || p.author.includes('사용자'));
+  const myAuthoredPosts = posts.filter(p => p.author === userName);
 
   const handleInquirySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inquiryText.trim() || isSubmittingInquiry) return;
-    
+
     setIsSubmittingInquiry(true);
+    setInquiryError(null);
     try {
       await ApiService.submitInquiry({ inquiryText: inquiryText.trim() });
       setInquirySuccess(true);
       setInquiryText('');
-      setTimeout(() => setInquirySuccess(false), 3500);
+      void loadInquiries();
     } catch (err) {
       console.warn('Inquiry submit failed:', err);
+      setInquiryError(err instanceof Error ? err.message : '문의 접수에 실패했습니다.');
     } finally {
       setIsSubmittingInquiry(false);
     }
@@ -107,7 +151,7 @@ export const MyPageView: React.FC<MyPageViewProps> = ({
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
       <div className="full-screen-view no-scrollbar" style={{ padding: '32px 20px 96px 20px', overflowY: 'auto' }}>
-        
+
         {/* Top Header */}
         <h2 style={{ fontSize: '1.45rem', fontWeight: 900, color: '#191F28', marginBottom: 20 }}>
           설정
@@ -249,9 +293,28 @@ export const MyPageView: React.FC<MyPageViewProps> = ({
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 24 }}>
-                <div style={{ backgroundColor: '#F8FAF8', borderRadius: 16, padding: '14px 16px', border: '1px solid #EAEFEA', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '0.86rem', color: '#6E7671', fontWeight: 600 }}><ShieldCheck size={18} color="#2FA86A" /> 가입 유형</div>
-                  <span style={{ backgroundColor: '#E9F7EC', color: '#2FA86A', fontSize: '0.78rem', fontWeight: 850, padding: '4px 10px', borderRadius: 10 }}>카카오 간편인증 계정</span>
+                <div style={{ backgroundColor: '#F8FAF8', borderRadius: 16, padding: '14px 16px', border: '1px solid #EAEFEA', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '0.86rem', color: '#6E7671', fontWeight: 600 }}><ShieldCheck size={18} color="#2FA86A" /> 사용자 닉네임</div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      type="text"
+                      value={editingNickname}
+                      onChange={e => setEditingNickname(e.target.value)}
+                      placeholder="닉네임 입력"
+                      style={{ flex: 1, height: 40, borderRadius: 10, border: '1px solid #D1DFD7', padding: '0 12px', fontSize: '0.88rem', fontWeight: 700, outline: 'none' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveProfile()}
+                      disabled={isUpdatingNickname || !editingNickname.trim()}
+                      className="btn-farm-primary"
+                      style={{ height: 40, padding: '0 16px', borderRadius: 10, fontSize: '0.82rem' }}
+                    >
+                      {isUpdatingNickname ? '저장 중...' : '변경'}
+                    </button>
+                  </div>
+                  {nicknameSuccess && <div style={{ fontSize: '0.78rem', color: '#2FA86A', fontWeight: 800 }}>✓ 닉네임이 DB에 반영되었습니다.</div>}
+                  {nicknameError && <div style={{ fontSize: '0.78rem', color: '#EF4444', fontWeight: 700 }}>{nicknameError}</div>}
                 </div>
                 <div style={{ backgroundColor: '#F8FAF8', borderRadius: 16, padding: '14px 16px', border: '1px solid #EAEFEA', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '0.86rem', color: '#6E7671', fontWeight: 600 }}><Mail size={18} color="#2FA86A" /> 계정 이메일</div>
@@ -424,10 +487,39 @@ export const MyPageView: React.FC<MyPageViewProps> = ({
                       ✓ 문의사항이 성공적으로 접수되었습니다!
                     </div>
                   )}
+                  {inquiryError && (
+                    <div role="alert" style={{ backgroundColor: '#FFF4F0', color: '#B54708', borderRadius: 12, padding: '10px 14px', fontSize: '0.82rem', fontWeight: 700, textAlign: 'center' }}>
+                      {inquiryError}
+                    </div>
+                  )}
                   <button type="submit" disabled={!inquiryText.trim() || isSubmittingInquiry} className="btn-farm-primary" style={{ width: '100%', height: 46, borderRadius: 14, fontSize: '0.9rem', gap: 6 }}>
                     <Send size={16} /> {isSubmittingInquiry ? '접수 중...' : '문의 접수하기'}
                   </button>
                 </form>
+
+                {/* My Inquiries History List */}
+                {myInquiries.length > 0 && (
+                  <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 850, color: '#2FA86A' }}>내 문의 내역 ({myInquiries.length})</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {myInquiries.map(inq => (
+                        <div key={inq.id} style={{ backgroundColor: '#F8FAF8', borderRadius: 14, padding: '12px 14px', border: '1px solid #EAEFEA' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                            <span style={{ backgroundColor: inq.status === 'RESOLVED' ? '#E9F7EC' : '#FFF4E5', color: inq.status === 'RESOLVED' ? '#2FA86A' : '#B76E00', fontSize: '0.72rem', fontWeight: 850, padding: '2px 8px', borderRadius: 8 }}>
+                              {inq.status === 'RESOLVED' ? '처리 완료' : '접수 완료'}
+                            </span>
+                            <span style={{ fontSize: '0.72rem', color: '#8E9892' }}>
+                              {inq.createdAt ? inq.createdAt.substring(0, 10) : ''}
+                            </span>
+                          </div>
+                          <p style={{ fontSize: '0.84rem', color: '#191F28', margin: 0, fontWeight: 500, wordBreak: 'keep-all' }}>
+                            {inq.inquiryText}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </motion.div>
           </div>
@@ -445,7 +537,7 @@ export const MyPageView: React.FC<MyPageViewProps> = ({
 
       {/* Floating AI Button */}
       <button className="floating-ai-btn" onClick={onOpenAIChat} title="AI Assistant">
-        <img src="/svg-assets/ui-icons/ai-chat.svg" alt="AI 채팅" style={{ width: 26, height: 26, filter: 'brightness(0) invert(1)' }} />
+        <Bot size={26} color="#FFFFFF" />
       </button>
 
       {/* 4-Tab Bottom Navigation */}

@@ -8,8 +8,17 @@ import lombok.*;
 @Builder
 public class RegionAnalysisRequestDto {
     private String sidoCode;
+
+    private String sidoName;
+
     private String sigunguCode;
-    @Builder.Default
-    private Boolean forceRefresh = false;
+
+    private String sigunguName;
+
+    /** Optional precision location proof; canonical region identity remains required above. */
+    private LocationRequestDto location;
+
     private String idempotencyKey;
+
+    private Boolean forceRefresh;
 }

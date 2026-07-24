@@ -2,34 +2,28 @@ import React from 'react';
 import { motion } from 'framer-motion';
 
 interface LandingViewProps {
-  onLogin?: () => void;
+  errorMessage?: string | null;
+  onOpenPreview?: () => void;
 }
 
-export const LandingView: React.FC<LandingViewProps> = ({ onLogin }) => {
+export const LandingView: React.FC<LandingViewProps> = ({ errorMessage, onOpenPreview }) => {
   const handleKakaoLogin = () => {
-    // REAL Official Kakao OAuth2 Authorization Endpoint
-    try {
-      window.location.href = 'http://localhost:8080/oauth2/authorization/kakao';
-    } catch {
-      // [TEMP DEV FALLBACK - REMOVE IN PRODUCTION]
-      // If backend is offline during local UI development, fallback directly to dashboard
-      if (onLogin) onLogin();
-    }
+    window.location.href = 'http://localhost:8080/oauth2/authorization/kakao';
   };
 
   return (
     <div className="full-screen-view" style={{
       justifyContent: 'space-between',
-      padding: '36px 20px 32px 20px',
+      padding: '46px 20px 32px 20px',
       backgroundColor: '#FFFFFF',
       background: 'radial-gradient(circle at 50% 10%, #E9F7EC 0%, #FFFFFF 75%)'
     }}>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', width: '100%' }}>
-        
+
         {/* Pure Vector Brand Wordmark Logo */}
         <div style={{ marginBottom: 14 }}>
           <img
-            src="/svg-assets/brand/wordmark.svg"
+            src="/assets/brand-wordmark-new.png"
             alt="Farmflate"
             className="logo-wordmark"
             style={{ height: 34 }}
@@ -68,24 +62,24 @@ export const LandingView: React.FC<LandingViewProps> = ({ onLogin }) => {
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.15, duration: 0.5 }}
           style={{
-            width: '100%',
-            maxWidth: 380,
+            width: 'calc(100% + 36px)',
+            marginLeft: -18,
+            marginRight: -18,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            marginTop: 30,
             marginBottom: 20,
             overflow: 'hidden'
           }}
         >
           <img
-            src="/assets/landing-hero.png"
+            src="/assets/landing-hero-hand.png"
             alt="농장과 분석 화면 일러스트"
             style={{
               width: '100%',
               height: 'auto',
-              maxHeight: 220,
-              objectFit: 'contain',
-              borderRadius: 20
+              objectFit: 'contain'
             }}
           />
         </motion.div>
@@ -100,8 +94,8 @@ export const LandingView: React.FC<LandingViewProps> = ({ onLogin }) => {
           width: '100%'
         }}>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 76 }}>
-            <div style={{ width: 48, height: 48, borderRadius: '50%', backgroundColor: '#E9F7EC', border: '1px solid #A8DCC8', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 6 }}>
-              <img src="/svg-assets/ui-icons/location.svg" alt="지역 선택" style={{ width: 24, height: 24 }} />
+            <div style={{ width: 48, height: 48, borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 6 }}>
+              <img src="/assets/step-location.png" alt="지역 선택" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             </div>
             <span style={{ fontSize: '0.76rem', fontWeight: 750, color: '#154F36' }}>지역 선택</span>
           </div>
@@ -109,8 +103,8 @@ export const LandingView: React.FC<LandingViewProps> = ({ onLogin }) => {
           <span style={{ color: '#A8DCC8', fontSize: '1.3rem', fontWeight: 800, marginBottom: 18 }}>›</span>
 
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 76 }}>
-            <div style={{ width: 48, height: 48, borderRadius: '50%', backgroundColor: '#E9F7EC', border: '1px solid #A8DCC8', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 6 }}>
-              <img src="/svg-assets/crops/leaf.svg" alt="작물 선택" style={{ width: 24, height: 24 }} />
+            <div style={{ width: 48, height: 48, borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 6 }}>
+              <img src="/assets/step-leaf.png" alt="작물 선택" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             </div>
             <span style={{ fontSize: '0.76rem', fontWeight: 750, color: '#154F36' }}>작물 선택</span>
           </div>
@@ -118,7 +112,8 @@ export const LandingView: React.FC<LandingViewProps> = ({ onLogin }) => {
           <span style={{ color: '#A8DCC8', fontSize: '1.3rem', fontWeight: 800, marginBottom: 18 }}>›</span>
 
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 76 }}>
-            <div style={{ width: 48, height: 48, borderRadius: '50%', backgroundColor: '#E9F7EC', border: '1px solid #A8DCC8', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 6 }}>
+            <div style={{ width: 48, height: 48, borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 6 }}>
+              <img src="/assets/step-analysis.png" alt="분석 & 안내" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             </div>
             <span style={{ fontSize: '0.76rem', fontWeight: 750, color: '#154F36' }}>분석 &amp; 안내</span>
           </div>
@@ -126,7 +121,7 @@ export const LandingView: React.FC<LandingViewProps> = ({ onLogin }) => {
 
       </div>
 
-      {/* Official Kakao Brand Yellow (#FEE500) Button + Dev Preview Mode */}
+      {/* Official Kakao Brand Yellow (#FEE500) Button */}
       <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <motion.button
           whileTap={{ scale: 0.97 }}
@@ -152,11 +147,9 @@ export const LandingView: React.FC<LandingViewProps> = ({ onLogin }) => {
           </svg>
           카카오로 시작하기
         </motion.button>
-
-        {/* [TEMP DEV FALLBACK - REMOVE IN PRODUCTION] Direct UI Preview link without backend dependency */}
-        {onLogin && (
+        {onOpenPreview && (
           <button
-            onClick={onLogin}
+            onClick={onOpenPreview}
             style={{
               marginTop: 10, background: 'none', border: 'none',
               fontSize: '0.78rem', color: '#6E7671', cursor: 'pointer',
@@ -165,6 +158,11 @@ export const LandingView: React.FC<LandingViewProps> = ({ onLogin }) => {
           >
             (개발 모드) 로그인 없이 대시보드 둘러보기
           </button>
+        )}
+        {errorMessage && (
+          <p role="alert" style={{ margin: '10px 0 0', color: '#B54708', fontSize: '0.78rem', fontWeight: 650, textAlign: 'center' }}>
+            {errorMessage}
+          </p>
         )}
       </div>
     </div>

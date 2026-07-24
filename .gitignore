@@ -5,6 +5,7 @@
 
 # Gradle & Spring build files
 .gradle/
+**/.gradle/
 **/build/
 *.lock
 *.bin
@@ -16,9 +17,28 @@ dist/
 
 # Python
 __pycache__/
+**/__pycache__/
 *.pyc
+**/*.pyc
 
 # IDE & OS
 .idea/
 .vscode/
 .DS_Store
+
+.vercel
+.env*
+
+# Local runtime data
+.farmflate-postgres-data/
+.superpowers/
+.local-server-logs/
+
+# Temporary plan documents and artifacts
+implementation_plan*.md
+walkthrough*.md
+task*.md
+handover*.md
+scratch/
+brain/
+

@@ -44,7 +44,27 @@ app:
       service-key: ${DATA_GO_KR_SERVICE_KEY:local_data_go_kr_key}
     vworld:
       api-key: ${VWORLD_API_KEY:local_vworld_key}
+      address-url: ${VWORLD_ADDRESS_URL:https://api.vworld.kr/req/address}
+    parcel:
+      identifier-url: ${PARCEL_IDENTIFIER_URL:}
+      api-key: ${PARCEL_IDENTIFIER_API_KEY:}
     nongsaro:
       api-key: ${NONGSARO_API_KEY:local_nongsaro_key}
+  data-mode: ${DATA_MODE:LIVE}
+  external-api:
+    timeout-ms: ${EXTERNAL_API_TIMEOUT_MS:8000}
+    location-timeout-ms: ${LOCATION_API_TIMEOUT_MS:5000}
+    retry-count: ${EXTERNAL_API_RETRY_COUNT:1}
+    rda-min-interval-ms: ${RDA_MIN_INTERVAL_MS:500}
+    soil-chemistry-sample-dongs: ${SOIL_CHEMISTRY_SAMPLE_DONGS:1}
+    soil-suitability-sample-dongs: ${SOIL_SUITABILITY_SAMPLE_DONGS:1}
+  cache:
+    region-analysis-hours: ${REGION_ANALYSIS_CACHE_HOURS:6}
+    short-forecast-minutes: ${SHORT_FORECAST_CACHE_MINUTES:30}
+    asos-hours: ${ASOS_CACHE_HOURS:24}
+    soil-chemistry-days: ${SOIL_CHEMISTRY_CACHE_DAYS:30}
+    soil-suitability-days: ${SOIL_SUITABILITY_CACHE_DAYS:90}
+    legal-district-days: ${LEGAL_DISTRICT_CACHE_DAYS:30}
+    crop-code-days: ${CROP_CODE_CACHE_DAYS:90}
   python-server:
     url: ${PYTHON_SERVER_URL:http://localhost:8000}

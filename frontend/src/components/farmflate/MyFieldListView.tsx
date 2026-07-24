@@ -1,11 +1,13 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { ChevronRight, AlertCircle } from 'lucide-react';
-import type { MyFieldItem, TabState } from '../../types/farmflate';
+import { ChevronRight, AlertCircle, Bot } from 'lucide-react';
+import type { TabState } from '../../types/farmflate';
+import type { FieldProfile } from '../../types/report';
 import { BottomNavigation } from '../common/BottomNavigation';
 
 interface MyFieldListViewProps {
-  fields: MyFieldItem[];
+  fields: FieldProfile[];
+  loadError?: string | null;
   onAddField: () => void;
   onOpenAIChat: () => void;
   activeTab: TabState;
@@ -14,49 +16,28 @@ interface MyFieldListViewProps {
 
 export const MyFieldListView: React.FC<MyFieldListViewProps> = ({
   fields = [],
+  loadError,
   onAddField,
   onOpenAIChat,
   activeTab,
   onTabChange
 }) => {
-  const getCropIcon = (cropName: string) => {
-    if (cropName.includes('상추')) return '/svg-assets/crops/lettuce.svg';
-    if (cropName.includes('감자')) return '/svg-assets/crops/potato.svg';
-    if (cropName.includes('오이')) return '/svg-assets/crops/cucumber.svg';
-    if (cropName.includes('사과')) return '/svg-assets/crops/apple.svg';
-    if (cropName.includes('배')) return '/svg-assets/crops/pear.svg';
-    return '/svg-assets/crops/sprout.svg';
+  const formatDateTime = (value?: string | null) => {
+    if (!value) return null;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(date);
   };
 
-  const displayFields: MyFieldItem[] = fields.length > 0 ? fields : [
-    {
-      id: 'field_1',
-      fieldName: '상추밭',
-      cropName: '상추',
-      daysPlanted: 18,
-      stage: '생장 단계',
-      statusBadge: '물주기 필요',
-      statusBadgeColor: 'yellow',
-      todayTask: '오늘 물주기 필요',
-      reportTime: '오늘 06:00 자동 분석됨'
-    },
-    {
-      id: 'field_2',
-      fieldName: '감자밭',
-      cropName: '감자',
-      daysPlanted: 32,
-      stage: '개화 단계',
-      statusBadge: '확인 필요',
-      statusBadgeColor: 'blue',
-      todayTask: '서리 대비 덮개 점검 필요',
-      reportTime: '오늘 06:00 자동 분석됨'
-    }
-  ];
+  const stageLabel = (stage?: string | null) => {
+    if (stage === 'before') return '심기 전';
+    if (stage === 'growing') return '재배 중';
+    return stage || '단계 정보 없음';
+  };
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
       <div className="full-screen-view no-scrollbar" style={{ padding: '32px 20px 96px 20px', overflowY: 'auto' }}>
-        
+
         {/* Top Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <h2 style={{ fontSize: '1.45rem', fontWeight: 900, color: '#191F28', margin: 0 }}>
@@ -66,11 +47,25 @@ export const MyFieldListView: React.FC<MyFieldListViewProps> = ({
 
         {/* Dynamic Farm Cards List */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 20 }}>
-          {displayFields.map((field) => {
-            const isYellow = field.statusBadgeColor === 'yellow';
-            const badgeBg = isYellow ? '#FFF4DC' : '#E0F2FE';
-            const badgeColor = isYellow ? '#FF842F' : '#0284C7';
-            const icon = getCropIcon(field.cropName);
+          {loadError && (
+            <div role="alert" style={{ backgroundColor: '#FFF4F0', borderRadius: 20, padding: 20, border: '1px solid #FFD5C8', color: '#B54708', fontSize: '0.86rem', lineHeight: 1.6 }}>
+              {loadError}
+            </div>
+          )}
+          {!loadError && fields.length === 0 && (
+            <div style={{ backgroundColor: '#F8FAF8', borderRadius: 20, padding: 20, border: '1px solid #E5E8EB', color: '#6F7772', fontSize: '0.86rem', lineHeight: 1.6 }}>
+              등록된 농작물이 없습니다. 아래 버튼으로 농작물을 등록해 주세요.
+            </div>
+          )}
+          {fields.map((field) => {
+            const hasSuitability = typeof field.suitabilityReport?.suitabilityScore === 'number' || Boolean(field.suitabilityReport?.grade);
+            const badgeBg = hasSuitability ? '#E9F7EC' : '#F3F4F6';
+            const badgeColor = hasSuitability ? '#2E9F5B' : '#6F7772';
+            const cropName = field.cropName || '작물 정보 없음';
+            const latestReport = field.latestReport;
+            const summary = latestReport?.summary || field.suitabilityReport?.summary;
+            const reportTime = formatDateTime(latestReport?.generatedAt ?? latestReport?.reportDate);
+            const suitabilityLabel = field.suitabilityReport?.grade || (typeof field.suitabilityReport?.suitabilityScore === 'number' ? `적합도 ${field.suitabilityReport.suitabilityScore}점` : '적합도 자료 없음');
 
             return (
               <div
@@ -84,13 +79,13 @@ export const MyFieldListView: React.FC<MyFieldListViewProps> = ({
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <img src={icon} alt={field.cropName} style={{ width: 44, height: 44, objectFit: 'contain' }} />
+                    <img src="/svg-assets/crops/sprout.svg" alt="" aria-hidden="true" style={{ width: 44, height: 44, objectFit: 'contain' }} />
                     <div>
                       <h3 style={{ fontSize: '1.1rem', fontWeight: 900, color: '#191F28', margin: 0, marginBottom: 2 }}>
                         {field.fieldName}
                       </h3>
                       <div style={{ fontSize: '0.78rem', color: '#6F7772', fontWeight: 500 }}>
-                        {field.cropName} · 재배 {field.daysPlanted}일 차 · {field.stage}
+                        {cropName} · {stageLabel(field.stage)}{field.cultivationStartDate ? ` · 시작 ${field.cultivationStartDate}` : ''}
                       </div>
                     </div>
                   </div>
@@ -102,7 +97,7 @@ export const MyFieldListView: React.FC<MyFieldListViewProps> = ({
                     fontSize: '0.74rem',
                     fontWeight: 800
                   }}>
-                    {field.statusBadge}
+                    {suitabilityLabel}
                   </span>
                 </div>
 
@@ -118,7 +113,7 @@ export const MyFieldListView: React.FC<MyFieldListViewProps> = ({
                   gap: 8,
                   marginBottom: 12
                 }}>
-                  <AlertCircle size={16} color={badgeColor} /> {field.todayTask}
+                  <AlertCircle size={16} color={badgeColor} /> {summary || '서버에서 제공된 관리 요약이 아직 없습니다.'}
                 </div>
 
                 {/* Today's Report Banner */}
@@ -135,10 +130,10 @@ export const MyFieldListView: React.FC<MyFieldListViewProps> = ({
                     <img src="/svg-assets/weather/water-drop-cheer.svg" alt="물방울" style={{ width: 34, height: 38, objectFit: 'contain' }} />
                     <div>
                       <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#145238' }}>
-                        오늘의 리포트가 준비됐어요!
+                        {latestReport ? '리포트가 준비됐어요!' : '일일 리포트 준비 중'}
                       </div>
                       <div style={{ fontSize: '0.76rem', color: '#2e9f5b', fontWeight: 500 }}>
-                        지금 바로 확인해보세요!
+                        {latestReport ? (reportTime ? `생성 ${reportTime}` : (latestReport.generationReason || '생성 시각 정보 없음')) : '서버에서 생성된 리포트가 아직 없습니다.'}
                       </div>
                     </div>
                   </div>
@@ -159,15 +154,17 @@ export const MyFieldListView: React.FC<MyFieldListViewProps> = ({
           농작물 등록하기
         </motion.button>
 
-        <div style={{ textAlign: 'center', marginTop: 14, fontSize: '0.74rem', color: '#8d9590', fontWeight: 600 }}>
-          오늘 06:00 자동 분석됨
-        </div>
+        {fields.some(field => field.latestReport?.generatedAt) && (
+          <div style={{ textAlign: 'center', marginTop: 14, fontSize: '0.74rem', color: '#8d9590', fontWeight: 600 }}>
+            서버가 제공한 최신 리포트 기준
+          </div>
+        )}
 
       </div>
 
       {/* Floating AI Button */}
       <button className="floating-ai-btn" onClick={onOpenAIChat} title="AI Assistant">
-        <img src="/svg-assets/ui-icons/ai-chat.svg" alt="AI 채팅" style={{ width: 26, height: 26, filter: 'brightness(0) invert(1)' }} />
+        <Bot size={26} color="#FFFFFF" />
       </button>
 
       {/* 4-Tab Bottom Navigation */}

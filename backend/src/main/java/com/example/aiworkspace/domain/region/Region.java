@@ -45,4 +45,16 @@ public class Region extends BaseTimeEntity {
     @Column(name = "enabled", nullable = false)
     @Builder.Default
     private boolean enabled = true;
+
+    /** The regional mapping is an explicit final fallback, never a default location. */
+    public boolean hasRegionalWeatherMapping() {
+        return kmaNx != null
+                && kmaNy != null
+                && asosStationId != null
+                && !asosStationId.isBlank();
+    }
+
+    public String regionalMappingSourceRef() {
+        return "REGION_MAPPING:" + sidoCode + "/" + sigunguCode;
+    }
 }

@@ -59,7 +59,7 @@ export const SplashView: React.FC<SplashViewProps> = ({ onComplete }) => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.8, duration: 0.5 }}
         >
-          <img src="/svg-assets/brand/wordmark.svg" alt="Farmflate" style={{ height: 32 }} />
+          <img src="/assets/brand-wordmark-new.png" alt="Farmflate" style={{ height: 32 }} />
         </motion.div>
       </motion.div>
     </div>

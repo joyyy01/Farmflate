@@ -1,33 +1,74 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, ChevronDown, MapPin } from 'lucide-react';
-import { KOREA_REGIONS } from '../../services/farmEngine';
+import { ApiError, ApiService } from '../../services/api';
+import type { RegionAnalysisRequest, RegionDto } from '../../services/api';
 
 interface RegionExploreViewProps {
   onBack: () => void;
-  onStartAnalysis: (province: string, district: string) => void;
+  onStartAnalysis: (request: Omit<RegionAnalysisRequest, 'idempotencyKey'>) => void;
+  mode?: 'analyze' | 'change';
 }
 
 export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
   onBack,
-  onStartAnalysis
+  onStartAnalysis,
+  mode = 'analyze'
 }) => {
-  const provinces = Object.keys(KOREA_REGIONS);
-  const [selectedProvince, setSelectedProvince] = useState('전북특별자치도');
-  const districts = KOREA_REGIONS[selectedProvince] || [];
-  const [selectedDistrict, setSelectedDistrict] = useState(districts[0] || '고창군');
+  const [provinces, setProvinces] = useState<RegionDto[]>([]);
+  const [districts, setDistricts] = useState<RegionDto[]>([]);
+  const [selectedProvinceCode, setSelectedProvinceCode] = useState('');
+  const [selectedDistrictCode, setSelectedDistrictCode] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const handleProvinceSelect = (p: string) => {
-    setSelectedProvince(p);
-    const newDistricts = KOREA_REGIONS[p] || [];
-    setSelectedDistrict(newDistricts[0] || '');
+  const selectedProvince = provinces.find(region => region.sidoCode === selectedProvinceCode);
+  const selectedDistrict = districts.find(region => region.sigunguCode === selectedDistrictCode);
+
+  const loadProvinces = async () => {
+    setIsLoading(true);
+    setLoadError(null);
+    try {
+      const next = await ApiService.getSidos();
+      setProvinces(next);
+      setSelectedProvinceCode(previous => previous || next[0]?.sidoCode || '');
+    } catch (error) {
+      setLoadError(error instanceof ApiError ? error.message : '지역 목록을 불러오지 못했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => { void loadProvinces(); }, []);
+
+  useEffect(() => {
+    if (!selectedProvinceCode) {
+      setDistricts([]);
+      setSelectedDistrictCode('');
+      return;
+    }
+    let isCurrent = true;
+    setLoadError(null);
+    void ApiService.getSigungus(selectedProvinceCode)
+      .then(next => {
+        if (!isCurrent) return;
+        setDistricts(next);
+        setSelectedDistrictCode(next[0]?.sigunguCode || '');
+      })
+      .catch(error => { if (isCurrent) setLoadError(error instanceof ApiError ? error.message : '시/군/구 목록을 불러오지 못했습니다.'); });
+    return () => { isCurrent = false; };
+  }, [selectedProvinceCode]);
+
+  const handleProvinceSelect = (code: string) => {
+    setSelectedProvinceCode(code);
+    setSelectedDistrictCode('');
   };
 
   return (
     <div className="full-screen-view" style={{ backgroundColor: '#FFFFFF', display: 'flex', flexDirection: 'column', height: '100%', padding: 0 }}>
       {/* Scrollable Content Area */}
       <div className="no-scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '32px 20px 24px 20px', display: 'flex', flexDirection: 'column' }}>
-        
+
         {/* Header */}
         <div style={{
           display: 'grid',
@@ -41,7 +82,7 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
             <ArrowLeft size={22} />
           </button>
           <h1 style={{ fontSize: '1.1rem', fontWeight: 850, color: '#202A24', margin: 0, textAlign: 'center' }}>
-            지역 탐색
+            {mode === 'change' ? '지역 변경' : '지역 탐색'}
           </h1>
           <div />
         </div>
@@ -49,12 +90,21 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
         {/* Title Section */}
         <div style={{ marginBottom: 24 }}>
           <h2 style={{ fontSize: '1.45rem', fontWeight: 900, color: '#154F36', marginBottom: 6, lineHeight: 1.35 }}>
-            살고 계신 (또는 귀농 예정인)<br />지역의 농사 환경을 먼저 살펴보세요
+            {mode === 'change' ? '변경할 지역을 선택해주세요!' : (
+              <>살고 계신 (또는 귀농 예정인)<br />지역의 농사 환경을 먼저 살펴보세요</>
+            )}
           </h2>
           <p style={{ fontSize: '0.84rem', color: '#6F7772', fontWeight: 500, margin: 0 }}>
             시/도를 선택하면 해당 지역의 시/군/구 목록이 자동으로 나타나요.
           </p>
         </div>
+
+        {loadError && (
+          <div role="alert" style={{ backgroundColor: '#FFF4F2', border: '1px solid #F3CCC5', borderRadius: 14, padding: '12px 14px', marginBottom: 20, color: '#A43A2F', fontSize: '0.82rem', fontWeight: 650 }}>
+            {loadError}
+            <button type="button" onClick={() => void loadProvinces()} style={{ marginLeft: 8, border: 0, background: 'none', color: '#A43A2F', textDecoration: 'underline', fontWeight: 800 }}>다시 시도</button>
+          </div>
+        )}
 
         {/* Province Chips */}
         <div style={{ marginBottom: 28 }}>
@@ -64,12 +114,12 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {provinces.map(p => {
-              const isSelected = p === selectedProvince;
+              const isSelected = p.sidoCode === selectedProvinceCode;
               return (
                 <button
-                  key={p}
+                  key={p.sidoCode}
                   type="button"
-                  onClick={() => handleProvinceSelect(p)}
+                  onClick={() => handleProvinceSelect(p.sidoCode)}
                   style={{
                     padding: '8px 15px',
                     borderRadius: 20,
@@ -83,7 +133,7 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
                     transition: 'background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease'
                   }}
                 >
-                  {p}
+                  {p.sidoName || p.sidoCode}
                 </button>
               );
             })}
@@ -98,8 +148,9 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
 
           <div style={{ position: 'relative' }}>
             <select
-              value={selectedDistrict}
-              onChange={e => setSelectedDistrict(e.target.value)}
+              value={selectedDistrictCode}
+              disabled={!selectedProvinceCode}
+              onChange={e => setSelectedDistrictCode(e.target.value)}
               style={{
                 width: '100%',
                 height: 52,
@@ -115,8 +166,9 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
                 cursor: 'pointer'
               }}
             >
+              <option value="">시/군/구 선택</option>
               {districts.map(d => (
-                <option key={d} value={d}>{d}</option>
+                <option key={d.sigunguCode} value={d.sigunguCode}>{d.sigunguName || d.sigunguCode}</option>
               ))}
             </select>
             <ChevronDown size={22} color="#2FA86A" style={{ position: 'absolute', right: 16, top: 15, pointerEvents: 'none' }} />
@@ -136,7 +188,7 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
           <div>
             <span style={{ fontSize: '0.76rem', color: '#2FA86A', fontWeight: 750 }}>선택된 분석 지역</span>
             <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#154F36', marginTop: 2 }}>
-              {selectedProvince} {selectedDistrict}
+              {[selectedProvince?.sidoName, selectedDistrict?.sigunguName].filter(Boolean).join(' ') || '지역을 선택해 주세요'}
             </div>
           </div>
           <div style={{
@@ -153,11 +205,20 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
       <div style={{ padding: '16px 20px 32px 20px', backgroundColor: '#FFFFFF', borderTop: '1px solid #F0F2F1' }}>
         <motion.button
           whileTap={{ scale: 0.98 }}
-          onClick={() => onStartAnalysis(selectedProvince, selectedDistrict)}
+          disabled={isLoading || !selectedProvince || !selectedDistrict}
+          onClick={() => {
+            if (!selectedProvince || !selectedDistrict) return;
+            onStartAnalysis({
+              sidoCode: selectedProvince.sidoCode,
+              sidoName: selectedProvince.sidoName || selectedProvince.sidoCode,
+              sigunguCode: selectedDistrict.sigunguCode || '',
+              sigunguName: selectedDistrict.sigunguName || selectedDistrict.sigunguCode || ''
+            });
+          }}
           className="btn-farm-primary"
           style={{ width: '100%', height: 56, fontSize: '1.05rem', borderRadius: 16 }}
         >
-          지역 환경 분석하기
+          {mode === 'change' ? '지역 변경하기' : '지역 환경 분석하기'}
         </motion.button>
       </div>
     </div>

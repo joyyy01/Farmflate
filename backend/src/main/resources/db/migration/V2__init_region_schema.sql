@@ -17,8 +17,11 @@ CREATE TABLE IF NOT EXISTS regions (
 
 CREATE TABLE IF NOT EXISTS region_analyses (
     id VARCHAR(36) PRIMARY KEY,
-    idempotency_key VARCHAR(100),
-    user_email VARCHAR(255) NOT NULL,
+    idempotency_key VARCHAR(128),
+    -- Public regional snapshots have no user identity; scope_subject is their non-personal cache key.
+    user_email VARCHAR(255),
+    analysis_scope VARCHAR(20) NOT NULL DEFAULT 'OWNER',
+    scope_subject VARCHAR(255) NOT NULL,
     sido_code VARCHAR(20) NOT NULL,
     sido_name VARCHAR(100) NOT NULL,
     sigungu_code VARCHAR(20) NOT NULL,
@@ -36,7 +39,8 @@ CREATE TABLE IF NOT EXISTS region_analyses (
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_analyses_user_sigungu_analyzed ON region_analyses(user_email, sigungu_code, analyzed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_analyses_scope_sigungu_analyzed
+    ON region_analyses(analysis_scope, scope_subject, sigungu_code, analyzed_at DESC);
 
 -- Seed Region Catalog Data (including Jeonbuk Gochang-gun as main spec target)
 INSERT INTO regions (sido_code, sido_name, sigungu_code, sigungu_name, kma_nx, kma_ny, asos_station_id, enabled)
