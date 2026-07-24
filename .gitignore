@@ -25,3 +25,8 @@ __pycache__/
 
 .vercel
 .env*
+
+# Local runtime data
+.farmflate-postgres-data/
+.superpowers/
+.local-server-logs/

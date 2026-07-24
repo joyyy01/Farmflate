@@ -134,10 +134,10 @@ export const RegionReportSummaryView: React.FC<RegionReportSummaryViewProps> = (
             <div style={{ position: 'absolute', inset: 0, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', whiteSpace: 'nowrap' }}>
               {hasScore ? (
                 <>
-                  <span style={{ fontSize: '2.45rem', fontWeight: 900, color: '#191F28', letterSpacing: '-0.065em', lineHeight: 1 }}>
+                  <span style={{ fontSize: '1.85rem', fontWeight: 900, color: '#191F28', letterSpacing: '-0.05em', lineHeight: 1 }}>
                     {displayScore}
                   </span>
-                  <span style={{ fontSize: '0.94rem', fontWeight: 800, color: '#2FA86A', marginLeft: 4 }}>점</span>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#2FA86A', marginLeft: 3 }}>점</span>
                 </>
               ) : (
                 <div aria-label={isPartialWithoutScore ? '부분 분석 완료, 적합도 점수 자료 부족' : '적합도 점수 자료 부족'} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, maxWidth: 112 }}>
