@@ -35,10 +35,10 @@ export const AnalyzingView: React.FC<AnalyzingViewProps> = ({
 
   // 2. Vegetable / Crop Specific Dedicated Steps & Terminology
   const cropSteps = [
-    `${cropName} 최적 생육 온도 및 토양 요구조건 조회 중`,
-    `${regionName} 기상청 단기예보·최근 기온 데이터 매칭 중`,
-    `농경지 pH·유기물 및 ${cropName} 토양 적성 등급 평가 중`,
-    `생육 주기별 기상 재해(고온·집중호우) 위험도 계산 중`,
+    `${cropName} 최적 생육 온도 및 토양 조건 확인 중`,
+    `지역 기상청 단기예보 및 최근 기온 데이터 매칭 중`,
+    `농경지 pH·유기물 및 ${cropName} 토양 적성 평가 중`,
+    `생육 주기별 기상 재해(고온·강우) 위험도 계산 중`,
     `${cropName} 맞춤형 밭 적합도 리포트 생성 중`
   ];
 
