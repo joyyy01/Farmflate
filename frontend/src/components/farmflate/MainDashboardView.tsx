@@ -31,11 +31,12 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
   onTabChange,
   isNewUser = false
 }) => {
+  // Direct REAL API Data Extraction from Backend /home Endpoint
   const regionName = homeData?.latestRegionAnalysis?.regionName || analyzedRegion;
   const shortRegion = regionName.split(' ').pop() || regionName;
   const dynamicWeather = getDynamicWeather(regionName);
 
-  // Weather parameters from Backend or Regional Dynamic Engine
+  // Weather parameters from Real Backend API
   const temp = homeData?.weather?.temperature ?? dynamicWeather.temp;
   const minTemp = homeData?.weather?.minTemperature ?? (temp - 3);
   const maxTemp = homeData?.weather?.maxTemperature ?? (temp + 4);
@@ -47,11 +48,11 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
   const weatherStateText = rainProb > 50 ? '비 소식' : dynamicWeather.weatherState;
   const forecastText = rainProb > 50 ? '집중호우에 유의하세요' : dynamicWeather.forecast;
 
-  // Action / Risk parameters from Backend
+  // Action / Risk parameters from Backend API
   const actionTitle = homeData?.todayAction?.title || '밭 주변 배수로가 막히지 않았는지 점검하세요.';
   const actionReason = homeData?.todayAction?.reason || '향후 강수가 특정 시기에 몰릴 수 있어 밭 주변 배수 관리가 중요해요.';
 
-  // Latest Region Analysis & Recommended Crop from Backend
+  // Latest Region Analysis & Recommended Crop from Backend API
   const topCropName = homeData?.latestRegionAnalysis?.topCrop?.cropName || '감자';
   const topCropScore = homeData?.latestRegionAnalysis?.topCrop?.score || 96;
   const topCropReason = homeData?.latestRegionAnalysis?.topCrop?.reason || '서늘한 기후 조건과 배수가 우수한 토양 생육 환경에 잘 맞습니다.';
@@ -108,7 +109,7 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
           </p>
         </div>
 
-        {/* Weather Card - Ultra-sleek single-line metrics & crisp icon */}
+        {/* Weather Card - Clean Natural Layout (No Box Backdrop) */}
         {isNewUser ? (
           <div
             style={{
@@ -127,10 +128,10 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
             position: 'relative', width: '100%', borderRadius: 22,
             background: 'linear-gradient(135deg, #F0F9FF 0%, #E0F2FE 100%)',
             border: '1px solid #BAE6FD',
-            padding: '20px 20px', marginBottom: 20, boxSizing: 'border-box',
-            display: 'flex', flexDirection: 'column', gap: 10
+            padding: '20px 20px 18px 20px', marginBottom: 20, boxSizing: 'border-box',
+            display: 'flex', flexDirection: 'column', gap: 12
           }}>
-            {/* Top Row: Region Name + Main Temp + Weather Icon & Forecast */}
+            {/* Top Row: Region & Temperature + Weather Icon & Forecast Text */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <div style={{ fontSize: '0.76rem', color: '#0369A1', fontWeight: 750, letterSpacing: '-0.01em', marginBottom: 2 }}>
@@ -146,20 +147,13 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
                 </div>
               </div>
 
-              {/* Right Side: Icon & Forecast Phrasing */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{
-                  width: 52, height: 48, borderRadius: 14,
-                  backgroundColor: 'rgba(255, 255, 255, 0.65)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  border: '1px solid rgba(186, 230, 253, 0.6)'
-                }}>
-                  <img
-                    src={rainProb > 50 ? '/svg-assets/weather/rain.svg' : '/svg-assets/weather/partly-cloudy.svg'}
-                    alt="날씨"
-                    style={{ width: 38, height: 38, objectFit: 'contain' }}
-                  />
-                </div>
+              {/* Right Side: Natural Icon + Forecast Text (No Artificial Box Backdrop) */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <img
+                  src={rainProb > 50 ? '/svg-assets/weather/rain.svg' : '/svg-assets/weather/partly-cloudy.svg'}
+                  alt="날씨"
+                  style={{ width: 48, height: 48, objectFit: 'contain' }}
+                />
 
                 <div style={{ width: 1, height: 42, backgroundColor: '#BAE6FD' }} />
 
@@ -174,13 +168,20 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
               </div>
             </div>
 
-            {/* Bottom Row: Weather Metrics strictly on 1 Line (No Wrap!) */}
+            {/* Bottom Row: Weather Metrics strictly on 1 Line (No Line Break!) */}
             <div style={{
-              fontSize: '0.72rem', color: '#0369A1', fontWeight: 650,
+              fontSize: '0.74rem', color: '#0369A1', fontWeight: 650,
               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-              paddingTop: 8, borderTop: '1px solid rgba(186, 230, 253, 0.5)'
+              paddingTop: 10, borderTop: '1px solid rgba(186, 230, 253, 0.6)',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center'
             }}>
-              최저 {minTemp}℃ &nbsp;·&nbsp; 최고 {maxTemp}℃ &nbsp;·&nbsp; 습도 {humidity}% &nbsp;·&nbsp; 바람 {wind}m/s
+              <span>최저 <strong>{minTemp}℃</strong></span>
+              <span style={{ color: '#BAE6FD' }}>|</span>
+              <span>최고 <strong>{maxTemp}℃</strong></span>
+              <span style={{ color: '#BAE6FD' }}>|</span>
+              <span>습도 <strong>{humidity}%</strong></span>
+              <span style={{ color: '#BAE6FD' }}>|</span>
+              <span>바람 <strong>{wind}m/s</strong></span>
             </div>
           </div>
         )}
