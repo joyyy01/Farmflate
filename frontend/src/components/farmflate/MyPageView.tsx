@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronRight, HelpCircle, X, Check, Bookmark, MessageSquare, Send, ShieldCheck, Mail, Calendar } from 'lucide-react';
 import type { TabState, CommunityPost } from '../../types/farmflate';
