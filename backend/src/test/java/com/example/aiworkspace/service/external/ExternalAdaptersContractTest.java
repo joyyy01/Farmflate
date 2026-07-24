@@ -460,7 +460,7 @@ class ExternalAdaptersContractTest {
 
     private static String legalDistrictHeadThenRowObjectJson(String sidoName, String sigunguName, String regionCode) {
         return """
-                {"StanReginCd":{"head":[{"totalCount":2},{"result":{"code":"INFO-000"}}],"row":[
+                {"StanReginCd":{"head":[{"totalCount":2},{"result":{"code":"INFO-0"}}],"row":[
                   {"region_cd":"%s","locatadd_nm":"%s %s","locallow_nm":"fixture","ri_cd":"00"},
                   {"region_cd":"5115034030","locatadd_nm":"%s %s 강동면 산성우리","locallow_nm":"산성우리","ri_cd":"30"}
                 ]}}

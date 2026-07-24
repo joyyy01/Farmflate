@@ -157,7 +157,7 @@ public class LegalDistrictAdapter {
             result = ExternalAdapterSupport.map(value.get("result"));
         }
         String code = string(result, "CODE", "code", "resultCode", "result_Code");
-        if (code != null && !"INFO-000".equals(code) && !"00".equals(code) && !"200".equals(code)) {
+        if (code != null && !isProviderSuccessCode(code)) {
             return code;
         }
         for (Map<String, Object> headPart : ExternalAdapterSupport.mapList(value.get("head"))) {
@@ -167,6 +167,10 @@ public class LegalDistrictAdapter {
             }
         }
         return null;
+    }
+
+    private boolean isProviderSuccessCode(String code) {
+        return code.startsWith("INFO-0") || "00".equals(code) || "200".equals(code);
     }
 
     private List<Map<String, Object>> extractRows(Object node, int depth) {
