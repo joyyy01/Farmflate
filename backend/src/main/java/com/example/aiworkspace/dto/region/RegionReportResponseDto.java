@@ -1,5 +1,6 @@
 package com.example.aiworkspace.dto.region;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.*;
 
 import java.util.List;
@@ -8,6 +9,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class RegionReportResponseDto {
     private String analysisId;
     private RegionDto region;
@@ -27,6 +29,7 @@ public class RegionReportResponseDto {
     @NoArgsConstructor
     @AllArgsConstructor
     @Builder
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class ConfidenceDto {
         private String grade;
         private Integer score;
@@ -37,6 +40,7 @@ public class RegionReportResponseDto {
     @NoArgsConstructor
     @AllArgsConstructor
     @Builder
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class ComponentsDto {
         private ComponentDetailDto climate;
         private ComponentDetailDto soil;
@@ -48,6 +52,7 @@ public class RegionReportResponseDto {
     @NoArgsConstructor
     @AllArgsConstructor
     @Builder
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class ComponentDetailDto {
         private Integer score;
         private String grade;
@@ -57,6 +62,7 @@ public class RegionReportResponseDto {
     @NoArgsConstructor
     @AllArgsConstructor
     @Builder
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class HazardComponentDetailDto {
         private Integer safetyScore;
         private String grade;
@@ -66,6 +72,7 @@ public class RegionReportResponseDto {
     @NoArgsConstructor
     @AllArgsConstructor
     @Builder
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class RecommendedCropDto {
         private String cropCode;
         private String cropName;
@@ -79,6 +86,7 @@ public class RegionReportResponseDto {
     @NoArgsConstructor
     @AllArgsConstructor
     @Builder
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class RiskDto {
         private Integer rank;
         private String riskCode;
@@ -95,6 +103,7 @@ public class RegionReportResponseDto {
     @NoArgsConstructor
     @AllArgsConstructor
     @Builder
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class PeriodDto {
         private String start;
         private String end;
@@ -104,6 +113,7 @@ public class RegionReportResponseDto {
     @NoArgsConstructor
     @AllArgsConstructor
     @Builder
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class TipDto {
         private Integer rank;
         private String tipCode;
@@ -120,6 +130,7 @@ public class RegionReportResponseDto {
     @NoArgsConstructor
     @AllArgsConstructor
     @Builder
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class SourceDto {
         private String provider;
         private String service;

@@ -5,6 +5,9 @@ spring:
   application:
     name: backend
 
+  jackson:
+    default-property-inclusion: non_null
+
   flyway:
     enabled: true
     baseline-on-migrate: true
