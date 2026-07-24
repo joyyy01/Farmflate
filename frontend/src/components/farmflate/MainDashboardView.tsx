@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { ChevronRight, AlertTriangle, Compass, CalendarCheck, Sparkles } from 'lucide-react';
+import { ChevronRight, AlertTriangle } from 'lucide-react';
 import type { RecommendedCrop, TabState } from '../../types/farmflate';
 import { BottomNavigation } from '../common/BottomNavigation';
 import { getDynamicWeather } from '../../services/farmEngine';
@@ -99,36 +99,35 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
         </div>
 
         {/* Dynamic User Greeting */}
-        <div style={{ marginBottom: 20 }}>
-          <h1 style={{ fontSize: '1.4rem', fontWeight: 900, color: '#191F28', lineHeight: 1.2, margin: '0 0 4px 0' }}>
+        <div style={{ marginBottom: 24 }}>
+          <h1 style={{ fontSize: '1.45rem', fontWeight: 900, color: '#191F28', lineHeight: 1.2, margin: '0 0 4px 0', letterSpacing: '-0.02em' }}>
             안녕하세요, {userName.endsWith('님') ? userName : `${userName}님`}
           </h1>
-          <p style={{ fontSize: '0.84rem', color: '#6F7772', margin: 0, fontWeight: 500 }}>
+          <p style={{ fontSize: '0.84rem', color: '#8B95A1', margin: 0, fontWeight: 500 }}>
             {isNewUser ? '지역을 분석하고 맞춤형 농사 정보를 받아보세요.' : '오늘도 즐거운 농사 되세요!'}
           </p>
         </div>
 
-        {/* Dynamic Weather Card */}
+        {/* Toss-style Minimal Weather Card */}
         {isNewUser ? (
           <div
             onClick={onGoToExplore}
             style={{
-              backgroundColor: '#F8FAF8', borderRadius: 20, border: '1px solid #EAEFEA',
-              padding: '18px 20px', marginBottom: 24, cursor: 'pointer',
+              backgroundColor: '#F9FAFB', borderRadius: 20, border: '1px solid #F2F4F6',
+              padding: '20px 22px', marginBottom: 24, cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              transition: 'all 0.2s ease'
+              transition: 'all 0.15s ease'
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              <div style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: '#E0F2FE', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <img src="/svg-assets/weather/partly-cloudy.svg" alt="날씨" style={{ width: 28, height: 28, objectFit: 'contain' }} />
+            <div>
+              <div style={{ fontSize: '0.98rem', fontWeight: 850, color: '#191F28', marginBottom: 4 }}>
+                실시간 날씨 확인하기
               </div>
-              <div>
-                <div style={{ fontSize: '0.9rem', fontWeight: 850, color: '#191F28', marginBottom: 2 }}>실시간 기상 정보</div>
-                <div style={{ fontSize: '0.78rem', color: '#6E7671', fontWeight: 500 }}>지역을 탐색하고 맞춤 날씨 예보를 확인해보세요.</div>
+              <div style={{ fontSize: '0.82rem', color: '#8B95A1', fontWeight: 500 }}>
+                지역을 선택하면 맞춤 기상 예보가 표시돼요
               </div>
             </div>
-            <ChevronRight size={18} color="#9CA3AF" />
+            <ChevronRight size={20} color="#B0B8C1" />
           </div>
         ) : (
           <div style={{
@@ -169,7 +168,7 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
         {/* Today's Tasks Section */}
         <div style={{ marginBottom: 24 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <h2 style={{ fontSize: '1.1rem', fontWeight: 850, color: '#191F28', margin: 0 }}>
+            <h2 style={{ fontSize: '1.1rem', fontWeight: 850, color: '#191F28', margin: 0, letterSpacing: '-0.01em' }}>
               오늘 해야 할 일
             </h2>
             {!isNewUser && (
@@ -181,15 +180,16 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
 
           {isNewUser ? (
              <div style={{
-               backgroundColor: '#F8FAF8', borderRadius: 20, border: '1px solid #EAEFEA',
-               padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 14
+               backgroundColor: '#F9FAFB', borderRadius: 20, border: '1px solid #F2F4F6',
+               padding: '20px 22px', display: 'flex', alignItems: 'center', justifyContent: 'space-between'
              }}>
-               <div style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: '#EDF7ED', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                 <CalendarCheck size={20} color="#2FA86A" />
-               </div>
                <div>
-                 <div style={{ fontSize: '0.88rem', fontWeight: 850, color: '#191F28', marginBottom: 2 }}>아직 할 일이 없습니다</div>
-                 <div style={{ fontSize: '0.78rem', color: '#6E7671', fontWeight: 500 }}>지역 분석 등록 시 일별 농가 조치 사항이 자동 생성됩니다.</div>
+                 <div style={{ fontSize: '0.94rem', fontWeight: 850, color: '#191F28', marginBottom: 4 }}>
+                   오늘 할 일
+                 </div>
+                 <div style={{ fontSize: '0.82rem', color: '#8B95A1', fontWeight: 500 }}>
+                   지역 분석을 시작하면 일별 농가 할 일이 생성돼요
+                 </div>
                </div>
              </div>
           ) : (
@@ -220,32 +220,32 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
           )}
         </div>
 
-        {/* Primary Action Banner Card */}
+        {/* Minimal Primary Action Card */}
         {isNewUser ? (
           <motion.div
             whileTap={{ scale: 0.98 }}
             onClick={onGoToExplore}
             style={{
-              position: 'relative', width: '100%', borderRadius: 22,
+              position: 'relative', width: '100%', borderRadius: 24,
               backgroundColor: '#EDF7ED', border: '1px solid #D4EDDA',
-              padding: '22px 20px', marginBottom: 24, cursor: 'pointer',
+              padding: '24px 22px', marginBottom: 24, cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               boxSizing: 'border-box'
             }}
           >
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#2FA86A', fontSize: '0.78rem', fontWeight: 850, marginBottom: 4 }}>
-                <Compass size={16} /> 맞춤 토양 분석
+              <div style={{ fontSize: '0.78rem', color: '#2FA86A', fontWeight: 850, marginBottom: 4, letterSpacing: '-0.01em' }}>
+                토양 및 기후 분석
               </div>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 900, color: '#191F28', margin: '0 0 6px 0', lineHeight: 1.3 }}>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 900, color: '#191F28', margin: '0 0 6px 0', lineHeight: 1.3, letterSpacing: '-0.02em' }}>
                 지역 입력하고<br />맞춤형 정보 받아보기
               </h2>
-              <p style={{ fontSize: '0.78rem', color: '#556E5D', margin: 0, fontWeight: 500 }}>
+              <p style={{ fontSize: '0.8rem', color: '#6B7684', margin: 0, fontWeight: 500 }}>
                 재배 희망지역, 관심작물을 입력 후 필수 확인하기
               </p>
             </div>
-            <div style={{ width: 44, height: 44, borderRadius: '50%', backgroundColor: '#FFFFFF', border: '1px solid #D4EDDA', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <ChevronRight size={24} color="#2FA86A" />
+            <div style={{ width: 40, height: 40, borderRadius: '50%', backgroundColor: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <ChevronRight size={20} color="#191F28" />
             </div>
           </motion.div>
         ) : (
@@ -266,9 +266,9 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
           </div>
         )}
 
-        {/* Recommended Farming Advice */}
+        {/* Minimal Recommended Farming Advice */}
         <div style={{ marginBottom: 16 }}>
-          <h2 style={{ fontSize: '1.1rem', fontWeight: 850, color: '#191F28', marginBottom: 12 }}>
+          <h2 style={{ fontSize: '1.1rem', fontWeight: 850, color: '#191F28', marginBottom: 12, letterSpacing: '-0.01em' }}>
             {isNewUser ? '내 땅에 맞는 추천 농사 정보' : `${regionName} 추천 작물 정보`}
           </h2>
 
@@ -276,21 +276,20 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
              <div
                onClick={onGoToExplore}
                style={{
-                 backgroundColor: '#F8FAF8', borderRadius: 20, border: '1px solid #EAEFEA',
-                 padding: '18px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                 backgroundColor: '#F9FAFB', borderRadius: 20, border: '1px solid #F2F4F6',
+                 padding: '20px 22px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                  cursor: 'pointer'
                }}
              >
-               <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                 <div style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: '#E9F7EC', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                   <Sparkles size={20} color="#2FA86A" />
+               <div>
+                 <div style={{ fontSize: '0.94rem', fontWeight: 850, color: '#191F28', marginBottom: 4 }}>
+                   추천 농사 정보
                  </div>
-                 <div>
-                   <div style={{ fontSize: '0.88rem', fontWeight: 850, color: '#191F28', marginBottom: 2 }}>추천 정보 준비 중</div>
-                   <div style={{ fontSize: '0.78rem', color: '#6E7671', fontWeight: 500 }}>지역 탐색을 시작하시면 흙과 기후 맞춤 작물이 추천됩니다.</div>
+                 <div style={{ fontSize: '0.82rem', color: '#8B95A1', fontWeight: 500 }}>
+                   흙과 기후 데이터 기반 맞춤 작물이 추천돼요
                  </div>
                </div>
-               <ChevronRight size={18} color="#9CA3AF" />
+               <ChevronRight size={20} color="#B0B8C1" />
              </div>
           ) : (
             <motion.div whileTap={{ scale: 0.98 }} onClick={handleReportViewClick} style={{ width: '100%', border: '1px solid #E5E8EB', borderRadius: 20, backgroundColor: '#F8FAF8', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 18px', boxSizing: 'border-box', cursor: 'pointer' }}>
@@ -308,9 +307,9 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
 
       </div>
 
-      {/* Floating AI Button - Standardized 100% vector SVG icon design across all screens */}
+      {/* Floating AI Button - Clean minimal Toss vector icon */}
       <button className="floating-ai-btn" onClick={onOpenAIChat} title="AI Assistant">
-        <img src="/svg-assets/ui-icons/ai-chat.svg" alt="AI 채팅" style={{ width: 26, height: 26, filter: 'brightness(0) invert(1)' }} />
+        <img src="/svg-assets/ui-icons/ai-chat.svg" alt="AI 채팅" style={{ width: 24, height: 24, filter: 'brightness(0) invert(1)' }} />
       </button>
 
       {/* Bottom Navigation */}
