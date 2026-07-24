@@ -26,7 +26,7 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
   return (
     <div className="full-screen-view" style={{ backgroundColor: '#FFFFFF', display: 'flex', flexDirection: 'column', height: '100%', padding: 0 }}>
       {/* Scrollable Content Area */}
-      <div className="no-scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '24px 20px 24px 20px', display: 'flex', flexDirection: 'column' }}>
+      <div className="no-scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '32px 20px 24px 20px', display: 'flex', flexDirection: 'column' }}>
         
         {/* Header */}
         <div style={{
@@ -56,7 +56,7 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
           </p>
         </div>
 
-        {/* Province Chips - Refined 1.5px Soft Borders */}
+        {/* Province Chips */}
         <div style={{ marginBottom: 28 }}>
           <h3 style={{ fontSize: '0.96rem', fontWeight: 850, color: '#154F36', marginBottom: 12 }}>
             시 / 도 선택
@@ -80,8 +80,7 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
                     border: isSelected ? '1.5px solid #2FA86A' : '1.5px solid #EAEFEA',
                     boxSizing: 'border-box',
                     cursor: 'pointer',
-                    transition: 'background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease',
-                    boxShadow: isSelected ? '0 3px 10px rgba(47, 168, 106, 0.18)' : 'none'
+                    transition: 'background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease'
                   }}
                 >
                   {p}
@@ -113,8 +112,7 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
                 color: '#191F28',
                 outline: 'none',
                 appearance: 'none',
-                cursor: 'pointer',
-                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.02)'
+                cursor: 'pointer'
               }}
             >
               {districts.map(d => (
@@ -133,8 +131,7 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
           border: '1px solid #D1EBE0',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
-          boxShadow: '0 4px 14px rgba(47, 168, 106, 0.04)'
+          justifyContent: 'space-between'
         }}>
           <div>
             <span style={{ fontSize: '0.76rem', color: '#2FA86A', fontWeight: 750 }}>선택된 분석 지역</span>
@@ -145,7 +142,7 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
           <div style={{
             width: 42, height: 42, borderRadius: '50%', backgroundColor: '#FFFFFF',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 2px 8px rgba(47, 168, 106, 0.12)'
+            border: '1px solid #D1EBE0'
           }}>
             <MapPin size={22} color="#2FA86A" />
           </div>

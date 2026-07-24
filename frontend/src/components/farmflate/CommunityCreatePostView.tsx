@@ -49,12 +49,12 @@ export const CommunityCreatePostView: React.FC<CommunityCreatePostViewProps> = (
   };
 
   return (
-    <div className="full-screen-view" style={{ backgroundColor: '#FFFFFF', padding: '16px 20px 40px 20px', justifyContent: 'space-between', flex: 1, overflowY: 'auto' }}>
+    <div className="full-screen-view" style={{ backgroundColor: '#FFFFFF', padding: '24px 20px 40px 20px', justifyContent: 'space-between', flex: 1, overflowY: 'auto' }}>
       <div>
-        {/* Header Grid - 100% Dead-Centered Title Alignment */}
+        {/* Header Grid - 100% Dead-Centered Title & No-Wrap Button */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: '60px 1fr 60px',
+          gridTemplateColumns: '72px 1fr 72px',
           alignItems: 'center',
           height: 64,
           borderBottom: '1px solid #ECEFED',
@@ -67,7 +67,7 @@ export const CommunityCreatePostView: React.FC<CommunityCreatePostViewProps> = (
             취소
           </button>
 
-          <h1 style={{ fontSize: '1.1rem', fontWeight: 850, color: '#191F28', margin: 0, textAlign: 'center' }}>
+          <h1 style={{ fontSize: '1.1rem', fontWeight: 850, color: '#191F28', margin: 0, textAlign: 'center', whiteSpace: 'nowrap' }}>
             게시글 작성
           </h1>
 
@@ -77,14 +77,19 @@ export const CommunityCreatePostView: React.FC<CommunityCreatePostViewProps> = (
               onClick={handleSubmit}
               disabled={!title.trim() || !content.trim()}
               style={{
-                padding: '8px 18px',
-                borderRadius: 20,
+                height: 36,
+                padding: '0 18px',
+                borderRadius: 18,
                 backgroundColor: (!title.trim() || !content.trim()) ? '#C8D5CE' : '#2FA86A',
                 color: '#FFFFFF',
                 fontSize: '0.88rem',
                 fontWeight: 850,
                 border: 'none',
-                cursor: (!title.trim() || !content.trim()) ? 'default' : 'pointer'
+                cursor: (!title.trim() || !content.trim()) ? 'default' : 'pointer',
+                whiteSpace: 'nowrap',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center'
               }}
             >
               게시
