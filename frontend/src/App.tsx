@@ -247,6 +247,24 @@ export function App() {
           setUserEmail(resData.user.email);
           localStorage.setItem('farmflate_user_email', resData.user.email);
         }
+        if (resData.latestRegionAnalysis?.regionName) {
+          const parts = resData.latestRegionAnalysis.regionName.trim().split(' ');
+          if (parts.length >= 2) {
+            setSelectedProvince(parts[0]);
+            setSelectedDistrict(parts.slice(1).join(' '));
+          }
+        }
+        if (resData.latestRegionAnalysis?.analysisId) {
+          void ApiService.getRegionReport(resData.latestRegionAnalysis.analysisId, 'COMPLETED')
+            .then(report => {
+              if (isCurrent) {
+                setApiReport(report);
+                setAnalysisState(stateFromAnalysisStatus({ analysisId: resData.latestRegionAnalysis!.analysisId, status: report.status || 'COMPLETED' }, report));
+              }
+            })
+            .catch(e => console.warn('Failed to pre-fetch latest report on session init:', e));
+        }
+
         setIsNewUser(!resData.latestRegionAnalysis);
         setViewStep(targetView === 'explore' ? 'explore' : targetView === 'landing' ? 'landing' : 'dashboard');
 
