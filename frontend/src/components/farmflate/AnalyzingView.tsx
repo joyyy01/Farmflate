@@ -24,25 +24,27 @@ export const AnalyzingView: React.FC<AnalyzingViewProps> = ({
 }) => {
   const isCropMode = analysisType === 'crop' || (!!cropName && cropName !== '작물' && cropName !== '지역 분석 전');
 
+  // 1. Regional Analysis Dedicated Steps & Terminology
   const regionSteps = [
-    '지역 정보 확인 중',
-    '기상청 데이터를 불러오는 중',
-    '흙토람 토양 정보를 분석하는 중',
-    '추천 작물을 계산하는 중',
-    '지역 농사 환경 점수를 산출하는 중'
+    '지역 행정구역 및 법정동 정보 확인 중',
+    '기상청 30일 기온 관측 및 단기예보 수집 중',
+    '흙토람 시군구 농경지 토양 화학성 분석 중',
+    '재배 적합 대표 작물군 및 추천 알고리즘 산출 중',
+    '지역 통합 농사 환경 평가 점수 계산 중'
   ];
 
+  // 2. Vegetable / Crop Specific Dedicated Steps & Terminology
   const cropSteps = [
-    `${cropName} 생육 특성 정보 확인 중`,
-    `대상 지역 기후 데이터 매칭 중`,
-    `토양 화학성 및 적성 등급 분석 중`,
-    `기상 위험 및 생육 장해 진단 중`,
-    `${cropName} 맞춤 적합도 리포트 산출 중`
+    `${cropName} 최적 생육 온도 및 토양 요구조건 조회 중`,
+    `${regionName} 기상청 단기예보·최근 기온 데이터 매칭 중`,
+    `농경지 pH·유기물 및 ${cropName} 토양 적성 등급 평가 중`,
+    `생육 주기별 기상 재해(고온·집중호우) 위험도 계산 중`,
+    `${cropName} 맞춤형 밭 적합도 리포트 생성 중`
   ];
 
   const steps = isCropMode ? cropSteps : regionSteps;
 
-  // Normalized Step Code Mapping (Handles uppercase/lowercase/Korean/English edge cases)
+  // Normalized Step Code Mapping
   const STEP_CODE_TO_INDEX: Record<string, number> = {
     'region': 0,
     'recent_weather': 1,
@@ -61,7 +63,7 @@ export const AnalyzingView: React.FC<AnalyzingViewProps> = ({
   const isUnauthorized = state.kind === 'UNAUTHORIZED';
   const errorMessage = state.kind === 'ERROR' || state.kind === 'UNAUTHORIZED' ? state.message : null;
 
-  // Guaranteed smooth step-by-step progress timer (Edge case fallback for fast/instant responses)
+  // Guaranteed smooth step-by-step progress timer
   const [simulatedStep, setSimulatedStep] = useState<number>(0);
 
   useEffect(() => {
@@ -88,10 +90,10 @@ export const AnalyzingView: React.FC<AnalyzingViewProps> = ({
     }
   }
 
-  // Active step is the maximum of simulated step and server step (prevents frozen spinner)
+  // Active step is the maximum of simulated step and server step
   const activeStep = isWorking ? Math.max(simulatedStep, serverStepIndex) : 0;
 
-  // Completed steps calculation: any index lower than activeStep is completed
+  // Completed steps calculation
   const pollingCompletedSteps = state.kind === 'POLLING' ? state.completedSteps : [];
   const completedIndices: number[] = isWorking 
     ? Array.from({ length: activeStep }, (_, i: number) => i) 
@@ -101,14 +103,24 @@ export const AnalyzingView: React.FC<AnalyzingViewProps> = ({
       }).filter((i: number) => i >= 0);
 
   const title = isWorking 
-    ? (isCropMode ? `${cropName} 적합도 분석 중...` : '지역 환경 분석 중...') 
+    ? (isCropMode ? `${cropName} 생육 적합도 분석 중...` : '지역 종합 환경 분석 중...') 
     : '분석을 완료하지 못했어요';
 
   const subtitle = isWorking 
     ? (isCropMode 
-        ? `${regionName} 환경에서 ${cropName} 생육 조건을\n서버 데이터로 정밀 검증하고 있습니다` 
-        : `${regionName}의 기후와 토양 데이터를\n서버에서 확인하고 있습니다`)
-    : errorMessage ?? '선택한 지역 정보는 안전하게 유지되고 있습니다.';
+        ? `${regionName} 환경과 ${cropName}의 생육 파라미터를\n정밀 교차 검증하고 있습니다` 
+        : `${regionName}의 토양, 기후, 기상 데이터를\n통합 분석하고 있습니다`)
+    : errorMessage ?? '선택한 정보는 안전하게 유지되고 있습니다.';
+
+  const footerText = isWorking
+    ? (isCropMode
+        ? `${cropName} 품목 맞춤형 공공 농업 생육 데이터를 검증 중입니다.\n완료 상태가 확인될 때까지 잠시만 기다려 주세요.`
+        : '공공데이터(기상청·농촌진흥청) 기반으로 종합 분석 중입니다.\n완료될 때까지 잠시만 기다려 주세요.')
+    : (isCropMode
+        ? `${cropName} 적합도 검증에 실패했습니다.\n다시 시도하거나 조건을 변경할 수 있어요.`
+        : '지역 분석에 실패했습니다.\n다시 시도하거나 다른 지역을 선택할 수 있어요.');
+
+  const backButtonLabel = isCropMode ? '밭 정보 다시 입력' : '지역 다시 선택';
 
   return (
     <div className="full-screen-view" style={{
@@ -229,17 +241,15 @@ export const AnalyzingView: React.FC<AnalyzingViewProps> = ({
           fontWeight: 500,
           textAlign: 'center',
           marginTop: 28,
-          lineHeight: 1.55
+          lineHeight: 1.55,
+          whiteSpace: 'pre-line'
         }}>
-          {isWorking
-            ? '공공데이터를 기반으로 분석 중입니다.\n완료 상태가 확인될 때까지 기다려 주세요.'
-            : '분석 실패 시에는 리포트로 이동하지 않습니다.\n다시 시도하거나 지역을 변경할 수 있어요.'
-          }
+          {footerText}
         </p>
 
         {!isWorking && (
           <div role="alert" aria-live="assertive" style={{ width: '100%', display: 'flex', gap: 8, marginTop: 8 }}>
-            <button type="button" onClick={onBack} style={{ flex: 1, height: 44, borderRadius: 12, border: '1px solid #D1DFD7', background: '#FFFFFF', color: '#2FA86A', fontWeight: 800 }}>지역 변경</button>
+            <button type="button" onClick={onBack} style={{ flex: 1, height: 44, borderRadius: 12, border: '1px solid #D1DFD7', background: '#FFFFFF', color: '#2FA86A', fontWeight: 800 }}>{backButtonLabel}</button>
             {isUnauthorized ? <button type="button" onClick={onLogin} className="btn-farm-primary" style={{ flex: 1, height: 44, borderRadius: 12 }}>로그인</button> : <button type="button" onClick={onRetry} className="btn-farm-primary" style={{ flex: 1, height: 44, borderRadius: 12 }}>다시 시도</button>}
           </div>
         )}
