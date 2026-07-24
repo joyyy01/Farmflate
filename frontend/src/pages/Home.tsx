@@ -9,7 +9,7 @@ interface HomeProps {
 
 export const Home: React.FC<HomeProps> = ({ onNavigate, onOpenAiFab }) => {
   const [data, setData] = useState<HomeData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
 
   useEffect(() => {
     ApiService.getHome()
