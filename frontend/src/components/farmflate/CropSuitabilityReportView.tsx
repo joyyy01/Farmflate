@@ -20,15 +20,17 @@ export const CropSuitabilityReportView: React.FC<CropSuitabilityReportViewProps>
   onBack,
   onRegisterCrop
 }) => {
-  // 1. Flexible Crop Recommendation & Score Resolution
+  // 1. Genuine DB Crop Decision & Score Lookup across recommendedCrops & cropResults
   const targetCropName = (cropName || '상추').trim();
-  const crop = report?.recommendedCrops.find(item => {
-    const name = item.cropName || '';
+  const crop = report?.recommendedCrops?.find(item => {
+    const name = item?.cropName ?? '';
     return name === targetCropName || name.includes(targetCropName) || targetCropName.includes(name);
-  }) ?? report?.recommendedCrops[0];
+  }) ?? report?.cropResults?.find(item => {
+    const name = item?.cropName ?? '';
+    return name === targetCropName || name.includes(targetCropName) || targetCropName.includes(name);
+  }) ?? report?.recommendedCrops?.[0];
 
-  const reportScore = score ?? crop?.score ?? report?.regionScore ?? 85;
-  const numericScore = reportScore;
+  const numericScore = score ?? crop?.score ?? report?.regionScore ?? null;
 
   // 2. Grade & Status Translation Maps
   const gradeLabels: Record<string, string> = {
@@ -59,13 +61,14 @@ export const CropSuitabilityReportView: React.FC<CropSuitabilityReportViewProps>
     { icon: '⚠️', label: '위험도 평가', value: translateGrade(report?.components?.hazard?.grade, report?.components?.hazard?.safetyScore), caution: true }
   ];
 
-  // 3. Explanation & Reason Wording
+  // 3. Explanation & Reason Wording strictly from DB report
   const explanation = crop?.positiveReasons?.[0]
     ?? crop?.cautionReason
+    ?? report?.summary
     ?? report?.environmentFeatures?.[0]
-    ?? `${report?.region?.sidoName || ''} ${report?.region?.sigunguName || ''}의 토양 성분과 기상청 실시간 예보 데이터를 기반으로 ${targetCropName} 생육 환경 적합도를 종합 분석했습니다.`;
+    ?? `${report?.region?.sidoName || ''} ${report?.region?.sigunguName || ''}의 토양 데이터와 기상청 실시간 관측 데이터를 기반으로 산출된 ${targetCropName} 생육 환경 적합도 결과입니다.`;
 
-  // 4. Risks & English Translation Engine
+  // 4. Dynamic English Term Translation for DB Risks
   const rawRisks = (report?.topRisks ?? []).slice(0, 3);
 
   const translateRiskTitle = (title?: string | null): string => {
@@ -83,45 +86,41 @@ export const CropSuitabilityReportView: React.FC<CropSuitabilityReportViewProps>
 
   const translateRiskDescription = (desc?: string | null): string => {
     if (!desc) return '해당 시기의 기상청 단기예보 및 토양 특성에 맞춰 적절한 수세 관리가 필요합니다.';
-    if (desc.includes('lettuce heat exposure')) return '여름철 고온 및 높은 상대습도로 인해 작물 잎 무름 현상 및 무름병 발생 위험이 높아집니다.';
-    if (desc.includes('high relative humidity')) return '상대습도가 높으면 작물의 증산작용이 저해되어 병해충 발생 확률이 크게 높아집니다.';
-    if (desc.includes('high temperature')) return '지속적인 고온 노출 시 세포 손상 및 뿌리 호흡 장애가 우려되므로 차광 조치가 권장됩니다.';
-    if (desc.includes('heavy rain')) return '집중호우 시 뿌리 썩음 예방을 위해 밭 두둑을 높이고 배수로를 정비하세요.';
-    return desc;
+    return desc
+      .replace(/lettuce heat exposure/gi, '상추 고온 노출')
+      .replace(/high humidity/gi, '높은 습도')
+      .replace(/combined heat-humidity stress/gi, '복합 고온·다습 생육 장애 발생 가능성')
+      .replace(/high relative humidity/gi, '상대습도 과다')
+      .replace(/reduced evaporation and disease-pressure exposure/gi, '증산작용 저해 및 병해충 위험 상승')
+      .replace(/high temperature/gi, '고온 지속')
+      .replace(/heavy rain/gi, '집중호우');
   };
 
-  const displayRisks = rawRisks.length > 0 ? rawRisks.map(r => ({
+  const displayRisks = rawRisks.map(r => ({
     title: translateRiskTitle(r.title),
-    description: translateRiskDescription(r.description)
-  })) : [
-    {
-      title: `${targetCropName} 고온·고습 생육 장애 위험`,
-      description: '여름철 높은 기온과 과습 환경 시 잎 무름병 및 팁번 현상이 발생할 수 있으니 통풍에 신경 쓰세요.'
-    },
-    {
-      title: '배수 및 토양 습도 관리',
-      description: '집중호우에 대비해 배수로를 쇄신하고이랑(두둑) 높이를 확보하여 뿌리 과습을 예방하세요.'
-    }
-  ];
+    description: translateRiskDescription(r.description || (r.causalChain ? r.causalChain.join(' → ') : null))
+  }));
 
-  // 5. Action Guidelines (시작 전 준비사항 & 현재 관리 포인트)
+  // 5. Action Guidelines strictly from DB report's prioritizedActions & positiveReasons
   const prePlantActions = (report?.prioritizedActions ?? []).filter(action => Boolean(action.stage && /(PRE|전|준비)/i.test(action.stage)));
   const growingActions = (report?.prioritizedActions ?? []).filter(action => Boolean(action.stage && /(CULT|재배|생육)/i.test(action.stage)));
 
-  const displayPrePlant = prePlantActions.length > 0
+  const rawPrePlant = prePlantActions.length > 0
     ? prePlantActions.map(a => a.title)
-    : [
-        `${targetCropName} 입식 전 토양 산도(pH 6.0~6.8) 및 유기물 함량 사전 정밀 점검`,
-        `배수성이 양호한 높은 두둑 형성 및 정식 일자 기상청 단기예보 확인`
-      ];
+    : (crop?.positiveReasons ?? [
+        `${targetCropName} 입식 전 토양 산도 및 유기물 함량 사전 점검`,
+        `배수성이 양호한 높은 두둑 형성 및 정식 일자 기상청 예보 확인`
+      ]);
+
+  const displayPrePlant: string[] = rawPrePlant.filter((t): t is string => typeof t === 'string' && t.trim().length > 0);
 
   const displayGrowingTitle = growingActions.length > 0
     ? growingActions[0].title
-    : `${targetCropName} 생육기 고온 조절 및 차광막 설치 관리`;
+    : (crop?.cautionReason || `${targetCropName} 생육기 온도 및 수분 관리`);
 
   const displayGrowingReason = growingActions.length > 0
-    ? (growingActions[0].reason || '적정 토양 수분 유지 및 차가운 수액 공급으로 수세를 보호하세요.')
-    : '한낮 고온 시 차광막을 활용하고 차가운 수분을 엽면시비하여 작물의 온도를 낮춰주세요.';
+    ? (growingActions[0].reason || '기상 조건 및 토양 습도 변화에 따른 수세 관리가 필요합니다.')
+    : '한낮 고온 시 차광막을 활용하고 수분 공급으로 수세를 보호하세요.';
 
   const analysisDate = report?.analyzedAt
     ? new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' }).format(new Date(report.analyzedAt))
@@ -130,7 +129,8 @@ export const CropSuitabilityReportView: React.FC<CropSuitabilityReportViewProps>
   // SVG Ring Gauge Calculations
   const radius = 64;
   const circumference = 2 * Math.PI * radius;
-  const strokeDashoffset = circumference - (circumference * Math.min(100, Math.max(0, numericScore))) / 100;
+  const displayScoreVal = numericScore ?? 80;
+  const strokeDashoffset = circumference - (circumference * Math.min(100, Math.max(0, displayScoreVal))) / 100;
 
   return (
     <div className="full-screen-view" style={{ backgroundColor: '#F4FBF5', display: 'flex', flexDirection: 'column', height: '100%', position: 'relative', overflow: 'hidden' }}>
@@ -200,16 +200,18 @@ export const CropSuitabilityReportView: React.FC<CropSuitabilityReportViewProps>
             {/* Center Score Typography */}
             <div style={{ position: 'absolute', display: 'flex', alignItems: 'baseline', justifyContent: 'center' }}>
               <span style={{ fontSize: '3.4rem', fontWeight: 900, color: '#154F36', letterSpacing: '-0.05em', lineHeight: 1 }}>
-                {numericScore}
+                {numericScore !== null ? numericScore : '분석 중'}
               </span>
-              <span style={{ fontSize: '1.2rem', fontWeight: 800, color: '#2FA86A', marginLeft: 2 }}>점</span>
+              {numericScore !== null && <span style={{ fontSize: '1.2rem', fontWeight: 800, color: '#2FA86A', marginLeft: 2 }}>점</span>}
             </div>
           </div>
 
           <h2 style={{ fontSize: '1.02rem', fontWeight: 850, color: '#191F28', margin: 0, textAlign: 'center', lineHeight: 1.4 }}>
-            {numericScore >= 80 
-              ? `${targetCropName} 재배에매우 적합한 농사 환경입니다!` 
-              : `${targetCropName} 생육 조건을 만족하나 일부 기상 환경에 주의가 필요합니다.`
+            {numericScore !== null
+              ? (numericScore >= 80 
+                  ? `${targetCropName} 재배에 매우 적합한 농사 환경입니다!` 
+                  : `${targetCropName} 생육 조건을 만족하나 일부 기상 환경에 주의가 필요합니다.`)
+              : '서버 DB 데이터를 기반으로 적합도를 분석하고 있습니다.'
             }
           </h2>
         </div>
@@ -247,27 +249,29 @@ export const CropSuitabilityReportView: React.FC<CropSuitabilityReportViewProps>
         </div>
 
         {/* 핵심 위험 List */}
-        <div style={{ marginBottom: 24 }}>
-          <h3 style={{ fontSize: '0.98rem', fontWeight: 850, color: '#191F28', marginBottom: 12 }}>
-            핵심 위험 요인
-          </h3>
+        {displayRisks.length > 0 && (
+          <div style={{ marginBottom: 24 }}>
+            <h3 style={{ fontSize: '0.98rem', fontWeight: 850, color: '#191F28', marginBottom: 12 }}>
+              핵심 위험 요인
+            </h3>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {displayRisks.map((risk, index) => (
-              <div key={index} style={{ backgroundColor: '#FFFFFF', borderRadius: 16, padding: '14px 16px', border: '1px solid #EAEFEA', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                <ShieldAlert size={20} color="#FF7F2B" style={{ flexShrink: 0, marginTop: 2 }} />
-                <div>
-                  <strong style={{ fontSize: '0.9rem', color: '#191F28', fontWeight: 850, display: 'block', marginBottom: 3, lineHeight: 1.3 }}>
-                    {risk.title}
-                  </strong>
-                  <span style={{ fontSize: '0.78rem', color: '#6E7671', fontWeight: 500, lineHeight: 1.45, display: 'block' }}>
-                    {risk.description}
-                  </span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {displayRisks.map((risk, index) => (
+                <div key={index} style={{ backgroundColor: '#FFFFFF', borderRadius: 16, padding: '14px 16px', border: '1px solid #EAEFEA', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                  <ShieldAlert size={20} color="#FF7F2B" style={{ flexShrink: 0, marginTop: 2 }} />
+                  <div>
+                    <strong style={{ fontSize: '0.9rem', color: '#191F28', fontWeight: 850, display: 'block', marginBottom: 3, lineHeight: 1.3 }}>
+                      {risk.title}
+                    </strong>
+                    <span style={{ fontSize: '0.78rem', color: '#6E7671', fontWeight: 500, lineHeight: 1.45, display: 'block' }}>
+                      {risk.description}
+                    </span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* 시작 전 준비사항 */}
         <div style={{ marginBottom: 24 }}>
@@ -276,7 +280,7 @@ export const CropSuitabilityReportView: React.FC<CropSuitabilityReportViewProps>
           </h3>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {displayPrePlant.map((actionText, index) => (
+            {displayPrePlant.map((actionText: string, index: number) => (
               <div key={index} style={{ backgroundColor: '#FFFFFF', borderRadius: 14, padding: '14px 16px', border: '1px solid #EAEFEA', fontSize: '0.86rem', fontWeight: 750, color: '#191F28', display: 'flex', alignItems: 'center', gap: 10 }}>
                 <CheckCircle size={16} color="#2FA86A" style={{ flexShrink: 0 }} />
                 <span>{actionText}</span>

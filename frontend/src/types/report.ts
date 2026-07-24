@@ -114,6 +114,7 @@ export interface RegionReport {
   } | null;
   environmentFeatures: string[];
   recommendedCrops: RecommendedCrop[];
+  cropResults?: RecommendedCrop[];
   topRisks: RiskEvent[];
   safeWorkWindows: SafeWorkWindow[];
   prioritizedActions: PrioritizedAction[];
