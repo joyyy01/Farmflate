@@ -26,9 +26,26 @@ export const AnalyzingView: React.FC<AnalyzingViewProps> = ({
     '지역 농사 환경 점수를 산출하는 중'
   ];
 
+  const STEP_CODE_TO_LABEL: Record<string, string> = {
+    'REGION': '지역 정보 확인 중',
+    'RECENT_WEATHER': '기상청 데이터를 불러오는 중',
+    'FORECAST': '기상청 데이터를 불러오는 중',
+    'SOIL': '흙토람 토양 정보를 분석하는 중',
+    'CROP': '추천 작물을 계산하는 중',
+    'REPORT': '지역 농사 환경 점수를 산출하는 중'
+  };
+
   const steps = regionSteps;
-  const completedSteps = state.kind === 'POLLING' ? state.completedSteps : [];
-  const activeStep = state.kind === 'POLLING' && state.currentStep ? Math.max(0, steps.findIndex(step => step === state.currentStep)) : state.kind === 'SUBMITTING' ? 0 : 0;
+  const rawCompleted = state.kind === 'POLLING' ? state.completedSteps : [];
+  const completedSteps = rawCompleted.map(s => STEP_CODE_TO_LABEL[s] || s);
+
+  const currentStepLabel = state.kind === 'POLLING' && state.currentStep 
+    ? (STEP_CODE_TO_LABEL[state.currentStep] || state.currentStep) 
+    : '';
+
+  const activeStep = state.kind === 'POLLING' && currentStepLabel 
+    ? Math.max(0, steps.findIndex(step => step === currentStepLabel)) 
+    : state.kind === 'SUBMITTING' ? 0 : 0;
   const isWorking = state.kind === 'SUBMITTING' || state.kind === 'POLLING';
   const isUnauthorized = state.kind === 'UNAUTHORIZED';
   const errorMessage = state.kind === 'ERROR' || state.kind === 'UNAUTHORIZED' ? state.message : null;

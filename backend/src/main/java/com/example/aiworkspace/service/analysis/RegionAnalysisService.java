@@ -55,6 +55,13 @@ public class RegionAnalysisService {
 
     private static final List<String> COMPLETED_STEPS = List.of(
             "REGION", "RECENT_WEATHER", "FORECAST", "SOIL", "CROP", "REPORT");
+    private static final Map<String, String> STEP_LABELS = Map.of(
+            "REGION", "지역 정보 확인 중",
+            "RECENT_WEATHER", "기상청 데이터를 불러오는 중",
+            "FORECAST", "기상청 데이터를 불러오는 중",
+            "SOIL", "흙토람 토양 정보를 분석하는 중",
+            "CROP", "추천 작물을 계산하는 중",
+            "REPORT", "지역 농사 환경 점수를 산출하는 중");
     private static final String OWNER_SCOPE = "OWNER";
     private static final String PUBLIC_SCOPE = "PUBLIC";
     private static final String PUBLIC_SCOPE_SUBJECT = "PUBLIC_REGION";
@@ -187,11 +194,14 @@ public class RegionAnalysisService {
      * metric; a successful subset is persisted as PARTIAL with the exact
      * missing/failure identifiers shown to the caller.
      */
-    private RegionReportResponseDto executeLiveAnalysis(Region region, LocationResolution location) {
+    private RegionReportResponseDto executeLiveAnalysis(Region region, LocationResolution location,
+                                                          ExecutionProgress progress) {
+        progress.begin("FORECAST");
         ExternalResult<List<ShortForecastAdapter.DailyForecast>> forecastResult =
                 shortForecastAdapter.getForecast3Days(location.kmaNx(), location.kmaNy());
         ExternalResult<AsosAdapter.Asos30DaySummary> asosResult =
                 asosAdapter.get30DaySummary(location.asosStationId());
+        progress.begin("SOIL");
         ExternalResult<SoilChemistryAdapter.SoilChemistryResult> soilChemistryResult =
                 soilChemistryAdapter.getSoilChemistry(region.getSigunguCode(), region.getSidoName(), region.getSigunguName());
         ExternalResult<Map<String, SoilSuitabilityAdapter.SoilSuitabilityResult>> soilSuitabilityResult =
@@ -230,7 +240,9 @@ public class RegionAnalysisService {
         applyQuality(input, "soilPh", soilChemistryResult);
         applyQuality(input, "soilSuitability", soilSuitabilityResult);
 
+        progress.begin("CROP");
         CropScoringEngine.AnalysisOutput output = cropScoringEngine.analyze(input);
+        progress.begin("REPORT");
         List<RegionReportResponseDto.RiskDto> risks = toRiskDtos(output.decisionOutput.riskEvents);
         List<RegionReportResponseDto.RecommendedCropDto> recommended = toRecommendedCrops(output.topRecommended);
         List<RegionReportResponseDto.CropDecisionDto> cropResults = toCropDecisions(output.allCropResults);
@@ -384,10 +396,13 @@ public class RegionAnalysisService {
             LocationRequestDto locationRequest = readLocationRequest(entity);
             LocationResolution location = locationResolutionService.resolve(locationRequest, region);
 
-            entity.markProcessing("RECENT_WEATHER", "REGION");
-            analysisRepository.saveAndFlush(entity);
+            ExecutionProgress progress = step -> {
+                String completedCodes = buildCompletedStepCodes(step);
+                entity.markProcessing(step, completedCodes);
+                analysisRepository.saveAndFlush(entity);
+            };
 
-            RegionReportResponseDto report = executeLiveAnalysis(region, location);
+            RegionReportResponseDto report = executeLiveAnalysis(region, location, progress);
 
             RegionReportResponseDto scopedReport = report.toBuilder().analysisScope(entity.getAnalysisScope()).build();
             String payload = objectMapper.writeValueAsString(scopedReport);
@@ -462,7 +477,7 @@ public class RegionAnalysisService {
                     .status("FAILED")
                     .analysisScope(entity.getAnalysisScope())
                     .completedSteps(completedStepCodes(entity))
-                    .currentStep(entity.getCurrentStep())
+                    .currentStep(translateStep(entity.getCurrentStep()))
                     .retryable(Boolean.TRUE.equals(entity.getRetryable()))
                     .reused(false)
                     .errorCode(entity.getErrorCode())
@@ -474,7 +489,7 @@ public class RegionAnalysisService {
                 .status(normalized)
                 .analysisScope(entity.getAnalysisScope())
                 .completedSteps(completedStepCodes(entity))
-                .currentStep(entity.getCurrentStep())
+                .currentStep(translateStep(entity.getCurrentStep()))
                 .retryable(false)
                 .reused(reused)
                 .build();
@@ -588,11 +603,15 @@ public class RegionAnalysisService {
 
     private RegionAnalysisStatusDto completedStatus(String analysisId, String status, boolean reused, String analysisScope) {
         String normalized = "PARTIAL".equalsIgnoreCase(status) ? "PARTIAL" : "COMPLETED";
+        List<String> translatedCompleted = COMPLETED_STEPS.stream()
+                .map(code -> STEP_LABELS.getOrDefault(code, code))
+                .distinct()
+                .toList();
         return RegionAnalysisStatusDto.builder()
                 .analysisId(analysisId)
                 .status(normalized)
                 .analysisScope(analysisScope)
-                .completedSteps(COMPLETED_STEPS)
+                .completedSteps(translatedCompleted)
                 .currentStep(normalized)
                 .retryable(false)
                 .reused(reused)
@@ -617,9 +636,24 @@ public class RegionAnalysisService {
             return List.of();
         }
         return Arrays.stream(entity.getCompletedSteps().split(","))
-                .filter(COMPLETED_STEPS::contains)
+                .map(code -> STEP_LABELS.getOrDefault(code.trim(), code.trim()))
                 .distinct()
                 .toList();
+    }
+
+    private String translateStep(String stepCode) {
+        if (!hasText(stepCode)) return null;
+        return STEP_LABELS.getOrDefault(stepCode, stepCode);
+    }
+
+    private String buildCompletedStepCodes(String upToStep) {
+        StringBuilder codes = new StringBuilder();
+        for (String step : COMPLETED_STEPS) {
+            if (codes.length() > 0) codes.append(",");
+            codes.append(step);
+            if (step.equals(upToStep)) break;
+        }
+        return codes.toString();
     }
 
     private String reportStatus(RegionAnalysisEntity entity) {
