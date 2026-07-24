@@ -1,5 +1,6 @@
 package com.example.aiworkspace.dto.region;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.*;
 
 import java.util.Collections;
@@ -9,6 +10,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class HomeResponseDto {
     private UserDto user;
     private WeatherDto weather;
@@ -21,6 +23,7 @@ public class HomeResponseDto {
     @NoArgsConstructor
     @AllArgsConstructor
     @Builder
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class UserDto {
         private String displayName;
     }
@@ -29,6 +32,7 @@ public class HomeResponseDto {
     @NoArgsConstructor
     @AllArgsConstructor
     @Builder
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class WeatherDto {
         private String status; // AVAILABLE, UNAVAILABLE
         private Double temperature;
@@ -44,6 +48,7 @@ public class HomeResponseDto {
     @NoArgsConstructor
     @AllArgsConstructor
     @Builder
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class TodayActionDto {
         private String title;
         private String reason;
@@ -54,6 +59,7 @@ public class HomeResponseDto {
     @NoArgsConstructor
     @AllArgsConstructor
     @Builder
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class LatestRegionAnalysisDto {
         private String analysisId;
         private String regionName;
@@ -66,6 +72,7 @@ public class HomeResponseDto {
     @NoArgsConstructor
     @AllArgsConstructor
     @Builder
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class TopCropDto {
         private String cropCode;
         private String cropName;
