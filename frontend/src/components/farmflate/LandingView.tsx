@@ -135,7 +135,7 @@ export const LandingView: React.FC<LandingViewProps> = () => {
             <span style={{ fontSize: '0.76rem', fontWeight: 750, color: '#154F36' }}>작물 선택</span>
           </div>
 
-          <span style={{ color: '#A8DCC8', fontSize: '1.3rem', fontWeight 800, marginBottom: 18 }}>›</span>
+          <span style={{ color: '#A8DCC8', fontSize: '1.3rem', fontWeight: 800, marginBottom: 18 }}>›</span>
 
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 76 }}>
             <div style={{ width: 48, height: 48, borderRadius: '50%', backgroundColor: '#E9F7EC', border: '1px solid #A8DCC8', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 6 }}>
