@@ -35,6 +35,7 @@ public class RegionAnalysisService {
     private final AsosAdapter asosAdapter;
     private final SoilChemistryAdapter soilChemistryAdapter;
     private final SoilSuitabilityAdapter soilSuitabilityAdapter;
+    private final LocationResolutionService locationResolutionService;
 
     @Value("${app.data-mode:LIVE}")
     private String dataMode;
@@ -83,8 +84,10 @@ public class RegionAnalysisService {
             }
         }
 
-        // 6-hour cache reuse (same user, sigungu, ruleVersion)
-        if (!Boolean.TRUE.equals(req.getForceRefresh())) {
+        // A precise location proof must not reuse a report created for a
+        // different point in the same region. Regional-reference requests
+        // retain the existing cache behavior.
+        if (!Boolean.TRUE.equals(req.getForceRefresh()) && !hasExplicitLocation(req)) {
             LocalDateTime sixHoursAgo = LocalDateTime.now().minusHours(6);
             Optional<RegionAnalysisEntity> recent = analysisRepository
                     .findFirstByUserEmailAndSigunguCodeAndRuleVersionAndAnalyzedAtAfterOrderByAnalyzedAtDesc(
@@ -111,10 +114,12 @@ public class RegionAnalysisService {
             throw RegionAnalysisException.mappingNotConfigured(req.getSidoCode(), req.getSigunguCode());
         }
 
+        LocationResolution location = locationResolutionService.resolve(req.getLocation(), region);
+
         // ─── LIVE mode: Real API pipeline ───
         if ("LIVE".equals(dataMode) || "AUTO".equals(dataMode)) {
             try {
-                RegionReportResponseDto report = executeLiveAnalysis(region, userEmail);
+                RegionReportResponseDto report = executeLiveAnalysis(region, userEmail, location);
                 return saveAndReturn(report, region, userEmail, req.getIdempotencyKey(), "LIVE");
             } catch (Exception e) {
                 log.error("LIVE analysis failed for {}: {}", region.getSigunguName(), e.getMessage(), e);
@@ -122,7 +127,8 @@ public class RegionAnalysisService {
                     log.warn("AUTO mode: falling back to REPLAY for {}", region.getSigunguName());
                     RegionReportResponseDto replay = fixtureProvider.getGochangFixture(
                             region.getSidoCode(), region.getSigunguCode(), region.getSidoName(), region.getSigunguName());
-                    return saveAndReturn(replay, region, userEmail, req.getIdempotencyKey(), "REPLAY");
+                    return saveAndReturn(replay.toBuilder().location(location).build(), region, userEmail,
+                            req.getIdempotencyKey(), "REPLAY");
                 }
                 return RegionAnalysisStatusDto.builder()
                         .analysisId(null)
@@ -138,27 +144,28 @@ public class RegionAnalysisService {
         // ─── REPLAY mode: Fixture only ───
         RegionReportResponseDto replay = fixtureProvider.getGochangFixture(
                 region.getSidoCode(), region.getSigunguCode(), region.getSidoName(), region.getSigunguName());
-        return saveAndReturn(replay, region, userEmail, req.getIdempotencyKey(), "REPLAY");
+        return saveAndReturn(replay.toBuilder().location(location).build(), region, userEmail,
+                req.getIdempotencyKey(), "REPLAY");
     }
 
     /**
      * 실제 공공 API 파이프라인 실행
      */
-    private RegionReportResponseDto executeLiveAnalysis(Region region, String userEmail) {
+    private RegionReportResponseDto executeLiveAnalysis(Region region, String userEmail, LocationResolution location) {
         String analysisId = UUID.randomUUID().toString();
         log.info("=== Starting LIVE analysis for {} {} (id={}) ===",
                 region.getSidoName(), region.getSigunguName(), analysisId);
 
         // Step 1: 기상청 단기예보 (향후 3일)
-        log.info("[1/4] Fetching short forecast for nx={}, ny={}", region.getKmaNx(), region.getKmaNy());
+        log.info("[1/4] Fetching short forecast for nx={}, ny={}", location.kmaNx(), location.kmaNy());
         ExternalResult<List<ShortForecastAdapter.DailyForecast>> forecastResult = shortForecastAdapter.getForecast3Days(
-                region.getKmaNx(), region.getKmaNy());
+                location.kmaNx(), location.kmaNy());
         List<ShortForecastAdapter.DailyForecast> forecasts = forecastResult.valueOr(List.of());
         log.info("[1/4] Short forecast: status={}, {} days fetched", forecastResult.status(), forecasts.size());
 
         // Step 2: ASOS 최근 30일 집계
-        log.info("[2/4] Fetching ASOS 30-day summary for station={}", region.getAsosStationId());
-        ExternalResult<AsosAdapter.Asos30DaySummary> asosResult = asosAdapter.get30DaySummary(region.getAsosStationId());
+        log.info("[2/4] Fetching ASOS 30-day summary for station={}", location.asosStationId());
+        ExternalResult<AsosAdapter.Asos30DaySummary> asosResult = asosAdapter.get30DaySummary(location.asosStationId());
         AsosAdapter.Asos30DaySummary asos = asosResult.valueOr(new AsosAdapter.Asos30DaySummary());
         log.info("[2/4] ASOS: status={}, meanTemp={}, totalPrecip={}, dataPoints={}",
                 asosResult.status(), asos.meanTemperature30d, asos.totalPrecipitation30d, asos.dataPointCount);
@@ -227,6 +234,7 @@ public class RegionAnalysisService {
                         .sigunguCode(region.getSigunguCode())
                         .sigunguName(region.getSigunguName())
                         .build())
+                .location(location)
                 .regionScore(output.regionScore)
                 .grade(output.regionGrade)
                 .summary(summary + (allLow ? " 지원 작물 5종 중 상대적으로 높은 순서입니다. 모두 추가 확인이 필요한 상태입니다." : ""))
@@ -464,6 +472,10 @@ public class RegionAnalysisService {
                 .orElseThrow(() -> RegionAnalysisException.analysisNotFound(analysisId));
     }
 
+    private boolean hasExplicitLocation(RegionAnalysisRequestDto request) {
+        return request.getLocation() != null && !request.getLocation().isRegionReference();
+    }
+
     public static class RegionAnalysisException extends RuntimeException {
         private final HttpStatus httpStatus;
         private final String code;
@@ -486,6 +498,13 @@ public class RegionAnalysisService {
                     HttpStatus.BAD_REQUEST,
                     "INVALID_REGION_REQUEST",
                     "요청한 지역 분석 정보가 올바르지 않습니다.");
+        }
+
+        public static RegionAnalysisException locationResolutionUnavailable(String detail) {
+            return new RegionAnalysisException(
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    "LOCATION_RESOLUTION_UNAVAILABLE",
+                    "입력한 위치를 확인할 수 없습니다: " + detail);
         }
 
         public static RegionAnalysisException analysisNotFound(UUID analysisId) {

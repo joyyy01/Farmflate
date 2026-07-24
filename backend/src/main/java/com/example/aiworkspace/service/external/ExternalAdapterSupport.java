@@ -93,7 +93,9 @@ final class ExternalAdapterSupport {
             String quality,
             List<String> validationFlags) {
         return new NormalizedMetric(metric, numericValue, textValue, unit, provider, service, spatialLevel,
-                regionCode, dataDate, Instant.now(), false, fallback, replay, quality, validationFlags);
+                regionCode, dataDate, Instant.now(), false, fallback, replay, quality, validationFlags,
+                fallback ? "C" : "B", null, null, List.of(), null, null,
+                fallback ? "PROVIDER_FALLBACK" : null);
     }
 
     /**

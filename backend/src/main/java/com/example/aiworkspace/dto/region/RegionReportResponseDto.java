@@ -1,5 +1,6 @@
 package com.example.aiworkspace.dto.region;
 
+import com.example.aiworkspace.service.analysis.LocationResolution;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.*;
 
@@ -8,11 +9,12 @@ import java.util.List;
 @Getter
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
+@Builder(toBuilder = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class RegionReportResponseDto {
     private String analysisId;
     private RegionDto region;
+    private LocationResolution location;
     private Integer regionScore;
     private String grade;
     private String summary;

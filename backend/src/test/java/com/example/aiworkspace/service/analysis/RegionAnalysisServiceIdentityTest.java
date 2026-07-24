@@ -61,6 +61,9 @@ class RegionAnalysisServiceIdentityTest {
     @Mock
     private SoilSuitabilityAdapter soilSuitabilityAdapter;
 
+    @Mock
+    private LocationResolutionService locationResolutionService;
+
     private RegionAnalysisService service;
 
     @BeforeEach
@@ -74,7 +77,8 @@ class RegionAnalysisServiceIdentityTest {
                 shortForecastAdapter,
                 asosAdapter,
                 soilChemistryAdapter,
-                soilSuitabilityAdapter);
+                soilSuitabilityAdapter,
+                locationResolutionService);
     }
 
     @Test

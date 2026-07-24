@@ -1,5 +1,7 @@
 package com.example.aiworkspace.service.external;
 
+import com.example.aiworkspace.service.analysis.LocationResolution;
+
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -24,12 +26,22 @@ public record NormalizedMetric(
         boolean isFallback,
         boolean isReplay,
         String quality,
-        List<String> validationFlags) {
+        List<String> validationFlags,
+        String evidenceLevel,
+        LocationResolution location,
+        Double distanceMeters,
+        List<String> transformations,
+        String sourceRecordId,
+        Instant measurementOrIssueAt,
+        String fallbackReason) {
 
     public NormalizedMetric {
         retrievedAt = retrievedAt == null ? Instant.now() : retrievedAt;
         quality = quality == null || quality.isBlank() ? "UNKNOWN" : quality;
         validationFlags = validationFlags == null ? List.of() : List.copyOf(validationFlags);
+        evidenceLevel = normalizeEvidenceLevel(evidenceLevel);
+        transformations = transformations == null ? List.of() : List.copyOf(transformations);
+        fallbackReason = fallbackReason == null || fallbackReason.isBlank() ? null : fallbackReason;
     }
 
     public NormalizedMetric asCached() {
@@ -37,7 +49,9 @@ public record NormalizedMetric(
             return this;
         }
         return new NormalizedMetric(metric, numericValue, textValue, unit, provider, service, spatialLevel,
-                regionCode, dataDate, retrievedAt, true, isFallback, isReplay, quality, validationFlags);
+                regionCode, dataDate, retrievedAt, true, isFallback, isReplay, quality, validationFlags,
+                evidenceLevel, location, distanceMeters, transformations, sourceRecordId, measurementOrIssueAt,
+                fallbackReason);
     }
 
     public NormalizedMetric withValidationFlag(String validationFlag) {
@@ -47,6 +61,19 @@ public record NormalizedMetric(
         List<String> flags = new ArrayList<>(validationFlags);
         flags.add(validationFlag);
         return new NormalizedMetric(metric, numericValue, textValue, unit, provider, service, spatialLevel,
-                regionCode, dataDate, retrievedAt, isCached, isFallback, isReplay, quality, flags);
+                regionCode, dataDate, retrievedAt, isCached, isFallback, isReplay, quality, flags,
+                evidenceLevel, location, distanceMeters, transformations, sourceRecordId, measurementOrIssueAt,
+                fallbackReason);
+    }
+
+    private static String normalizeEvidenceLevel(String value) {
+        if (value == null || value.isBlank()) {
+            return "U";
+        }
+        String normalized = value.trim().toUpperCase();
+        return switch (normalized) {
+            case "A", "B", "C", "U" -> normalized;
+            default -> "U";
+        };
     }
 }

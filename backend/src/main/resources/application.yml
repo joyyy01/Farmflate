@@ -44,11 +44,16 @@ app:
       service-key: ${DATA_GO_KR_SERVICE_KEY:local_data_go_kr_key}
     vworld:
       api-key: ${VWORLD_API_KEY:local_vworld_key}
+      address-url: ${VWORLD_ADDRESS_URL:https://api.vworld.kr/req/address}
+    parcel:
+      identifier-url: ${PARCEL_IDENTIFIER_URL:}
+      api-key: ${PARCEL_IDENTIFIER_API_KEY:}
     nongsaro:
       api-key: ${NONGSARO_API_KEY:local_nongsaro_key}
   data-mode: ${DATA_MODE:LIVE}
   external-api:
     timeout-ms: ${EXTERNAL_API_TIMEOUT_MS:8000}
+    location-timeout-ms: ${LOCATION_API_TIMEOUT_MS:5000}
     retry-count: ${EXTERNAL_API_RETRY_COUNT:1}
   cache:
     region-analysis-hours: ${REGION_ANALYSIS_CACHE_HOURS:6}
