@@ -33,3 +33,12 @@ __pycache__/
 .farmflate-postgres-data/
 .superpowers/
 .local-server-logs/
+
+# Temporary plan documents and artifacts
+implementation_plan*.md
+walkthrough*.md
+task*.md
+handover*.md
+scratch/
+brain/
+
