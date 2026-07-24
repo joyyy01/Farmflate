@@ -97,6 +97,20 @@ class RegionApiControllerIT {
     }
 
     @Test
+    void status_owned_by_another_user_returns_not_found() throws Exception {
+        UUID otherUsersAnalysisId = UUID.randomUUID();
+        when(regionAnalysisService.getStatus(OWNER_EMAIL, otherUsersAnalysisId))
+                .thenThrow(RegionAnalysisService.RegionAnalysisException.analysisNotFound(otherUsersAnalysisId));
+
+        mockMvc.perform(get("/api/regions/analysis/{id}/status", otherUsersAnalysisId)
+                        .with(user(OWNER_EMAIL)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("REGION_ANALYSIS_NOT_FOUND"));
+
+        verify(regionAnalysisService).getStatus(OWNER_EMAIL, otherUsersAnalysisId);
+    }
+
+    @Test
     void unmapped_region_returns_domain_error_status() throws Exception {
         when(regionAnalysisService.create(eq(OWNER_EMAIL), any()))
                 .thenThrow(RegionAnalysisService.RegionAnalysisException.mappingNotConfigured("52", "52180"));
