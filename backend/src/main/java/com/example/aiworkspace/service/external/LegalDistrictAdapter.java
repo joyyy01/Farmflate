@@ -81,7 +81,6 @@ public class LegalDistrictAdapter {
         return normalize(parsed.value(), "fixture");
     }
 
-    @SuppressWarnings("unchecked")
     private ExternalResult<List<LegalDistrict>> fetchDistricts(String locationName) {
         String url = UriComponentsBuilder.fromHttpUrl(BASE_URL)
                 .queryParam("ServiceKey", serviceKey)
@@ -89,12 +88,19 @@ public class LegalDistrictAdapter {
                 .queryParam("numOfRows", 1000)
                 .queryParam("type", "json")
                 .queryParam("locatadd_nm", locationName)
-                .build(false)
+                .build()
+                .encode()
                 .toUriString();
-        ExternalResult<Map<String, Object>> response = ExternalAdapterSupport.executeRequest(
-                retryCount, "LEGAL_DISTRICT_REQUEST_FAILED", () -> restTemplate.getForObject(url, Map.class));
+        // This provider currently labels its JSON body as text/html; retrieve text
+        // first and normalize from the body so RestTemplate does not reject it.
+        ExternalResult<String> payload = ExternalAdapterSupport.executeRequest(
+                retryCount, "LEGAL_DISTRICT_REQUEST_FAILED", () -> restTemplate.getForObject(url, String.class));
+        if (payload.isFailure()) {
+            log.warn("Legal district API failed for {}: {}", locationName, payload.errorCode());
+            return ExternalResult.failure(payload.errorCode(), payload.metrics());
+        }
+        ExternalResult<Map<String, Object>> response = ExternalAdapterSupport.parseJsonObject(payload.value(), null);
         if (response.isFailure()) {
-            log.warn("Legal district API failed for {}: {}", locationName, response.errorCode());
             return ExternalResult.failure(response.errorCode(), response.metrics());
         }
         return normalize(response.value(), locationName);

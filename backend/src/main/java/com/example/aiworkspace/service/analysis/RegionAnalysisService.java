@@ -635,13 +635,21 @@ public class RegionAnalysisService {
                                                                ExternalResult<?> result) {
         boolean availabilityLimitation = isAvailabilityLimitation(result);
         String fallback = result.isFailure() ? result.errorCode() : result.isEmpty() ? "NO_RECORDS" : null;
-        List<String> transformations = availabilityLimitation
-                ? List.of("AREA_DISTRIBUTION_NOT_COERCED_TO_PH")
-                : result.isEmpty() ? List.of("OFFICIAL_NO_RECORDS") : List.of();
+        List<String> transformations = providerTransformations(result);
         return RegionReportResponseDto.SourceDto.builder().provider(provider).service(service).sourceUrl(url)
                 .dataDate(LocalDate.now().toString()).status(availabilityLimitation ? "UNAVAILABLE" : result.status().name())
                 .evidenceLevel(result.isSuccess() ? "PROVIDER_NORMALIZED" : "UNAVAILABLE")
                 .isFallback(false).fallbackReason(fallback).transformations(transformations).build();
+    }
+
+    private List<String> providerTransformations(ExternalResult<?> result) {
+        if ("SOIL_CHEMISTRY_UNSUPPORTED_FOR_PH".equals(result.errorCode())) {
+            return List.of("AREA_DISTRIBUTION_NOT_COERCED_TO_PH");
+        }
+        if (result.errorCode() != null && result.errorCode().contains("_LOCATION_")) {
+            return List.of("LEGAL_DONG_NOT_RESOLVED");
+        }
+        return result.isEmpty() ? List.of("OFFICIAL_NO_RECORDS") : List.of();
     }
 
     private List<RegionReportResponseDto.SourceDto> sourceRefs(List<String> refs) {

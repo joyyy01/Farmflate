@@ -61,4 +61,58 @@ class CropScoringEngineTest {
         assertThat(result.safetyScore).isEqualTo(100);
         assertThat(result.risks).isEmpty();
     }
+
+    @Test
+    void normalized_live_metrics_produce_a_deterministic_bounded_top_three() {
+        CropScoringEngine.AnalysisInput firstInput = completeNormalizedInput();
+        CropScoringEngine.AnalysisInput secondInput = completeNormalizedInput();
+
+        CropScoringEngine.AnalysisOutput first = cropScoringEngine.analyze(firstInput);
+        CropScoringEngine.AnalysisOutput second = cropScoringEngine.analyze(secondInput);
+
+        assertThat(first.allCropResults).hasSize(5).allSatisfy(crop -> {
+            assertThat(crop.calculable).isTrue();
+            assertThat(crop.soilSuitabilityStatScore).isEqualTo(firstInput.soilSuitabilityScores.get(crop.cropCode));
+            assertThat(crop.totalScore).isBetween(0.0, 100.0);
+        });
+        assertThat(first.topRecommended).hasSizeLessThanOrEqualTo(3).allSatisfy(crop ->
+                assertThat(crop.calculable).isTrue());
+        assertThat(first.topRecommended).extracting(crop -> crop.cropCode)
+                .containsExactlyElementsOf(second.topRecommended.stream().map(crop -> crop.cropCode).toList());
+        assertThat(first.topRecommended).extracting(crop -> crop.totalScore)
+                .containsExactlyElementsOf(second.topRecommended.stream().map(crop -> crop.totalScore).toList());
+    }
+
+    @Test
+    void missing_required_soil_suitability_never_fabricates_recommendations_or_scores() {
+        CropScoringEngine.AnalysisInput input = completeNormalizedInput();
+        input.soilSuitabilityScores.clear();
+
+        CropScoringEngine.AnalysisOutput output = cropScoringEngine.analyze(input);
+
+        assertThat(output.topRecommended).isEmpty();
+        assertThat(output.regionScoreCompatibility).isNull();
+        assertThat(output.allCropResults).allSatisfy(crop -> {
+            assertThat(crop.calculable).isFalse();
+            assertThat(crop.totalScore).isZero();
+            assertThat(crop.notCalculableReason).contains("필수 데이터");
+        });
+    }
+
+    private CropScoringEngine.AnalysisInput completeNormalizedInput() {
+        CropScoringEngine.AnalysisInput input = new CropScoringEngine.AnalysisInput();
+        input.meanTemperature30d = 21.0;
+        input.soilPh = 6.0;
+        input.forecastRiskSafetyScore = 90;
+        input.soilSuitabilityScores.put("APPLE", 72.0);
+        input.soilSuitabilityScores.put("PEAR", 68.0);
+        input.soilSuitabilityScores.put("CUCUMBER", 81.0);
+        input.soilSuitabilityScores.put("POTATO", 94.0);
+        input.soilSuitabilityScores.put("LETTUCE", 63.0);
+        input.dataQualityScores.put("soilSuitability", 100.0);
+        input.dataQualityScores.put("soilPh", 100.0);
+        input.dataQualityScores.put("seasonalTemperature", 100.0);
+        input.dataQualityScores.put("forecast", 100.0);
+        return input;
+    }
 }

@@ -17,7 +17,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -44,13 +43,9 @@ final class ExternalAdapterSupport {
         if (body == null || body.isBlank()) {
             return ExternalResult.failure("EMPTY_PROVIDER_RESPONSE");
         }
-        String normalizedContentType = contentType == null ? "" : contentType.toLowerCase(Locale.ROOT);
         String trimmed = body.trim();
-        if (normalizedContentType.contains("html") || trimmed.startsWith("<")) {
+        if (trimmed.startsWith("<")) {
             return ExternalResult.failure("UNEXPECTED_HTML_RESPONSE");
-        }
-        if (!normalizedContentType.isBlank() && !normalizedContentType.contains("json")) {
-            return ExternalResult.failure("UNEXPECTED_CONTENT_TYPE");
         }
         try {
             Map<String, Object> parsed = OBJECT_MAPPER.readValue(trimmed, new TypeReference<>() { });
@@ -65,9 +60,8 @@ final class ExternalAdapterSupport {
         if (body == null || body.isBlank()) {
             return ExternalResult.failure("EMPTY_PROVIDER_RESPONSE");
         }
-        String normalizedContentType = contentType == null ? "" : contentType.toLowerCase(Locale.ROOT);
         String trimmed = body.trim();
-        if (normalizedContentType.contains("html") || trimmed.regionMatches(true, 0, "<html", 0, 5)) {
+        if (trimmed.regionMatches(true, 0, "<html", 0, 5)) {
             return ExternalResult.failure("UNEXPECTED_HTML_RESPONSE");
         }
         if (!trimmed.startsWith("<")) {

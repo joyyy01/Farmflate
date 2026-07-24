@@ -119,7 +119,6 @@ public class SoilSuitabilityAdapter {
                 fallback = true;
             }
             if (gradeAreas.isFailure()) {
-                failures++;
                 result.partial = true;
                 if (gradeAreas.value() != null && !gradeAreas.value().isEmpty()) {
                     result.gradeAreas = gradeAreas.value();
@@ -131,6 +130,10 @@ public class SoilSuitabilityAdapter {
                     }
                 }
                 results.put(result.cropCode, result);
+                if (isLocationResolutionError(gradeAreas.errorCode())) {
+                    return ExternalResult.failure(gradeAreas.errorCode(), results, metricsFor(results, sigunguCode));
+                }
+                failures++;
                 continue;
             }
             if (gradeAreas.isSuccess()) {
@@ -337,6 +340,10 @@ public class SoilSuitabilityAdapter {
 
     private boolean isLegalDongCode(String regionCode) {
         return regionCode != null && regionCode.matches("\\d{10}");
+    }
+
+    private boolean isLocationResolutionError(String errorCode) {
+        return errorCode != null && errorCode.startsWith("SOIL_SUITABILITY_LOCATION_");
     }
 
     private static Map<String, Integer> gradeScores() {

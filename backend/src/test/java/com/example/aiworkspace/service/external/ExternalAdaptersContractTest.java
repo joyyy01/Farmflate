@@ -9,6 +9,7 @@ import org.springframework.web.client.ResourceAccessException;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -126,6 +127,67 @@ class ExternalAdaptersContractTest {
     }
 
     @Test
+    void valid_crop_xml_transport_with_only_variants_is_empty_not_a_provider_failure() {
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        when(restTemplate.getForObject(anyString(), eq(String.class))).thenReturn(cropVariantsXml());
+
+        ExternalResult<Map<String, CropCodeAdapter.CropCodeMapping>> result =
+                new CropCodeAdapter(restTemplate, "fixture-key", 90, 0, "LIVE").getCropCodeMappings();
+
+        assertThat(result.status()).isEqualTo(ExternalResult.Status.EMPTY);
+        assertThat(result.errorCode()).isNull();
+        verify(restTemplate, times(5)).getForObject(anyString(), eq(String.class));
+    }
+
+    @Test
+    void provider_200_with_an_error_code_remains_a_failure() {
+        ExternalResult<Map<String, CropCodeAdapter.CropCodeMapping>> result = cropCodes.parse("""
+                <response><header><result_Code>201</result_Code><result_Msg>요청변수 형식이 일치하지 않은 경우</result_Msg></header></response>
+                """, "application/xml");
+
+        assertThat(result.status()).isEqualTo(ExternalResult.Status.FAILURE);
+        assertThat(result.errorCode()).isEqualTo("CROP_CODE_PROVIDER_201");
+    }
+
+    @Test
+    void malformed_xml_is_not_normalized_as_empty() {
+        ExternalResult<Map<String, CropCodeAdapter.CropCodeMapping>> result = cropCodes.parse("<response>", "application/xml");
+
+        assertThat(result.status()).isEqualTo(ExternalResult.Status.FAILURE);
+        assertThat(result.errorCode()).isEqualTo("MALFORMED_PROVIDER_RESPONSE");
+    }
+
+    @ParameterizedTest(name = "{0} {1}")
+    @MethodSource("legalDistrictPayloads")
+    void mislabeled_json_legal_district_response_is_parsed_by_its_payload_not_its_content_type(
+            String sidoName, String sigunguName, String regionCode) {
+        ExternalResult<List<LegalDistrictAdapter.LegalDistrict>> result = legalDistrict.parse(
+                legalDistrictJson(sidoName, sigunguName, regionCode), "text/html;charset=UTF-8");
+
+        assertThat(result.status()).isEqualTo(ExternalResult.Status.SUCCESS);
+        assertThat(result.value()).extracting(district -> district.regionCd).containsExactly(regionCode);
+    }
+
+    @ParameterizedTest(name = "encoded {0} {1}")
+    @MethodSource("legalDistrictPayloads")
+    void legal_district_request_reads_text_and_preserves_special_region_names(
+            String sidoName, String sigunguName, String regionCode) {
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        when(restTemplate.getForObject(anyString(), eq(String.class)))
+                .thenReturn(legalDistrictJson(sidoName, sigunguName, regionCode));
+
+        ExternalResult<List<LegalDistrictAdapter.LegalDistrict>> result =
+                new LegalDistrictAdapter(restTemplate, "fixture-key", 30, 0, "LIVE")
+                        .getDistrictCodes(sidoName, sigunguName);
+
+        assertThat(result.status()).isEqualTo(ExternalResult.Status.SUCCESS);
+        org.mockito.ArgumentCaptor<String> url = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(restTemplate).getForObject(url.capture(), eq(String.class));
+        assertThat(URLDecoder.decode(url.getValue(), StandardCharsets.UTF_8))
+                .contains("locatadd_nm=" + sidoName + " " + sigunguName);
+    }
+
+    @Test
     void area_only_soil_statistics_are_explicitly_unsupported_for_ph() {
         ExternalResult<Double> result = soil.parse(areaOnlySoilXml(), "application/xml");
 
@@ -176,6 +238,29 @@ class ExternalAdaptersContractTest {
     }
 
     @Test
+    void absent_authoritative_legal_dong_is_a_location_limitation_not_a_provider_parse_failure() {
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        LegalDistrictAdapter legalDistrict = mock(LegalDistrictAdapter.class);
+        when(legalDistrict.getDistrictCodes("경기도", "수원시")).thenReturn(ExternalResult.empty());
+
+        ExternalResult<SoilChemistryAdapter.SoilChemistryResult> chemistry =
+                new SoilChemistryAdapter(restTemplate, "fixture-key", legalDistrict, 30, 0, "LIVE")
+                        .getSoilChemistry("41110", "경기도", "수원시");
+
+        CropCodeAdapter cropCodeAdapter = mock(CropCodeAdapter.class);
+        when(cropCodeAdapter.getCropCodeMappings()).thenReturn(ExternalResult.success(
+                Map.of("POTATO", cropMapping("POTATO", "00017", "감자(남부,봄재배)"))));
+        ExternalResult<Map<String, SoilSuitabilityAdapter.SoilSuitabilityResult>> suitability =
+                new SoilSuitabilityAdapter(restTemplate, "fixture-key", legalDistrict, cropCodeAdapter, 90, 0, "LIVE")
+                        .getSoilSuitability("41110", "경기도", "수원시");
+
+        assertThat(chemistry.status()).isEqualTo(ExternalResult.Status.FAILURE);
+        assertThat(chemistry.errorCode()).isEqualTo("SOIL_CHEMISTRY_LOCATION_NOT_RESOLVED");
+        assertThat(suitability.status()).isEqualTo(ExternalResult.Status.FAILURE);
+        assertThat(suitability.errorCode()).isEqualTo("SOIL_SUITABILITY_LOCATION_NOT_RESOLVED");
+    }
+
+    @Test
     void retry_count_one_retries_a_network_exception_exactly_once() {
         AtomicInteger attempts = new AtomicInteger();
 
@@ -198,9 +283,16 @@ class ExternalAdaptersContractTest {
                 Arguments.of("{\"response\":{\"header\":{\"resultCode\":\"30\"}}}", "application/json"));
     }
 
+    private static Stream<Arguments> legalDistrictPayloads() {
+        return Stream.of(
+                Arguments.of("경기도", "수원시", "4111710600"),
+                Arguments.of("강원특별자치도", "강릉시", "4215010100"),
+                Arguments.of("제주특별자치도", "제주시", "5011010100"));
+    }
+
     private static Stream<Arguments> mixedSiblingFailures() {
         return Stream.of(
-                Arguments.of("crop-code", "CROP_CODE_PROVIDER_FAILURE",
+                Arguments.of("crop-code", "CROP_CODE_REQUEST_FAILED",
                         (Supplier<ExternalResult<?>>) ExternalAdaptersContractTest::mixedCropCodeFailure),
                 Arguments.of("soil-chemistry", "SOIL_CHEMISTRY_PROVIDER_FAILURE",
                         (Supplier<ExternalResult<?>>) ExternalAdaptersContractTest::mixedSoilChemistryFailure),
@@ -301,6 +393,12 @@ class ExternalAdaptersContractTest {
                   <body><items><item><crop_Cd>00061</crop_Cd><crop_Nm>사과(1-4년생)</crop_Nm></item></items></body>
                 </response>
                 """;
+    }
+
+    private static String legalDistrictJson(String sidoName, String sigunguName, String regionCode) {
+        return """
+                {"StanReginCd":[{"row":[{"region_cd":"%s","locatadd_nm":"%s %s","locallow_nm":"fixture","ri_cd":"00","use_yn":"Y"}]}]}
+                """.formatted(regionCode, sidoName, sigunguName);
     }
 
     private static String areaOnlySoilXml() {

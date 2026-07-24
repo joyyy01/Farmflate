@@ -29,7 +29,9 @@ import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -93,6 +95,20 @@ class RegionApiControllerIT {
                 .andExpect(jsonPath("$.status").value("PARTIAL"));
 
         verify(regionAnalysisService).createPublic(any());
+    }
+
+    @Test
+    void allows_the_vite_loopback_origin_for_public_region_requests() throws Exception {
+        mockMvc.perform(options("/api/regions/sidos")
+                        .header("Origin", "http://127.0.0.1:5173")
+                        .header("Access-Control-Request-Method", "GET"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://127.0.0.1:5173"));
+
+        when(regionAnalysisService.getSidos()).thenReturn(List.of());
+        mockMvc.perform(get("/api/regions/sidos").header("Origin", "http://127.0.0.1:5173"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://127.0.0.1:5173"));
     }
 
     @Test

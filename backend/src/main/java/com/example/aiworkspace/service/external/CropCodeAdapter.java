@@ -86,6 +86,7 @@ public class CropCodeAdapter {
         Map<String, CropCodeMapping> mappings = new LinkedHashMap<>();
         int resolved = 0;
         int failures = 0;
+        List<String> failureCodes = new ArrayList<>();
         for (Map.Entry<String, String> entry : CROP_NAME_MAP.entrySet()) {
             CropCodeMapping mapping = new CropCodeMapping();
             mapping.internalCode = entry.getKey();
@@ -99,13 +100,16 @@ public class CropCodeAdapter {
                 mapping.resolved = false;
                 if (code.isFailure()) {
                     failures++;
+                    failureCodes.add(code.errorCode());
                 }
             }
             mappings.put(mapping.internalCode, mapping);
         }
         List<NormalizedMetric> metrics = metricsFor(mappings);
         if (failures > 0) {
-            return ExternalResult.failure("CROP_CODE_PROVIDER_FAILURE", mappings, metrics);
+            String errorCode = failureCodes.stream().distinct().count() == 1
+                    ? failureCodes.get(0) : "CROP_CODE_PROVIDER_FAILURE";
+            return ExternalResult.failure(errorCode, mappings, metrics);
         }
         if (resolved > 0) {
             return ExternalResult.success(mappings, metrics);
@@ -119,7 +123,8 @@ public class CropCodeAdapter {
                 .queryParam("Page_No", 1)
                 .queryParam("Page_Size", 100)
                 .queryParam("crop_Nm", cropName)
-                .build(false)
+                .build()
+                .encode()
                 .toUriString();
         ExternalResult<String> payload = ExternalAdapterSupport.executeRequest(
                 retryCount, "CROP_CODE_REQUEST_FAILED", () -> restTemplate.getForObject(url, String.class));
