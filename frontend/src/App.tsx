@@ -51,6 +51,117 @@ const normalizeCommunityPosts = (data: unknown): CommunityPost[] => {
   });
 };
 
+// TEMP: mock data for MyFieldListView design work. Remove once the real
+// /api/fields response is what you want to design against.
+const MOCK_FIELDS: FieldProfile[] = [
+  {
+    id: 'mock-field-1',
+    fieldName: '우리집 텃밭',
+    cropCode: 'POTATO',
+    cropName: '감자',
+    cultivationMethod: '노지',
+    cultivationStartDate: '2026-05-12',
+    stage: 'growing',
+    active: true,
+    suitabilityReport: {
+      suitabilityScore: 88,
+      grade: 'A',
+      summary: '이번 주는 배수 관리에 신경 쓰면 좋아요. 토양 수분이 다소 높은 편입니다.',
+      analysisBasisDate: '2026-07-20',
+      conditions: [],
+      keyRisks: [],
+      prePlantChecklist: [],
+      currentManagementPoints: []
+    },
+    latestReport: {
+      id: 'mock-report-1',
+      fieldId: 'mock-field-1',
+      reportDate: '2026-07-24',
+      generatedAt: '2026-07-24T06:00:00+09:00',
+      generationReason: '일일 자동 분석',
+      suitabilityScore: 88,
+      summary: '오늘은 물주기보다 배수로 확인이 우선이에요.',
+      prioritizedActions: [],
+      keyRisks: [],
+      conditions: []
+    }
+  },
+  {
+    id: 'mock-field-2',
+    fieldName: '뒷마당 상추밭',
+    cropCode: 'LETTUCE',
+    cropName: '상추',
+    cultivationMethod: '노지',
+    cultivationStartDate: '2026-06-01',
+    stage: 'before',
+    active: true,
+    suitabilityReport: {
+      suitabilityScore: 72,
+      grade: 'B',
+      summary: '아직 정식 전이라 발아 온도 유지가 중요해요.',
+      analysisBasisDate: '2026-07-20',
+      conditions: [],
+      keyRisks: [],
+      prePlantChecklist: [],
+      currentManagementPoints: []
+    },
+    latestReport: null
+  },
+  {
+    id: 'mock-field-3',
+    fieldName: '옥상 텃밭',
+    cropCode: 'PEPPER',
+    cropName: '고추',
+    cultivationMethod: '화분',
+    cultivationStartDate: '2026-06-20',
+    stage: 'growing',
+    active: true,
+    suitabilityReport: null,
+    latestReport: null
+  }
+];
+
+// TEMP: mock completed region analysis so "농작물 등록하기" doesn't bounce to
+// the region-select screen in preview mode (crop registration requires a
+// completed apiReport/analysisState). Remove alongside MOCK_FIELDS.
+const MOCK_REGION_REPORT: RegionReport = {
+  analysisId: 'mock-analysis-1',
+  status: 'COMPLETED',
+  dataMode: 'AUTO',
+  analyzedAt: '2026-07-24T06:00:00+09:00',
+  region: {
+    sidoCode: '52',
+    sidoName: '전북특별자치도',
+    sigunguCode: '52790',
+    sigunguName: '고창군'
+  },
+  location: null,
+  baseFitness: 82,
+  seasonReadiness: 78,
+  dataConfidence: { score: 0.86, level: 'HIGH', message: null, range: null },
+  regionScore: 82,
+  summary: '전반적으로 노지 재배에 안정적인 환경입니다.',
+  components: {
+    climate: { score: 84, grade: 'A' },
+    soil: { score: 79, grade: 'B' },
+    hazard: { safetyScore: 88, grade: 'A' },
+    cultivation: { score: 80, grade: 'B' }
+  },
+  environmentFeatures: ['배수 양호', '일조량 충분'],
+  recommendedCrops: [
+    { cropCode: 'POTATO', cropName: '감자', score: 88, rank: 1, positiveReasons: ['배수 양호', '서늘한 기후 적합'], cautionReason: null, category: '근채류', iconUrl: null },
+    { cropCode: 'LETTUCE', cropName: '상추', score: 72, rank: 2, positiveReasons: ['일조량 충분'], cautionReason: '고온기 발아 주의', category: '엽채류', iconUrl: null },
+    { cropCode: 'PEPPER', cropName: '고추', score: 68, rank: 3, positiveReasons: ['배수 양호'], cautionReason: '장마철 습해 주의', category: '과채류', iconUrl: null }
+  ],
+  cropResults: undefined,
+  topRisks: [],
+  safeWorkWindows: [],
+  prioritizedActions: [],
+  tips: [],
+  sources: [],
+  missingMetrics: []
+};
+
 export function App() {
   const checkHasToken = () => !!(localStorage.getItem('jwtToken') || localStorage.getItem('token'));
   const [viewStep, setViewStep] = useState<ExtendedViewStep>('splash');
@@ -91,7 +202,7 @@ export function App() {
   const [pendingCropRegistration, setPendingCropRegistration] = useState<CropRegistrationInput | null>(null);
   const [isFieldRegistrationFlow, setIsFieldRegistrationFlow] = useState(false);
   const [homeData, setHomeData] = useState<HomeData | null>(null);
-  const [myFields, setMyFields] = useState<FieldProfile[]>([]);
+  const [myFields, setMyFields] = useState<FieldProfile[]>(MOCK_FIELDS);
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [homeLoadError, setHomeLoadError] = useState<string | null>(null);
   const [fieldLoadError, setFieldLoadError] = useState<string | null>(null);
@@ -140,22 +251,22 @@ export function App() {
     setIsAIChatOpen(false);
     setUserName('사용자님');
     setUserEmail('미인증 계정');
-    setSelectedProvince('');
-    setSelectedDistrict('');
+    setSelectedProvince(MOCK_REGION_REPORT.region.sidoName);
+    setSelectedDistrict(MOCK_REGION_REPORT.region.sigunguName);
     setSelectedCropName('감자');
-    setApiReport(null);
-    setAnalysisState({ kind: 'IDLE' });
+    setApiReport(MOCK_REGION_REPORT); // TEMP: mock completed analysis so crop registration doesn't bounce to region-select
+    setAnalysisState({ kind: 'COMPLETED', report: MOCK_REGION_REPORT });
     setLastAnalysisRequest(null);
     setPendingCropRegistration(null);
     setIsFieldRegistrationFlow(false);
     setHomeData(null);
-    setMyFields([]);
+    setMyFields(MOCK_FIELDS); // TEMP: show mock fields in preview mode for MyFieldListView design work
     setPosts([]);
     setHomeLoadError(null);
     setFieldLoadError(null);
     setCommunityLoadError(null);
     setCommunityComposeError(null);
-    setIsNewUser(true);
+    setIsNewUser(false);
     setViewStep('dashboard');
   };
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { ChevronRight, AlertCircle, Bot } from 'lucide-react';
+import { AlertCircle, Bot } from 'lucide-react';
 import type { TabState } from '../../types/farmflate';
 import type { FieldProfile } from '../../types/report';
 import { BottomNavigation } from '../common/BottomNavigation';
@@ -22,12 +22,6 @@ export const MyFieldListView: React.FC<MyFieldListViewProps> = ({
   activeTab,
   onTabChange
 }) => {
-  const formatDateTime = (value?: string | null) => {
-    if (!value) return null;
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(date);
-  };
-
   const stageLabel = (stage?: string | null) => {
     if (stage === 'before') return '심기 전';
     if (stage === 'growing') return '재배 중';
@@ -64,7 +58,6 @@ export const MyFieldListView: React.FC<MyFieldListViewProps> = ({
             const cropName = field.cropName || '작물 정보 없음';
             const latestReport = field.latestReport;
             const summary = latestReport?.summary || field.suitabilityReport?.summary;
-            const reportTime = formatDateTime(latestReport?.generatedAt ?? latestReport?.reportDate);
             const suitabilityLabel = field.suitabilityReport?.grade || (typeof field.suitabilityReport?.suitabilityScore === 'number' ? `적합도 ${field.suitabilityReport.suitabilityScore}점` : '적합도 자료 없음');
 
             return (
@@ -111,33 +104,9 @@ export const MyFieldListView: React.FC<MyFieldListViewProps> = ({
                   display: 'flex',
                   alignItems: 'center',
                   gap: 8,
-                  marginBottom: 12
+                  marginBottom: 20
                 }}>
                   <AlertCircle size={16} color={badgeColor} /> {summary || '서버에서 제공된 관리 요약이 아직 없습니다.'}
-                </div>
-
-                {/* Today's Report Banner */}
-                <div style={{
-                  backgroundColor: '#EDF7ED',
-                  borderRadius: 16,
-                  padding: '12px 16px',
-                  border: '1px solid #D4EDDA',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <img src="/svg-assets/weather/water-drop-cheer.svg" alt="물방울" style={{ width: 34, height: 38, objectFit: 'contain' }} />
-                    <div>
-                      <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#145238' }}>
-                        {latestReport ? '리포트가 준비됐어요!' : '일일 리포트 준비 중'}
-                      </div>
-                      <div style={{ fontSize: '0.76rem', color: '#2e9f5b', fontWeight: 500 }}>
-                        {latestReport ? (reportTime ? `생성 ${reportTime}` : (latestReport.generationReason || '생성 시각 정보 없음')) : '서버에서 생성된 리포트가 아직 없습니다.'}
-                      </div>
-                    </div>
-                  </div>
-                  <ChevronRight size={18} color="#145238" />
                 </div>
               </div>
             );
