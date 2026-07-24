@@ -1,5 +1,6 @@
 package com.example.aiworkspace.dto.region;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.*;
 
 import java.util.List;
@@ -8,6 +9,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class RegionAnalysisStatusDto {
     private String analysisId;
     private String status; // PROCESSING, COMPLETED, FAILED
