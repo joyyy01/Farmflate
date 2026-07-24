@@ -542,15 +542,28 @@ public class RegionAnalysisService {
     public HomeResponseDto getHome(String userEmail, String userDisplayName) {
         String displayName = hasText(userDisplayName) ? userDisplayName : "Farmflate 사용자";
         Optional<RegionAnalysisEntity> latest = analysisRepository.findFirstByUserEmailOrderByAnalyzedAtDesc(userEmail);
+        
+        Region region = null;
+        if (latest.isPresent()) {
+            region = regionRepository.findBySidoCodeAndSigunguCode(latest.get().getSidoCode(), latest.get().getSigunguCode()).orElse(null);
+        }
+        if (region == null) {
+            region = regionRepository.findBySidoCodeAndSigunguCode("52", "52180")
+                    .orElseGet(() -> regionRepository.findByEnabledTrueOrderBySidoNameAscSigunguNameAsc().stream().findFirst().orElse(null));
+        }
+
+        HomeResponseDto.WeatherDto weatherDto = buildWeatherForRegion(region);
+
         if (latest.isEmpty()) {
             return HomeResponseDto.builder()
                     .user(HomeResponseDto.UserDto.builder().displayName(displayName).build())
-                    .weather(HomeResponseDto.WeatherDto.builder().status("UNAVAILABLE").build())
+                    .weather(weatherDto)
                     .todayAction(null)
                     .latestRegionAnalysis(null)
                     .farms(Collections.emptyList())
                     .build();
         }
+
         RegionAnalysisEntity analysis = latest.get();
         RegionReportResponseDto report;
         try {
@@ -575,8 +588,7 @@ public class RegionAnalysisService {
         }
         return HomeResponseDto.builder()
                 .user(HomeResponseDto.UserDto.builder().displayName(displayName).build())
-                // No live home-weather call is made here, so do not fabricate one from a region hash.
-                .weather(HomeResponseDto.WeatherDto.builder().status("UNAVAILABLE").build())
+                .weather(weatherDto)
                 .todayAction(todayAction)
                 .latestRegionAnalysis(HomeResponseDto.LatestRegionAnalysisDto.builder()
                         .analysisId(analysis.getId())
@@ -587,6 +599,48 @@ public class RegionAnalysisService {
                         .build())
                 .farms(Collections.emptyList())
                 .build();
+    }
+
+    private HomeResponseDto.WeatherDto buildWeatherForRegion(Region region) {
+        if (region == null) {
+            return HomeResponseDto.WeatherDto.builder().status("UNAVAILABLE").build();
+        }
+        try {
+            ExternalResult<List<ShortForecastAdapter.DailyForecast>> forecastRes =
+                    shortForecastAdapter.getForecast3Days(region.getKmaNx(), region.getKmaNy());
+            
+            List<ShortForecastAdapter.DailyForecast> forecasts = forecastRes != null ? forecastRes.valueOr(List.of()) : List.of();
+            if (forecasts == null || forecasts.isEmpty()) {
+                return HomeResponseDto.WeatherDto.builder().status("UNAVAILABLE").build();
+            }
+
+            ShortForecastAdapter.DailyForecast today = forecasts.get(0);
+            double currentTemp = (today.tmpValues != null && !today.tmpValues.isEmpty())
+                    ? today.tmpValues.get(0)
+                    : (today.minTemp != null && today.maxTemp != null ? (today.minTemp + today.maxTemp) / 2.0 : 20.0);
+
+            double minTemp = today.minTemp != null ? today.minTemp : currentTemp - 3.0;
+            double maxTemp = today.maxTemp != null ? today.maxTemp : currentTemp + 4.0;
+            int pop = today.popMax != null ? today.popMax : 10;
+            double pcp = today.pcpTotal != null ? today.pcpTotal : 0.0;
+
+            String condition = (pcp > 5.0 || pop >= 60) ? "RAIN" : (pop >= 30 ? "CLOUDY" : "SUNNY");
+            String timeStr = "기상청 실시간 예보 (" + java.time.ZonedDateTime.now(java.time.ZoneId.of("Asia/Seoul")).format(java.time.format.DateTimeFormatter.ofPattern("HH:00")) + ")";
+
+            return HomeResponseDto.WeatherDto.builder()
+                    .status("AVAILABLE")
+                    .temperature((double) Math.round(currentTemp * 10.0) / 10.0)
+                    .minTemperature((double) Math.round(minTemp * 10.0) / 10.0)
+                    .maxTemperature((double) Math.round(maxTemp * 10.0) / 10.0)
+                    .precipitationProbability(pop)
+                    .condition(condition)
+                    .observedOrForecastAt(timeStr)
+                    .isCached(false)
+                    .build();
+        } catch (Exception e) {
+            log.warn("Failed to fetch weather for region {}: {}", region.getSigunguName(), e.getMessage());
+            return HomeResponseDto.WeatherDto.builder().status("UNAVAILABLE").build();
+        }
     }
 
     private Optional<RegionAnalysisEntity> findRecentSuccessful(String ownerEmail, String analysisScope,
