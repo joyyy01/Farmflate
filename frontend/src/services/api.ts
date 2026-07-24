@@ -182,6 +182,71 @@ export const ApiService = {
     return res.json();
   },
 
+  // Community DB APIs
+  async getCommunityPosts(): Promise<any[]> {
+    try {
+      const res = await fetch(`${SPRING_BACKEND_URL}/community/posts`, { headers: getAuthHeaders() });
+      if (!res.ok) return [];
+      return await res.json();
+    } catch (err) {
+      return [];
+    }
+  },
+
+  async createCommunityPost(payload: { category: string; tagLocation: string; title: string; content: string; author: string; imageUrl?: string }): Promise<any> {
+    const res = await fetch(`${SPRING_BACKEND_URL}/community/posts`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload)
+    });
+    handleAuthError(res);
+    if (!res.ok) throw new Error('Failed to create community post');
+    return res.json();
+  },
+
+  async likeCommunityPost(postId: string): Promise<any> {
+    const res = await fetch(`${SPRING_BACKEND_URL}/community/posts/${postId}/like`, {
+      method: 'POST',
+      headers: getAuthHeaders()
+    });
+    handleAuthError(res);
+    if (!res.ok) throw new Error('Failed to like post');
+    return res.json();
+  },
+
+  async addCommunityComment(postId: string, payload: { author: string; content: string }): Promise<any> {
+    const res = await fetch(`${SPRING_BACKEND_URL}/community/posts/${postId}/comments`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload)
+    });
+    handleAuthError(res);
+    if (!res.ok) throw new Error('Failed to add comment');
+    return res.json();
+  },
+
+  // Farm DB APIs
+  async getFarms(): Promise<any[]> {
+    try {
+      const res = await fetch(`${SPRING_BACKEND_URL}/farms`, { headers: getAuthHeaders() });
+      if (!res.ok) return [];
+      return await res.json();
+    } catch (err) {
+      return [];
+    }
+  },
+
+  async createFarm(payload: { fieldName?: string; cropName: string; daysPlanted?: number; stage?: string }): Promise<any> {
+    const res = await fetch(`${SPRING_BACKEND_URL}/farms`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload)
+    });
+    handleAuthError(res);
+    if (!res.ok) throw new Error('Failed to create farm');
+    return res.json();
+  },
+
   async submitInquiry(payload: { inquiryText: string; category?: string }): Promise<{ status: string; inquiryId: string }> {
     try {
       const res = await fetch(`${SPRING_BACKEND_URL}/users/inquiries`, {
