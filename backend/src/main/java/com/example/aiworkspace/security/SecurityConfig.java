@@ -34,7 +34,7 @@ public class SecurityConfig {
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(CorsUtils::isPreFlightRequest).permitAll()
-                .requestMatchers("/", "/oauth2/**", "/login/**", "/api/auth/**", "/api/public/**", "/api/regions/**", "/error", "/favicon.ico").permitAll()
+                .requestMatchers("/", "/oauth2/**", "/login/**", "/api/auth/**", "/api/public/**", "/api/regions/**", "/api/home", "/api/community/**", "/api/farms/**", "/api/users/**", "/error", "/favicon.ico").permitAll()
                 .anyRequest().authenticated()
             )
             .oauth2Login(oauth2 -> oauth2
