@@ -36,6 +36,7 @@ public class SoilChemistryAdapter {
     private final String serviceKey;
     private final LegalDistrictAdapter legalDistrictAdapter;
     private final int cacheDays;
+    private final int retryCount;
     private final boolean replay;
     private final Map<String, CachedSoil> cache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, CompletableFuture<ExternalResult<SoilChemistryResult>>> inFlight = new ConcurrentHashMap<>();
@@ -45,11 +46,13 @@ public class SoilChemistryAdapter {
             @Value("${app.external.data-go-kr.service-key}") String serviceKey,
             LegalDistrictAdapter legalDistrictAdapter,
             @Value("${app.cache.soil-chemistry-days:30}") int cacheDays,
+            @Value("${app.external-api.retry-count:1}") int retryCount,
             @Value("${app.data-mode:LIVE}") String dataMode) {
         this.restTemplate = restTemplate;
         this.serviceKey = serviceKey;
         this.legalDistrictAdapter = legalDistrictAdapter;
         this.cacheDays = cacheDays;
+        this.retryCount = retryCount;
         this.replay = "REPLAY".equalsIgnoreCase(dataMode);
     }
 
@@ -96,6 +99,11 @@ public class SoilChemistryAdapter {
 
         ExternalResult<SoilChemistryResult> direct = fetchDirect(sigunguCode);
         if (direct.isFailure()) {
+            if (direct.value() != null) {
+                direct.value().spatialLevel = "SIGUNGU_AGGREGATE";
+                return ExternalResult.failure(direct.errorCode(), direct.value(),
+                        metricsFor(direct.value(), sigunguCode, false));
+            }
             return direct;
         }
         if (direct.isSuccess() && direct.value().ph != null) {
@@ -109,10 +117,24 @@ public class SoilChemistryAdapter {
 
         ExternalResult<SoilChemistryResult> fallback = fetchLegalDongAggregate(sidoName, sigunguName);
         if (fallback.isFailure()) {
+            if (fallback.value() != null) {
+                fallback.value().spatialLevel = "LEGAL_DONG_AGGREGATE";
+                return ExternalResult.failure(fallback.errorCode(), fallback.value(),
+                        metricsFor(fallback.value(), sigunguCode, true));
+            }
             return fallback;
         }
         if (fallback.isEmpty()) {
-            return direct.isSuccess() ? ExternalResult.empty() : fallback;
+            if (direct.isSuccess() && direct.value() != null) {
+                SoilChemistryResult value = direct.value();
+                value.spatialLevel = "SIGUNGU_AGGREGATE";
+                value.partial = true;
+                ExternalResult<SoilChemistryResult> result = ExternalResult.success(
+                        value, metricsFor(value, sigunguCode, false));
+                cache.put(cacheKey, new CachedSoil(result, Instant.now()));
+                return result;
+            }
+            return fallback;
         }
         SoilChemistryResult value = fallback.value();
         value.spatialLevel = "LEGAL_DONG_AGGREGATE";
@@ -126,21 +148,31 @@ public class SoilChemistryAdapter {
         SoilChemistryResult result = new SoilChemistryResult();
         int failures = 0;
         int values = 0;
+        int unusable = 0;
         for (int index = 0; index < OPERATIONS.size(); index++) {
             ExternalResult<Double> value = callSoilApi(OPERATIONS.get(index), regionCode);
             if (value.isFailure()) {
                 failures++;
                 continue;
             }
-            if (value.isSuccess() && setMetricValue(result, index, value.value())) {
-                values++;
+            if (value.isSuccess()) {
+                if (setMetricValue(result, index, value.value())) {
+                    values++;
+                } else {
+                    unusable++;
+                }
             }
         }
+        if (failures > 0) {
+            result.partial = true;
+            return ExternalResult.failure("SOIL_CHEMISTRY_PROVIDER_FAILURE", result, List.of());
+        }
         if (values > 0) {
-            result.partial = failures > 0;
             return ExternalResult.success(result);
         }
-        return failures > 0 ? ExternalResult.failure("SOIL_CHEMISTRY_PROVIDER_FAILURE") : ExternalResult.empty();
+        return unusable > 0
+                ? ExternalResult.failure("SOIL_CHEMISTRY_UNUSABLE_RECORDS", result, List.of())
+                : ExternalResult.empty();
     }
 
     private ExternalResult<SoilChemistryResult> fetchLegalDongAggregate(String sidoName, String sigunguName) {
@@ -160,15 +192,21 @@ public class SoilChemistryAdapter {
         }
         int covered = 0;
         int failures = 0;
+        int unusable = 0;
         for (LegalDistrictAdapter.LegalDistrict district : legal.value()) {
             boolean anyValue = false;
             for (int index = 0; index < OPERATIONS.size(); index++) {
                 ExternalResult<Double> value = callSoilApi(OPERATIONS.get(index), district.regionCd);
                 if (value.isFailure()) {
                     failures++;
-                } else if (value.isSuccess() && isValidMetric(index, value.value())) {
-                    valuesByMetric.get(index).add(value.value());
-                    anyValue = true;
+                } else if (value.isSuccess()) {
+                    if (isValidMetric(index, value.value())) {
+                        valuesByMetric.get(index).add(value.value());
+                        anyValue = true;
+                    } else {
+                        result.outliersExcluded++;
+                        unusable++;
+                    }
                 }
             }
             if (anyValue) {
@@ -185,25 +223,31 @@ public class SoilChemistryAdapter {
                 metricsWithValues++;
             }
         }
+        if (failures > 0) {
+            return ExternalResult.failure("SOIL_CHEMISTRY_PROVIDER_FAILURE", result, List.of());
+        }
         if (metricsWithValues > 0) {
             return ExternalResult.success(result);
         }
-        return failures > 0 ? ExternalResult.failure("SOIL_CHEMISTRY_PROVIDER_FAILURE") : ExternalResult.empty();
+        return unusable > 0
+                ? ExternalResult.failure("SOIL_CHEMISTRY_UNUSABLE_RECORDS", result, List.of())
+                : ExternalResult.empty();
     }
 
     @SuppressWarnings("unchecked")
     private ExternalResult<Double> callSoilApi(String operation, String regionCode) {
-        try {
-            String url = UriComponentsBuilder.fromHttpUrl(BASE_URL + "/" + operation)
-                    .queryParam("serviceKey", serviceKey)
-                    .queryParam("STDG_CD", regionCode)
-                    .build(false)
-                    .toUriString();
-            return extractSoilValue(restTemplate.getForObject(url, Map.class));
-        } catch (Exception exception) {
-            log.debug("Soil API {} failed for {}: {}", operation, regionCode, exception.getMessage());
-            return ExternalResult.failure("SOIL_CHEMISTRY_REQUEST_FAILED");
+        String url = UriComponentsBuilder.fromHttpUrl(BASE_URL + "/" + operation)
+                .queryParam("serviceKey", serviceKey)
+                .queryParam("STDG_CD", regionCode)
+                .build(false)
+                .toUriString();
+        ExternalResult<Map<String, Object>> response = ExternalAdapterSupport.executeRequest(
+                retryCount, "SOIL_CHEMISTRY_REQUEST_FAILED", () -> restTemplate.getForObject(url, Map.class));
+        if (response.isFailure()) {
+            log.debug("Soil API {} failed for {}: {}", operation, regionCode, response.errorCode());
+            return ExternalResult.failure(response.errorCode(), response.metrics());
         }
+        return extractSoilValue(response.value());
     }
 
     private ExternalResult<Double> extractSoilValue(Map<String, Object> response) {
@@ -235,7 +279,7 @@ public class SoilChemistryAdapter {
                 return ExternalResult.success(value);
             }
         }
-        return ExternalResult.empty();
+        return ExternalResult.failure("SOIL_CHEMISTRY_UNUSABLE_RECORDS");
     }
 
     private Map<String, Object> findBody(Map<String, Object> response) {

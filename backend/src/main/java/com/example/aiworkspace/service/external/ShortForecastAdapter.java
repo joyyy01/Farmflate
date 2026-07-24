@@ -40,6 +40,7 @@ public class ShortForecastAdapter {
     private final RestTemplate restTemplate;
     private final String serviceKey;
     private final int cacheDurationMinutes;
+    private final int retryCount;
     private final boolean replay;
     private final Map<String, CachedForecast> cache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, CompletableFuture<ExternalResult<List<DailyForecast>>>> inFlight = new ConcurrentHashMap<>();
@@ -48,10 +49,12 @@ public class ShortForecastAdapter {
             @Qualifier("externalApiRestTemplate") RestTemplate restTemplate,
             @Value("${app.external.data-go-kr.service-key}") String serviceKey,
             @Value("${app.cache.short-forecast-minutes:30}") int cacheDurationMinutes,
+            @Value("${app.external-api.retry-count:1}") int retryCount,
             @Value("${app.data-mode:LIVE}") String dataMode) {
         this.restTemplate = restTemplate;
         this.serviceKey = serviceKey;
         this.cacheDurationMinutes = cacheDurationMinutes;
+        this.retryCount = retryCount;
         this.replay = "REPLAY".equalsIgnoreCase(dataMode);
     }
 
@@ -159,32 +162,35 @@ public class ShortForecastAdapter {
 
     @SuppressWarnings("unchecked")
     private ExternalResult<List<Map<String, Object>>> fetchAllItems(int nx, int ny, String baseDate, String baseTime) {
-        try {
-            Map<String, Object> firstPage = requestPage(nx, ny, baseDate, baseTime, 1);
-            ExternalResult<List<Map<String, Object>>> first = extractItems(firstPage);
-            if (!first.isSuccess()) {
-                return first;
-            }
-            List<Map<String, Object>> allItems = new ArrayList<>(first.value());
-            int totalCount = extractTotalCount(firstPage);
-            for (int page = 2; page <= Math.min((totalCount + 999) / 1000, 5); page++) {
-                ExternalResult<List<Map<String, Object>>> next = extractItems(requestPage(nx, ny, baseDate, baseTime, page));
-                if (next.isFailure()) {
-                    return ExternalResult.failure(next.errorCode());
-                }
-                if (next.isSuccess()) {
-                    allItems.addAll(next.value());
-                }
-            }
-            return allItems.isEmpty() ? ExternalResult.empty() : ExternalResult.success(allItems);
-        } catch (Exception exception) {
-            log.warn("Short forecast API call failed for nx={}, ny={}: {}", nx, ny, exception.getMessage());
-            return ExternalResult.failure("KMA_REQUEST_FAILED");
+        ExternalResult<Map<String, Object>> firstResponse = requestPage(nx, ny, baseDate, baseTime, 1);
+        if (firstResponse.isFailure()) {
+            return ExternalResult.failure(firstResponse.errorCode(), firstResponse.metrics());
         }
+        Map<String, Object> firstPage = firstResponse.value();
+        ExternalResult<List<Map<String, Object>>> first = extractItems(firstPage);
+        if (!first.isSuccess()) {
+            return first;
+        }
+        List<Map<String, Object>> allItems = new ArrayList<>(first.value());
+        int totalCount = extractTotalCount(firstPage);
+        for (int page = 2; page <= Math.min((totalCount + 999) / 1000, 5); page++) {
+            ExternalResult<Map<String, Object>> pageResponse = requestPage(nx, ny, baseDate, baseTime, page);
+            if (pageResponse.isFailure()) {
+                return ExternalResult.failure(pageResponse.errorCode(), pageResponse.metrics());
+            }
+            ExternalResult<List<Map<String, Object>>> next = extractItems(pageResponse.value());
+            if (next.isFailure()) {
+                return ExternalResult.failure(next.errorCode());
+            }
+            if (next.isSuccess()) {
+                allItems.addAll(next.value());
+            }
+        }
+        return allItems.isEmpty() ? ExternalResult.empty() : ExternalResult.success(allItems);
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> requestPage(int nx, int ny, String baseDate, String baseTime, int page) {
+    private ExternalResult<Map<String, Object>> requestPage(int nx, int ny, String baseDate, String baseTime, int page) {
         String url = UriComponentsBuilder.fromHttpUrl(BASE_URL)
                 .queryParam("ServiceKey", serviceKey)
                 .queryParam("pageNo", page)
@@ -196,7 +202,8 @@ public class ShortForecastAdapter {
                 .queryParam("ny", ny)
                 .build(false)
                 .toUriString();
-        return restTemplate.getForObject(url, Map.class);
+        return ExternalAdapterSupport.executeRequest(
+                retryCount, "KMA_REQUEST_FAILED", () -> restTemplate.getForObject(url, Map.class));
     }
 
     private ExternalResult<List<Map<String, Object>>> extractItems(Map<String, Object> response) {

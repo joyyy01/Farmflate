@@ -50,6 +50,15 @@ public record ExternalResult<T>(Status status, T value, String errorCode, List<N
         return new ExternalResult<>(Status.FAILURE, null, errorCode, metrics);
     }
 
+    /**
+     * Preserves provider data that was obtained before a sibling request
+     * failed. Consumers must still treat this as a failure; a later policy
+     * layer may decide whether the partial value is admissible.
+     */
+    public static <T> ExternalResult<T> failure(String errorCode, T partialValue, List<NormalizedMetric> metrics) {
+        return new ExternalResult<>(Status.FAILURE, partialValue, errorCode, metrics);
+    }
+
     public static <T> ExternalResult<T> failure(String errorCode) {
         return failure(errorCode, List.of());
     }

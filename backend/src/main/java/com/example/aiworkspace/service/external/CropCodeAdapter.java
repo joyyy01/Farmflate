@@ -30,6 +30,7 @@ public class CropCodeAdapter {
     private final RestTemplate restTemplate;
     private final String serviceKey;
     private final int cacheDays;
+    private final int retryCount;
     private final boolean replay;
     private final Map<String, CachedCropCodes> cache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, CompletableFuture<ExternalResult<Map<String, CropCodeMapping>>>> inFlight = new ConcurrentHashMap<>();
@@ -38,10 +39,12 @@ public class CropCodeAdapter {
             @Qualifier("externalApiRestTemplate") RestTemplate restTemplate,
             @Value("${app.external.data-go-kr.service-key}") String serviceKey,
             @Value("${app.cache.crop-code-days:90}") int cacheDays,
+            @Value("${app.external-api.retry-count:1}") int retryCount,
             @Value("${app.data-mode:LIVE}") String dataMode) {
         this.restTemplate = restTemplate;
         this.serviceKey = serviceKey;
         this.cacheDays = cacheDays;
+        this.retryCount = retryCount;
         this.replay = "REPLAY".equalsIgnoreCase(dataMode);
     }
 
@@ -101,30 +104,31 @@ public class CropCodeAdapter {
             mappings.put(mapping.internalCode, mapping);
         }
         List<NormalizedMetric> metrics = metricsFor(mappings);
+        if (failures > 0) {
+            return ExternalResult.failure("CROP_CODE_PROVIDER_FAILURE", mappings, metrics);
+        }
         if (resolved > 0) {
             return ExternalResult.success(mappings, metrics);
-        }
-        if (failures > 0) {
-            return ExternalResult.failure("CROP_CODE_PROVIDER_FAILURE", metrics);
         }
         return ExternalResult.empty(metrics);
     }
 
     @SuppressWarnings("unchecked")
     private ExternalResult<String> lookupCropCode(String cropName) {
-        try {
-            String url = UriComponentsBuilder.fromHttpUrl(BASE_URL)
-                    .queryParam("serviceKey", serviceKey)
-                    .queryParam("Page_No", 1)
-                    .queryParam("Page_Size", 100)
-                    .queryParam("crop_Nm", cropName)
-                    .build(false)
-                    .toUriString();
-            return extractCode(restTemplate.getForObject(url, Map.class), cropName);
-        } catch (Exception exception) {
-            log.warn("Crop code lookup failed for {}: {}", cropName, exception.getMessage());
-            return ExternalResult.failure("CROP_CODE_REQUEST_FAILED");
+        String url = UriComponentsBuilder.fromHttpUrl(BASE_URL)
+                .queryParam("serviceKey", serviceKey)
+                .queryParam("Page_No", 1)
+                .queryParam("Page_Size", 100)
+                .queryParam("crop_Nm", cropName)
+                .build(false)
+                .toUriString();
+        ExternalResult<Map<String, Object>> response = ExternalAdapterSupport.executeRequest(
+                retryCount, "CROP_CODE_REQUEST_FAILED", () -> restTemplate.getForObject(url, Map.class));
+        if (response.isFailure()) {
+            log.warn("Crop code lookup failed for {}: {}", cropName, response.errorCode());
+            return ExternalResult.failure(response.errorCode(), response.metrics());
         }
+        return extractCode(response.value(), cropName);
     }
 
     private ExternalResult<String> extractCode(Map<String, Object> response, String cropName) {

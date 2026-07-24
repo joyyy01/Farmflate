@@ -33,6 +33,7 @@ public class AsosAdapter {
     private final RestTemplate restTemplate;
     private final String serviceKey;
     private final int cacheHours;
+    private final int retryCount;
     private final boolean replay;
     private final Map<String, CachedAsos> cache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, CompletableFuture<ExternalResult<Asos30DaySummary>>> inFlight = new ConcurrentHashMap<>();
@@ -41,10 +42,12 @@ public class AsosAdapter {
             @Qualifier("externalApiRestTemplate") RestTemplate restTemplate,
             @Value("${app.external.data-go-kr.service-key}") String serviceKey,
             @Value("${app.cache.asos-hours:24}") int cacheHours,
+            @Value("${app.external-api.retry-count:1}") int retryCount,
             @Value("${app.data-mode:LIVE}") String dataMode) {
         this.restTemplate = restTemplate;
         this.serviceKey = serviceKey;
         this.cacheHours = cacheHours;
+        this.retryCount = retryCount;
         this.replay = "REPLAY".equalsIgnoreCase(dataMode);
     }
 
@@ -133,26 +136,27 @@ public class AsosAdapter {
 
     @SuppressWarnings("unchecked")
     private ExternalResult<AsosPage> fetchPage(String stationId, LocalDate startDate, LocalDate endDate, int pageNo) {
-        try {
-            String url = UriComponentsBuilder.fromHttpUrl(BASE_URL)
-                    .queryParam("ServiceKey", serviceKey)
-                    .queryParam("pageNo", pageNo)
-                    .queryParam("numOfRows", 999)
-                    .queryParam("dataType", "JSON")
-                    .queryParam("dataCd", "ASOS")
-                    .queryParam("dateCd", "HR")
-                    .queryParam("startDt", startDate.format(DATE_FMT))
-                    .queryParam("startHh", "00")
-                    .queryParam("endDt", endDate.format(DATE_FMT))
-                    .queryParam("endHh", "23")
-                    .queryParam("stnIds", stationId)
-                    .build(false)
-                    .toUriString();
-            return extractPage(restTemplate.getForObject(url, Map.class));
-        } catch (Exception exception) {
-            log.warn("ASOS API call failed for station {}: {}", stationId, exception.getMessage());
-            return ExternalResult.failure("ASOS_REQUEST_FAILED");
+        String url = UriComponentsBuilder.fromHttpUrl(BASE_URL)
+                .queryParam("ServiceKey", serviceKey)
+                .queryParam("pageNo", pageNo)
+                .queryParam("numOfRows", 999)
+                .queryParam("dataType", "JSON")
+                .queryParam("dataCd", "ASOS")
+                .queryParam("dateCd", "HR")
+                .queryParam("startDt", startDate.format(DATE_FMT))
+                .queryParam("startHh", "00")
+                .queryParam("endDt", endDate.format(DATE_FMT))
+                .queryParam("endHh", "23")
+                .queryParam("stnIds", stationId)
+                .build(false)
+                .toUriString();
+        ExternalResult<Map<String, Object>> response = ExternalAdapterSupport.executeRequest(
+                retryCount, "ASOS_REQUEST_FAILED", () -> restTemplate.getForObject(url, Map.class));
+        if (response.isFailure()) {
+            log.warn("ASOS API call failed for station {}: {}", stationId, response.errorCode());
+            return ExternalResult.failure(response.errorCode(), response.metrics());
         }
+        return extractPage(response.value());
     }
 
     private ExternalResult<AsosPage> extractPage(Map<String, Object> response) {

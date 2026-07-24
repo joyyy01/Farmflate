@@ -32,6 +32,7 @@ public class SoilSuitabilityAdapter {
     private final LegalDistrictAdapter legalDistrictAdapter;
     private final CropCodeAdapter cropCodeAdapter;
     private final int cacheDays;
+    private final int retryCount;
     private final boolean replay;
     private final Map<String, CachedSuitability> cache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, CompletableFuture<ExternalResult<Map<String, SoilSuitabilityResult>>>> inFlight = new ConcurrentHashMap<>();
@@ -42,12 +43,14 @@ public class SoilSuitabilityAdapter {
             LegalDistrictAdapter legalDistrictAdapter,
             CropCodeAdapter cropCodeAdapter,
             @Value("${app.cache.soil-suitability-days:90}") int cacheDays,
+            @Value("${app.external-api.retry-count:1}") int retryCount,
             @Value("${app.data-mode:LIVE}") String dataMode) {
         this.restTemplate = restTemplate;
         this.serviceKey = serviceKey;
         this.legalDistrictAdapter = legalDistrictAdapter;
         this.cropCodeAdapter = cropCodeAdapter;
         this.cacheDays = cacheDays;
+        this.retryCount = retryCount;
         this.replay = "REPLAY".equalsIgnoreCase(dataMode);
     }
 
@@ -112,11 +115,20 @@ public class SoilSuitabilityAdapter {
             boolean fallback = false;
             if (direct.isEmpty()) {
                 gradeAreas = fetchLegalDongAggregate(sidoName, sigunguName, mapping.apiCropCode);
-                fallback = gradeAreas.isSuccess();
+                fallback = true;
             }
             if (gradeAreas.isFailure()) {
                 failures++;
                 result.partial = true;
+                if (gradeAreas.value() != null && !gradeAreas.value().isEmpty()) {
+                    result.gradeAreas = gradeAreas.value();
+                    result.spatialLevel = fallback ? "LEGAL_DONG_AGGREGATE" : "SIGUNGU";
+                    result.score = calculateWeightedScore(result);
+                    result.hasData = !result.gradeAreas.isEmpty();
+                    if (result.hasData) {
+                        withData++;
+                    }
+                }
                 results.put(result.cropCode, result);
                 continue;
             }
@@ -133,31 +145,33 @@ public class SoilSuitabilityAdapter {
         }
 
         List<NormalizedMetric> metrics = metricsFor(results, sigunguCode);
+        if (failures > 0) {
+            return ExternalResult.failure("SOIL_SUITABILITY_PROVIDER_FAILURE", results, metrics);
+        }
         if (withData > 0) {
             ExternalResult<Map<String, SoilSuitabilityResult>> result = ExternalResult.success(results, metrics);
             cache.put(cacheKey, new CachedSuitability(result, Instant.now()));
             return result;
         }
-        return failures > 0
-                ? ExternalResult.failure("SOIL_SUITABILITY_PROVIDER_FAILURE", metrics)
-                : ExternalResult.empty(metrics);
+        return ExternalResult.empty(metrics);
     }
 
     @SuppressWarnings("unchecked")
     private ExternalResult<Map<String, Double>> fetchGradeAreas(String regionCode, String apiCropCode) {
-        try {
-            String url = UriComponentsBuilder.fromHttpUrl(BASE_URL)
-                    .queryParam("serviceKey", serviceKey)
-                    .queryParam("STDG_CD", regionCode)
-                    .queryParam("soil_Crop_CD", apiCropCode)
-                    .build(false)
-                    .toUriString();
-            return extractGradeAreas(restTemplate.getForObject(url, Map.class));
-        } catch (Exception exception) {
+        String url = UriComponentsBuilder.fromHttpUrl(BASE_URL)
+                .queryParam("serviceKey", serviceKey)
+                .queryParam("STDG_CD", regionCode)
+                .queryParam("soil_Crop_CD", apiCropCode)
+                .build(false)
+                .toUriString();
+        ExternalResult<Map<String, Object>> response = ExternalAdapterSupport.executeRequest(
+                retryCount, "SOIL_SUITABILITY_REQUEST_FAILED", () -> restTemplate.getForObject(url, Map.class));
+        if (response.isFailure()) {
             log.debug("Soil suitability fetch failed for stdg={}, crop={}: {}", regionCode, apiCropCode,
-                    exception.getMessage());
-            return ExternalResult.failure("SOIL_SUITABILITY_REQUEST_FAILED");
+                    response.errorCode());
+            return ExternalResult.failure(response.errorCode(), response.metrics());
         }
+        return extractGradeAreas(response.value());
     }
 
     private ExternalResult<Map<String, Double>> fetchLegalDongAggregate(
@@ -181,10 +195,10 @@ public class SoilSuitabilityAdapter {
                 areas.value().forEach((grade, area) -> aggregate.merge(grade, area, Double::sum));
             }
         }
-        if (!aggregate.isEmpty()) {
-            return ExternalResult.success(aggregate);
+        if (failures > 0) {
+            return ExternalResult.failure("SOIL_SUITABILITY_PROVIDER_FAILURE", aggregate, List.of());
         }
-        return failures > 0 ? ExternalResult.failure("SOIL_SUITABILITY_PROVIDER_FAILURE") : ExternalResult.empty();
+        return aggregate.isEmpty() ? ExternalResult.empty() : ExternalResult.success(aggregate);
     }
 
     private ExternalResult<Map<String, Double>> extractGradeAreas(Map<String, Object> response) {
@@ -211,7 +225,13 @@ public class SoilSuitabilityAdapter {
             return ExternalResult.empty();
         }
         Map<String, Double> areas = parseGradeAreas(rows);
-        return areas.isEmpty() ? ExternalResult.empty() : ExternalResult.success(areas);
+        if (areas.isEmpty()) {
+            return ExternalResult.failure("SOIL_SUITABILITY_UNUSABLE_RECORDS");
+        }
+        boolean knownGrade = areas.keySet().stream().anyMatch(grade -> scoreForGrade(grade) != null);
+        return knownGrade
+                ? ExternalResult.success(areas)
+                : ExternalResult.failure("SOIL_SUITABILITY_UNUSABLE_RECORDS", areas, List.of());
     }
 
     private Map<String, Object> findBody(Map<String, Object> response) {

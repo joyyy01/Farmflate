@@ -2,6 +2,8 @@ package com.example.aiworkspace.service.external;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.ResourceAccessException;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -92,6 +94,30 @@ final class ExternalAdapterSupport {
             List<String> validationFlags) {
         return new NormalizedMetric(metric, numericValue, textValue, unit, provider, service, spatialLevel,
                 regionCode, dataDate, Instant.now(), false, fallback, replay, quality, validationFlags);
+    }
+
+    /**
+     * Executes one provider request plus the configured number of retries.
+     * Only transient transport failures and HTTP 5xx responses are retried;
+     * client errors and malformed payloads are terminal at their own boundary.
+     */
+    static <T> ExternalResult<T> executeRequest(
+            int retryCount,
+            String failureCode,
+            Supplier<T> request) {
+        int retries = Math.max(0, retryCount);
+        for (int attempt = 0; attempt <= retries; attempt++) {
+            try {
+                return ExternalResult.success(request.get());
+            } catch (HttpServerErrorException | ResourceAccessException retryableException) {
+                if (attempt == retries) {
+                    return ExternalResult.failure(failureCode);
+                }
+            } catch (RuntimeException terminalException) {
+                return ExternalResult.failure(failureCode);
+            }
+        }
+        return ExternalResult.failure(failureCode);
     }
 
     static <T> ExternalResult<T> executeOnce(

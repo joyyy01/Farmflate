@@ -29,6 +29,7 @@ public class LegalDistrictAdapter {
     private final RestTemplate restTemplate;
     private final String serviceKey;
     private final int cacheDays;
+    private final int retryCount;
     private final boolean replay;
     private final Map<String, CachedDistrict> cache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, CompletableFuture<ExternalResult<List<LegalDistrict>>>> inFlight = new ConcurrentHashMap<>();
@@ -37,10 +38,12 @@ public class LegalDistrictAdapter {
             @Qualifier("externalApiRestTemplate") RestTemplate restTemplate,
             @Value("${app.external.data-go-kr.service-key}") String serviceKey,
             @Value("${app.cache.legal-district-days:30}") int cacheDays,
+            @Value("${app.external-api.retry-count:1}") int retryCount,
             @Value("${app.data-mode:LIVE}") String dataMode) {
         this.restTemplate = restTemplate;
         this.serviceKey = serviceKey;
         this.cacheDays = cacheDays;
+        this.retryCount = retryCount;
         this.replay = "REPLAY".equalsIgnoreCase(dataMode);
     }
 
@@ -80,21 +83,21 @@ public class LegalDistrictAdapter {
 
     @SuppressWarnings("unchecked")
     private ExternalResult<List<LegalDistrict>> fetchDistricts(String locationName) {
-        try {
-            String url = UriComponentsBuilder.fromHttpUrl(BASE_URL)
-                    .queryParam("ServiceKey", serviceKey)
-                    .queryParam("pageNo", 1)
-                    .queryParam("numOfRows", 1000)
-                    .queryParam("type", "json")
-                    .queryParam("locatadd_nm", locationName)
-                    .build(false)
-                    .toUriString();
-            Map<String, Object> response = restTemplate.getForObject(url, Map.class);
-            return normalize(response, locationName);
-        } catch (Exception exception) {
-            log.warn("Legal district API failed for {}: {}", locationName, exception.getMessage());
-            return ExternalResult.failure("LEGAL_DISTRICT_REQUEST_FAILED");
+        String url = UriComponentsBuilder.fromHttpUrl(BASE_URL)
+                .queryParam("ServiceKey", serviceKey)
+                .queryParam("pageNo", 1)
+                .queryParam("numOfRows", 1000)
+                .queryParam("type", "json")
+                .queryParam("locatadd_nm", locationName)
+                .build(false)
+                .toUriString();
+        ExternalResult<Map<String, Object>> response = ExternalAdapterSupport.executeRequest(
+                retryCount, "LEGAL_DISTRICT_REQUEST_FAILED", () -> restTemplate.getForObject(url, Map.class));
+        if (response.isFailure()) {
+            log.warn("Legal district API failed for {}: {}", locationName, response.errorCode());
+            return ExternalResult.failure(response.errorCode(), response.metrics());
         }
+        return normalize(response.value(), locationName);
     }
 
     @SuppressWarnings("unchecked")
