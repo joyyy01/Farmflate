@@ -458,7 +458,7 @@ export function App() {
         />
       )}
 
-      {/* 3. Crop Condition Input Screen */}
+      {/* 3. Crop Condition & Selection Screen (농작물/야채 등록 및 선택) */}
       {viewStep === 'condition' && (
         <CropConditionInputView
           onBack={() => safeSetViewStep('dashboard')}
@@ -503,7 +503,7 @@ export function App() {
           districtName={apiReport?.region?.sigunguName || selectedDistrict}
           report={apiReport}
           onBack={() => safeSetViewStep('report_risks')}
-          onGoToCreateField={() => handleTabChange('myfield')}
+          onGoToCreateField={() => safeSetViewStep('condition')}
           onOpenAIChat={() => setIsAIChatOpen(true)}
         />
       )}
@@ -541,7 +541,7 @@ export function App() {
           analyzedRegion={apiReport?.region?.sidoName && apiReport?.region?.sigunguName ? `${apiReport.region.sidoName} ${apiReport.region.sigunguName}` : `${selectedProvince} ${selectedDistrict}`}
           analyzedCropResult={null}
           homeData={homeData}
-          onGoToExplore={() => safeSetViewStep('explore')}
+          onGoToExplore={() => safeSetViewStep('condition')}
           onOpenReport={() => safeSetViewStep('report_summary')}
           onOpenAIChat={() => setIsAIChatOpen(true)}
           activeTab={activeTab}
@@ -554,7 +554,7 @@ export function App() {
       {viewStep === 'myfield' && (
         <MyFieldListView
           fields={myFields}
-          onAddField={() => safeSetViewStep('explore')}
+          onAddField={() => safeSetViewStep('condition')}
           onOpenAIChat={() => setIsAIChatOpen(true)}
           activeTab={activeTab}
           onTabChange={handleTabChange}
