@@ -55,6 +55,9 @@ app:
     timeout-ms: ${EXTERNAL_API_TIMEOUT_MS:8000}
     location-timeout-ms: ${LOCATION_API_TIMEOUT_MS:5000}
     retry-count: ${EXTERNAL_API_RETRY_COUNT:1}
+    rda-min-interval-ms: ${RDA_MIN_INTERVAL_MS:500}
+    soil-chemistry-sample-dongs: ${SOIL_CHEMISTRY_SAMPLE_DONGS:1}
+    soil-suitability-sample-dongs: ${SOIL_SUITABILITY_SAMPLE_DONGS:1}
   cache:
     region-analysis-hours: ${REGION_ANALYSIS_CACHE_HOURS:6}
     short-forecast-minutes: ${SHORT_FORECAST_CACHE_MINUTES:30}

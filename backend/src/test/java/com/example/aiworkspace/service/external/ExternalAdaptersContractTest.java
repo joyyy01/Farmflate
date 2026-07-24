@@ -5,6 +5,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.http.HttpStatus;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.client.ResourceAccessException;
@@ -193,16 +194,40 @@ class ExternalAdaptersContractTest {
         when(legalDistrict.getDistrictCodes("강원특별자치도", "강릉시"))
                 .thenReturn(ExternalResult.success(List.of(legalDistrict("5115011900"), legalDistrict("5115012800"))));
         when(restTemplate.getForObject(any(URI.class), eq(String.class)))
-                .thenReturn(soilExamPayload("5.6"), soilExamNoDataXml());
+                .thenReturn(soilExamNoDataXml(), soilExamPayload("5.6"));
 
+        SoilChemistryAdapter adapter =
+                new SoilChemistryAdapter(restTemplate, "fixture-key", legalDistrict, 30, 0, "LIVE");
+        ReflectionTestUtils.setField(adapter, "legalDongSampleSize", 2);
         ExternalResult<SoilChemistryAdapter.SoilChemistryResult> result =
-                new SoilChemistryAdapter(restTemplate, "fixture-key", legalDistrict, 30, 0, "LIVE")
-                        .getSoilChemistry("42150", "강원특별자치도", "강릉시");
+                adapter.getSoilChemistry("42150", "강원특별자치도", "강릉시");
 
         assertThat(result.status()).isEqualTo(ExternalResult.Status.SUCCESS);
         assertThat(result.value().ph).isEqualTo(5.6);
         assertThat(result.value().coveredDongs).isEqualTo(1);
+        assertThat(result.value().sampledDongs).isEqualTo(2);
         assertThat(result.value().totalDongs).isEqualTo(2);
+    }
+
+    @Test
+    void soil_chemistry_stops_after_one_midpoint_legal_dong_record_and_reports_actual_coverage() {
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        LegalDistrictAdapter legalDistrict = mock(LegalDistrictAdapter.class);
+        when(legalDistrict.getDistrictCodes("경기도", "수원시")).thenReturn(ExternalResult.success(List.of(
+                legalDistrict("4111710100"), legalDistrict("4111710200"), legalDistrict("4111710300"))));
+        when(restTemplate.getForObject(any(URI.class), eq(String.class))).thenReturn(soilExamPayload("5.9"));
+
+        ExternalResult<SoilChemistryAdapter.SoilChemistryResult> result =
+                new SoilChemistryAdapter(restTemplate, "fixture-key", legalDistrict, 30, 0, "LIVE")
+                        .getSoilChemistry("41110", "경기도", "수원시");
+
+        assertThat(result.status()).isEqualTo(ExternalResult.Status.SUCCESS);
+        assertThat(result.value().totalDongs).isEqualTo(3);
+        assertThat(result.value().sampledDongs).isEqualTo(1);
+        assertThat(result.value().coveredDongs).isEqualTo(1);
+        org.mockito.ArgumentCaptor<URI> uri = org.mockito.ArgumentCaptor.forClass(URI.class);
+        verify(restTemplate, times(1)).getForObject(uri.capture(), eq(String.class));
+        assertThat(uri.getValue().toString()).contains("STDG_CD=4111710200");
     }
 
     @Test
@@ -225,6 +250,31 @@ class ExternalAdaptersContractTest {
         org.mockito.ArgumentCaptor<URI> urls = org.mockito.ArgumentCaptor.forClass(URI.class);
         verify(restTemplate, times(1)).getForObject(urls.capture(), eq(String.class));
         assertThat(urls.getAllValues()).allSatisfy(uri -> assertThat(uri.toString()).contains("STDG_CD=4111710600"));
+    }
+
+    @Test
+    void soil_fit_stops_after_one_midpoint_legal_dong_record_per_crop_and_reports_actual_coverage() {
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        LegalDistrictAdapter legalDistrict = mock(LegalDistrictAdapter.class);
+        CropCodeAdapter cropCodeAdapter = mock(CropCodeAdapter.class);
+        CropCodeAdapter.CropCodeMapping mapping = cropMapping("POTATO", "CR032", "감자");
+        when(cropCodeAdapter.getCropCodeMappings()).thenReturn(ExternalResult.success(Map.of("POTATO", mapping)));
+        when(legalDistrict.getDistrictCodes("경기도", "수원시")).thenReturn(ExternalResult.success(List.of(
+                legalDistrict("4111710100"), legalDistrict("4111710200"), legalDistrict("4111710300"))));
+        when(restTemplate.getForObject(any(URI.class), eq(String.class))).thenReturn(soilFitAreaBandsXml("감자"));
+
+        ExternalResult<Map<String, SoilSuitabilityAdapter.SoilSuitabilityResult>> result =
+                new SoilSuitabilityAdapter(restTemplate, "fixture-key", legalDistrict, cropCodeAdapter, 90, 0, "LIVE")
+                        .getSoilSuitability("41110", "경기도", "수원시");
+
+        SoilSuitabilityAdapter.SoilSuitabilityResult potato = result.value().get("POTATO");
+        assertThat(result.status()).isEqualTo(ExternalResult.Status.SUCCESS);
+        assertThat(potato.totalDongs).isEqualTo(3);
+        assertThat(potato.sampledDongs).isEqualTo(1);
+        assertThat(potato.coveredDongs).isEqualTo(1);
+        org.mockito.ArgumentCaptor<URI> uri = org.mockito.ArgumentCaptor.forClass(URI.class);
+        verify(restTemplate, times(1)).getForObject(uri.capture(), eq(String.class));
+        assertThat(uri.getValue().toString()).contains("STDG_CD=4111710200");
     }
 
     @Test
@@ -361,7 +411,7 @@ class ExternalAdaptersContractTest {
         RestTemplate restTemplate = mock(RestTemplate.class);
         AtomicInteger calls = new AtomicInteger();
         when(restTemplate.getForObject(any(URI.class), eq(String.class))).thenAnswer(invocation -> {
-            if (calls.getAndIncrement() == 1) {
+            if (calls.getAndIncrement() == 0) {
                 throw new ResourceAccessException("fixture timeout");
             }
             return soilPayload("6.0");
@@ -370,8 +420,10 @@ class ExternalAdaptersContractTest {
         LegalDistrictAdapter legalDistrict = mock(LegalDistrictAdapter.class);
         when(legalDistrict.getDistrictCodes("전북특별자치도", "고창군"))
                 .thenReturn(ExternalResult.success(List.of(legalDistrict("5279031000"), legalDistrict("5279032000"))));
-        return new SoilChemistryAdapter(restTemplate, "fixture-key", legalDistrict, 30, 0, "LIVE")
-                .getSoilChemistry("52180", "전북특별자치도", "고창군");
+        SoilChemistryAdapter adapter =
+                new SoilChemistryAdapter(restTemplate, "fixture-key", legalDistrict, 30, 0, "LIVE");
+        ReflectionTestUtils.setField(adapter, "legalDongSampleSize", 2);
+        return adapter.getSoilChemistry("52180", "전북특별자치도", "고창군");
     }
 
     private static ExternalResult<?> mixedSoilSuitabilityFailure() {

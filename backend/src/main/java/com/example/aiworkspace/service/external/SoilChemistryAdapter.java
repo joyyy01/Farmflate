@@ -50,7 +50,7 @@ public class SoilChemistryAdapter {
     @Value("${app.external-api.rda-min-interval-ms:500}")
     private int rdaMinIntervalMs;
 
-    @Value("${app.external-api.soil-chemistry-sample-dongs:6}")
+    @Value("${app.external-api.soil-chemistry-sample-dongs:1}")
     private int legalDongSampleSize;
 
     public SoilChemistryAdapter(
@@ -152,7 +152,6 @@ public class SoilChemistryAdapter {
             List<LegalDistrictAdapter.LegalDistrict> sample, int totalDongs, String sigunguCode) {
         SoilChemistryResult aggregate = new SoilChemistryResult();
         aggregate.totalDongs = totalDongs;
-        aggregate.sampledDongs = sample.size();
         List<List<Double>> valuesByMetric = new ArrayList<>();
         for (int index = 0; index < METRICS.size(); index++) {
             valuesByMetric.add(new ArrayList<>());
@@ -160,6 +159,7 @@ public class SoilChemistryAdapter {
 
         int providerFailures = 0;
         for (LegalDistrictAdapter.LegalDistrict district : sample) {
+            aggregate.sampledDongs++;
             ExternalResult<SoilChemistryResult> record = fetchSoilExam(district.regionCd);
             if (record.isFailure()) {
                 providerFailures++;
@@ -176,6 +176,10 @@ public class SoilChemistryAdapter {
             aggregate.coveredDongs++;
             aggregate.outliersExcluded += value.outliersExcluded;
             addValues(valuesByMetric, value);
+            // One observed legal-dong record is the declared bounded input for
+            // a responsive regional screen.  Do not fan out once a usable
+            // official result has already been obtained.
+            break;
         }
 
         if (aggregate.coveredDongs > 0) {
@@ -265,7 +269,7 @@ public class SoilChemistryAdapter {
             return ordered;
         }
         if (limit <= 1) {
-            return List.of(ordered.get(0));
+            return List.of(ordered.get((ordered.size() - 1) / 2));
         }
         LinkedHashSet<LegalDistrictAdapter.LegalDistrict> sample = new LinkedHashSet<>();
         for (int index = 0; index < limit; index++) {
@@ -276,7 +280,7 @@ public class SoilChemistryAdapter {
     }
 
     private int sampleLimit() {
-        return legalDongSampleSize > 0 ? legalDongSampleSize : 6;
+        return legalDongSampleSize > 0 ? legalDongSampleSize : 1;
     }
 
     private void addValues(List<List<Double>> valuesByMetric, SoilChemistryResult value) {

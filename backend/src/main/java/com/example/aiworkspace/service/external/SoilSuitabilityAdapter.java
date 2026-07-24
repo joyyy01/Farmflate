@@ -44,7 +44,7 @@ public class SoilSuitabilityAdapter {
     @Value("${app.external-api.rda-min-interval-ms:500}")
     private int rdaMinIntervalMs;
 
-    @Value("${app.external-api.soil-suitability-sample-dongs:6}")
+    @Value("${app.external-api.soil-suitability-sample-dongs:1}")
     private int legalDongSampleSize;
 
     public SoilSuitabilityAdapter(
@@ -233,8 +233,10 @@ public class SoilSuitabilityAdapter {
         Map<String, Double> aggregate = new LinkedHashMap<>();
         int failures = 0;
         int covered = 0;
+        int sampled = 0;
         List<LegalDistrictAdapter.LegalDistrict> sample = representativeSample(legal.value(), sampleLimit());
         for (LegalDistrictAdapter.LegalDistrict district : sample) {
+            sampled++;
             ExternalResult<Map<String, Double>> areas = fetchGradeAreas(district.regionCd, apiCropCode, expectedCropName);
             if (areas.isFailure()) {
                 failures++;
@@ -243,9 +245,13 @@ public class SoilSuitabilityAdapter {
             if (areas.isSuccess()) {
                 areas.value().forEach((grade, area) -> aggregate.merge(grade, area, Double::sum));
                 covered++;
+                // Each crop score is intentionally based on one declared
+                // representative legal-dong response; stop as soon as it is
+                // available instead of fanning out across the whole region.
+                break;
             }
         }
-        GradeAreasAggregate value = new GradeAreasAggregate(aggregate, legal.value().size(), sample.size(), covered);
+        GradeAreasAggregate value = new GradeAreasAggregate(aggregate, legal.value().size(), sampled, covered);
         if (failures > 0) {
             return ExternalResult.failure("SOIL_SUITABILITY_PROVIDER_FAILURE", value, List.of());
         }
@@ -380,7 +386,7 @@ public class SoilSuitabilityAdapter {
             return ordered;
         }
         if (limit <= 1) {
-            return List.of(ordered.get(0));
+            return List.of(ordered.get((ordered.size() - 1) / 2));
         }
         LinkedHashSet<LegalDistrictAdapter.LegalDistrict> sample = new LinkedHashSet<>();
         for (int index = 0; index < limit; index++) {
@@ -391,7 +397,7 @@ public class SoilSuitabilityAdapter {
     }
 
     private int sampleLimit() {
-        return legalDongSampleSize > 0 ? legalDongSampleSize : 6;
+        return legalDongSampleSize > 0 ? legalDongSampleSize : 1;
     }
 
     private double calculateWeightedScore(SoilSuitabilityResult result) {
