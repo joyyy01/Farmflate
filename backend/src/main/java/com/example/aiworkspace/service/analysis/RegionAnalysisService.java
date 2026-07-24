@@ -12,6 +12,7 @@ import com.example.aiworkspace.dto.region.RegionReportResponseDto;
 import com.example.aiworkspace.service.external.AsosAdapter;
 import com.example.aiworkspace.service.external.ExternalResult;
 import com.example.aiworkspace.service.external.FixtureProvider;
+import com.example.aiworkspace.service.external.NormalizedMetric;
 import com.example.aiworkspace.service.external.ShortForecastAdapter;
 import com.example.aiworkspace.service.external.SoilChemistryAdapter;
 import com.example.aiworkspace.service.external.SoilSuitabilityAdapter;
@@ -19,6 +20,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -110,10 +112,8 @@ public class RegionAnalysisService {
     private RegionAnalysisStatusDto createInScope(String ownerEmail, String analysisScope,
                                                    String scopeSubject, RegionAnalysisRequestDto request) {
         if (hasText(request.getIdempotencyKey())) {
-            Optional<RegionAnalysisEntity> existing = OWNER_SCOPE.equals(analysisScope)
-                    ? analysisRepository.findByUserEmailAndIdempotencyKey(ownerEmail, request.getIdempotencyKey())
-                    : analysisRepository.findByAnalysisScopeAndScopeSubjectAndIdempotencyKey(
-                            analysisScope, scopeSubject, request.getIdempotencyKey());
+            Optional<RegionAnalysisEntity> existing = findByScopedIdempotency(
+                    ownerEmail, analysisScope, scopeSubject, request.getIdempotencyKey());
             if (existing.isPresent()) {
                 return completedStatus(existing.get().getId(), reportStatus(existing.get()), false, analysisScope);
             }
@@ -234,7 +234,7 @@ public class RegionAnalysisService {
         List<RegionReportResponseDto.SourceDto> sources = List.of(
                 providerSource("기상청", "단기예보", "https://www.weather.go.kr", forecastResult),
                 providerSource("기상청", "ASOS 관측자료", "https://data.kma.go.kr", asosResult),
-                providerSource("농촌진흥청", "농경지화학성 통계", "https://soil.rda.go.kr", soilChemistryResult),
+                providerSource("농촌진흥청", "농경지화학성 상세조사", "https://soil.rda.go.kr", soilChemistryResult),
                 providerSource("농촌진흥청", "작물별 토양적성", "https://soil.rda.go.kr", soilSuitabilityResult));
 
         List<String> features = environmentFeatures(components, risks, missingMetrics);
@@ -331,8 +331,29 @@ public class RegionAnalysisService {
                 .dataMode(mode)
                 .reportStatus(scopedReport.getStatus())
                 .build();
-        analysisRepository.save(entity);
-        return completedStatus(scopedReport.getAnalysisId(), scopedReport.getStatus(), false, analysisScope);
+        try {
+            // Flush in an isolated transaction so the unique index race is
+            // observable here, rather than surfacing as a late HTTP 500 at the
+            // outer transaction commit.
+            analysisRepository.saveAndFlush(entity);
+            return completedStatus(scopedReport.getAnalysisId(), scopedReport.getStatus(), false, analysisScope);
+        } catch (DataIntegrityViolationException exception) {
+            Optional<RegionAnalysisEntity> winner = hasText(idempotencyKey)
+                    ? findByScopedIdempotency(ownerEmail, analysisScope, scopeSubject, idempotencyKey)
+                    : Optional.empty();
+            if (winner.isPresent()) {
+                return completedStatus(winner.get().getId(), reportStatus(winner.get()), false, analysisScope);
+            }
+            throw exception;
+        }
+    }
+
+    private Optional<RegionAnalysisEntity> findByScopedIdempotency(
+            String ownerEmail, String analysisScope, String scopeSubject, String idempotencyKey) {
+        return OWNER_SCOPE.equals(analysisScope)
+                ? analysisRepository.findByUserEmailAndIdempotencyKey(ownerEmail, idempotencyKey)
+                : analysisRepository.findByAnalysisScopeAndScopeSubjectAndIdempotencyKey(
+                        analysisScope, scopeSubject, idempotencyKey);
     }
 
     @Transactional(readOnly = true)
@@ -643,13 +664,67 @@ public class RegionAnalysisService {
     }
 
     private List<String> providerTransformations(ExternalResult<?> result) {
+        List<String> transformations = new ArrayList<>();
         if ("SOIL_CHEMISTRY_UNSUPPORTED_FOR_PH".equals(result.errorCode())) {
-            return List.of("AREA_DISTRIBUTION_NOT_COERCED_TO_PH");
+            transformations.add("AREA_DISTRIBUTION_NOT_COERCED_TO_PH");
         }
         if (result.errorCode() != null && result.errorCode().contains("_LOCATION_")) {
-            return List.of("LEGAL_DONG_NOT_RESOLVED");
+            transformations.add("LEGAL_DONG_NOT_RESOLVED");
         }
-        return result.isEmpty() ? List.of("OFFICIAL_NO_RECORDS") : List.of();
+        if (result.errorCode() != null && result.errorCode().contains("CROP_NAME_")) {
+            transformations.add("SOIL_FIT_CROP_NAME_VALIDATION_FAILED");
+        }
+        if (result.isEmpty()) {
+            transformations.add("OFFICIAL_NO_RECORDS");
+        }
+        appendLegalDongSampleCoverage(transformations, result.metrics());
+        return List.copyOf(transformations);
+    }
+
+    private void appendLegalDongSampleCoverage(List<String> transformations, List<NormalizedMetric> metrics) {
+        Map<String, Double[]> coverageByCrop = new LinkedHashMap<>();
+        for (NormalizedMetric metric : metrics) {
+            if (metric == null || metric.numericValue() == null) {
+                continue;
+            }
+            String cropCode = null;
+            int position = switch (metric.metric()) {
+                case "soil.eligible_legal_dongs" -> 0;
+                case "soil.sampled_legal_dongs" -> 1;
+                case "soil.data_backed_legal_dongs" -> 2;
+                case "soil.suitability.eligible_legal_dongs" -> {
+                    cropCode = metric.textValue();
+                    yield 0;
+                }
+                case "soil.suitability.sampled_legal_dongs" -> {
+                    cropCode = metric.textValue();
+                    yield 1;
+                }
+                case "soil.suitability.data_backed_legal_dongs" -> {
+                    cropCode = metric.textValue();
+                    yield 2;
+                }
+                default -> -1;
+            };
+            if (position < 0) {
+                continue;
+            }
+            String key = cropCode == null ? "" : cropCode;
+            Double[] counts = coverageByCrop.computeIfAbsent(key, ignored -> new Double[3]);
+            counts[position] = metric.numericValue();
+        }
+        coverageByCrop.forEach((cropCode, counts) -> {
+            if (counts[0] == null || counts[1] == null || counts[2] == null) {
+                return;
+            }
+            String cropQualifier = cropCode.isBlank() ? "" : "[" + cropCode + "]";
+            transformations.add("LEGAL_DONG_SAMPLE_COVERAGE" + cropQualifier + ":"
+                    + countText(counts[2]) + "/" + countText(counts[1]) + "_OF_" + countText(counts[0]));
+        });
+    }
+
+    private String countText(double value) {
+        return Math.rint(value) == value ? Long.toString((long) value) : Double.toString(value);
     }
 
     private List<RegionReportResponseDto.SourceDto> sourceRefs(List<String> refs) {

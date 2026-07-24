@@ -2,6 +2,7 @@ package com.example.aiworkspace.service.external;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.w3c.dom.Document;
@@ -27,6 +28,7 @@ import java.util.function.Supplier;
 final class ExternalAdapterSupport {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final ConcurrentHashMap<String, ProviderPacer> PROVIDER_PACERS = new ConcurrentHashMap<>();
 
     private ExternalAdapterSupport() {
     }
@@ -97,7 +99,7 @@ final class ExternalAdapterSupport {
         if (header == null) {
             header = map(response == null ? null : response.get("header"));
         }
-        return string(header, "resultCode", "result_Code", "result_code", "code");
+        return string(header, "resultCode", "result_Code", "result_code", "ResultCode", "Result_Code", "RESULT_CODE", "code");
     }
 
     static boolean isProviderSuccessCode(String code) {
@@ -222,6 +224,86 @@ final class ExternalAdapterSupport {
             }
         }
         return ExternalResult.failure(failureCode);
+    }
+
+    /**
+     * Serializes requests for a provider scope and backs off after HTTP 429.
+     * This deliberately treats rate limiting as retryable transport behavior,
+     * never as an authoritative empty response.
+     */
+    static <T> ExternalResult<T> executePacedRequest(
+            String providerScope, int minIntervalMs, int retryCount, String failureCode, Supplier<T> request) {
+        String scope = providerScope == null || providerScope.isBlank() ? "default" : providerScope;
+        ProviderPacer pacer = PROVIDER_PACERS.computeIfAbsent(scope, ignored -> new ProviderPacer());
+        int retries = Math.max(0, retryCount);
+        for (int attempt = 0; attempt <= retries; attempt++) {
+            if (!pacer.awaitTurn(Math.max(0, minIntervalMs))) {
+                return ExternalResult.failure(failureCode);
+            }
+            try {
+                return ExternalResult.success(request.get());
+            } catch (HttpClientErrorException clientException) {
+                if (clientException.getStatusCode().value() == 429) {
+                    if (attempt < retries) {
+                        pacer.defer(retryAfterMillis(clientException));
+                        continue;
+                    }
+                    return ExternalResult.failure(failureCode + "_RATE_LIMITED");
+                }
+                return ExternalResult.failure(failureCode);
+            } catch (HttpServerErrorException | ResourceAccessException retryableException) {
+                if (attempt == retries) {
+                    return ExternalResult.failure(failureCode);
+                }
+            } catch (RuntimeException terminalException) {
+                return ExternalResult.failure(failureCode);
+            }
+        }
+        return ExternalResult.failure(failureCode);
+    }
+
+    private static long retryAfterMillis(HttpClientErrorException exception) {
+        String retryAfter = exception.getResponseHeaders() == null
+                ? null : exception.getResponseHeaders().getFirst("Retry-After");
+        if (retryAfter != null) {
+            try {
+                long seconds = Long.parseLong(retryAfter.trim());
+                if (seconds > 0) {
+                    return Math.min(seconds * 1000L, 30_000L);
+                }
+            } catch (NumberFormatException ignored) {
+                // Fall through to a bounded default when the header is a date.
+            }
+        }
+        return 1_000L;
+    }
+
+    private static final class ProviderPacer {
+        private long nextAllowedAtMillis;
+
+        private boolean awaitTurn(int minIntervalMs) {
+            long delay;
+            synchronized (this) {
+                long now = System.currentTimeMillis();
+                long scheduled = Math.max(now, nextAllowedAtMillis);
+                nextAllowedAtMillis = scheduled + minIntervalMs;
+                delay = scheduled - now;
+            }
+            if (delay <= 0) {
+                return true;
+            }
+            try {
+                Thread.sleep(delay);
+                return true;
+            } catch (InterruptedException interruptedException) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+
+        private synchronized void defer(long delayMillis) {
+            nextAllowedAtMillis = Math.max(nextAllowedAtMillis, System.currentTimeMillis() + delayMillis);
+        }
     }
 
     static <T> ExternalResult<T> executeOnce(

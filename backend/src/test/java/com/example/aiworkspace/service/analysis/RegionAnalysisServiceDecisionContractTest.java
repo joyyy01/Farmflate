@@ -9,6 +9,7 @@ import com.example.aiworkspace.dto.region.RegionReportResponseDto;
 import com.example.aiworkspace.service.external.AsosAdapter;
 import com.example.aiworkspace.service.external.ExternalResult;
 import com.example.aiworkspace.service.external.FixtureProvider;
+import com.example.aiworkspace.service.external.NormalizedMetric;
 import com.example.aiworkspace.service.external.ShortForecastAdapter;
 import com.example.aiworkspace.service.external.SoilChemistryAdapter;
 import com.example.aiworkspace.service.external.SoilSuitabilityAdapter;
@@ -66,18 +67,18 @@ class RegionAnalysisServiceDecisionContractTest {
         when(shortForecastAdapter.getForecast3Days(55, 80)).thenReturn(ExternalResult.success(List.of(forecast())));
         when(asosAdapter.get30DaySummary("146")).thenReturn(ExternalResult.success(asos()));
         when(soilChemistryAdapter.getSoilChemistry("52180", "전북특별자치도", "고창군"))
-                .thenReturn(ExternalResult.success(soilChemistry()));
+                .thenReturn(ExternalResult.success(soilChemistry(), legalDongSampleMetrics()));
         when(soilSuitabilityAdapter.getSoilSuitability("52180", "전북특별자치도", "고창군"))
                 .thenReturn(ExternalResult.success(Map.of("POTATO", suitability("POTATO", 92.0),
                         "PEAR", suitability("PEAR", 88.0), "LETTUCE", suitability("LETTUCE", 82.0))));
-        when(analysisRepository.save(any(RegionAnalysisEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(analysisRepository.saveAndFlush(any(RegionAnalysisEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         service.create("owner@example.com", RegionAnalysisRequestDto.builder()
                 .sidoCode("52").sidoName("전북특별자치도").sigunguCode("52180").sigunguName("고창군")
                 .idempotencyKey("live-contract").forceRefresh(false).build());
 
         ArgumentCaptor<RegionAnalysisEntity> stored = ArgumentCaptor.forClass(RegionAnalysisEntity.class);
-        org.mockito.Mockito.verify(analysisRepository).save(stored.capture());
+        org.mockito.Mockito.verify(analysisRepository).saveAndFlush(stored.capture());
         RegionReportResponseDto report = objectMapper.readValue(stored.getValue().getPayloadJson(), RegionReportResponseDto.class);
 
         assertThat(report.getStatus()).isEqualTo("COMPLETED");
@@ -91,6 +92,10 @@ class RegionAnalysisServiceDecisionContractTest {
         assertThat(report.getTopRisks()).extracting(RegionReportResponseDto.RiskDto::getRiskCode)
                 .contains("POTATO_WATERLOGGING");
         assertThat(report.getSources()).allSatisfy(source -> assertThat(source.getStatus()).isEqualTo("SUCCESS"));
+        assertThat(report.getSources()).anySatisfy(source -> {
+            assertThat(source.getService()).isEqualTo("농경지화학성 상세조사");
+            assertThat(source.getTransformations()).contains("LEGAL_DONG_SAMPLE_COVERAGE:3/6_OF_48");
+        });
     }
 
     @Test
@@ -109,14 +114,14 @@ class RegionAnalysisServiceDecisionContractTest {
         when(soilSuitabilityAdapter.getSoilSuitability("52180", "전북특별자치도", "고창군"))
                 .thenReturn(ExternalResult.success(Map.of("POTATO", suitability("POTATO", 92.0),
                         "PEAR", suitability("PEAR", 88.0), "LETTUCE", suitability("LETTUCE", 82.0))));
-        when(analysisRepository.save(any(RegionAnalysisEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(analysisRepository.saveAndFlush(any(RegionAnalysisEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         service.create("owner@example.com", RegionAnalysisRequestDto.builder()
                 .sidoCode("52").sidoName("전북특별자치도").sigunguCode("52180").sigunguName("고창군")
                 .idempotencyKey("partial-contract").forceRefresh(false).build());
 
         ArgumentCaptor<RegionAnalysisEntity> stored = ArgumentCaptor.forClass(RegionAnalysisEntity.class);
-        verify(analysisRepository).save(stored.capture());
+        verify(analysisRepository).saveAndFlush(stored.capture());
         RegionReportResponseDto report = objectMapper.readValue(stored.getValue().getPayloadJson(), RegionReportResponseDto.class);
 
         assertThat(report.getStatus()).isEqualTo("PARTIAL");
@@ -144,14 +149,14 @@ class RegionAnalysisServiceDecisionContractTest {
                 .thenReturn(ExternalResult.failure("SOIL_CHEMISTRY_UNSUPPORTED_FOR_PH"));
         when(soilSuitabilityAdapter.getSoilSuitability("41110", "경기도", "수원시"))
                 .thenReturn(ExternalResult.empty());
-        when(analysisRepository.save(any(RegionAnalysisEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(analysisRepository.saveAndFlush(any(RegionAnalysisEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         service.create("owner@example.com", RegionAnalysisRequestDto.builder()
                 .sidoCode("41").sidoName("경기도").sigunguCode("41110").sigunguName("수원시")
                 .idempotencyKey("availability-contract").forceRefresh(false).build());
 
         ArgumentCaptor<RegionAnalysisEntity> stored = ArgumentCaptor.forClass(RegionAnalysisEntity.class);
-        verify(analysisRepository).save(stored.capture());
+        verify(analysisRepository).saveAndFlush(stored.capture());
         RegionReportResponseDto report = objectMapper.readValue(stored.getValue().getPayloadJson(), RegionReportResponseDto.class);
 
         assertThat(report.getStatus()).isEqualTo("PARTIAL");
@@ -160,7 +165,7 @@ class RegionAnalysisServiceDecisionContractTest {
                 "SOIL_CHEMISTRY_UNAVAILABLE:SOIL_CHEMISTRY_UNSUPPORTED_FOR_PH",
                 "SOIL_SUITABILITY_NO_RECORDS");
         assertThat(report.getSources()).anySatisfy(source -> {
-            assertThat(source.getService()).isEqualTo("농경지화학성 통계");
+            assertThat(source.getService()).isEqualTo("농경지화학성 상세조사");
             assertThat(source.getStatus()).isEqualTo("UNAVAILABLE");
             assertThat(source.getFallbackReason()).isEqualTo("SOIL_CHEMISTRY_UNSUPPORTED_FOR_PH");
             assertThat(source.getTransformations()).contains("AREA_DISTRIBUTION_NOT_COERCED_TO_PH");
@@ -208,5 +213,18 @@ class RegionAnalysisServiceDecisionContractTest {
         value.hasData = true;
         value.score = score;
         return value;
+    }
+
+    private List<NormalizedMetric> legalDongSampleMetrics() {
+        return List.of(
+                coverageMetric("soil.eligible_legal_dongs", 48),
+                coverageMetric("soil.sampled_legal_dongs", 6),
+                coverageMetric("soil.data_backed_legal_dongs", 3));
+    }
+
+    private NormalizedMetric coverageMetric(String metric, double value) {
+        return new NormalizedMetric(metric, value, null, "count", "RDA", "SoilExam/V2",
+                "LEGAL_DONG_REPRESENTATIVE_SAMPLE", "52180", null, null,
+                false, false, false, "GOOD", List.of(), "C", null, null, List.of(), null, null, null);
     }
 }
