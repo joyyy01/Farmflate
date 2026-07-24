@@ -55,6 +55,7 @@ export function App() {
   const [viewStep, setViewStep] = useState<ExtendedViewStep>('landing');
   const [activeTab, setActiveTab] = useState<TabState>('home');
   const [isAIChatOpen, setIsAIChatOpen] = useState(false);
+  const [isPreviewMode, setIsPreviewMode] = useState(false);
 
   /* Clean Unauthenticated Default States (No Hardcoded Private Names) */
   const [isNewUser, setIsNewUser] = useState<boolean>(() => {
@@ -87,6 +88,7 @@ export function App() {
   const [analysisState, setAnalysisState] = useState<AnalysisState>({ kind: 'IDLE' });
   const [lastAnalysisRequest, setLastAnalysisRequest] = useState<RegionAnalysisRequest | null>(null);
   const [pendingCropRegistration, setPendingCropRegistration] = useState<CropRegistrationInput | null>(null);
+  const [isFieldRegistrationFlow, setIsFieldRegistrationFlow] = useState(false);
   const [homeData, setHomeData] = useState<HomeData | null>(null);
   const [myFields, setMyFields] = useState<FieldProfile[]>([]);
   const [posts, setPosts] = useState<CommunityPost[]>([]);
@@ -95,6 +97,7 @@ export function App() {
   const [communityLoadError, setCommunityLoadError] = useState<string | null>(null);
   const [communityComposeError, setCommunityComposeError] = useState<string | null>(null);
   const pollTimerRef = useRef<number | null>(null);
+  const previewModeRef = useRef(false);
 
   /* Full 100% Reliable Logout Reset Handler */
   const handleLogout = () => {
@@ -112,6 +115,7 @@ export function App() {
     setAnalysisState({ kind: 'IDLE' });
     setLastAnalysisRequest(null);
     setPendingCropRegistration(null);
+    setIsFieldRegistrationFlow(false);
     if (pollTimerRef.current !== null) window.clearTimeout(pollTimerRef.current);
     setPosts([]);
     setMyFields([]);
@@ -119,6 +123,8 @@ export function App() {
     setFieldLoadError(null);
     setCommunityLoadError(null);
     setCommunityComposeError(null);
+    previewModeRef.current = false;
+    setIsPreviewMode(false);
     setIsNewUser(true);
     setActiveTab('home');
 
@@ -126,8 +132,72 @@ export function App() {
     setViewStep('landing');
   };
 
+  const openPreviewDashboard = () => {
+    previewModeRef.current = true;
+    setIsPreviewMode(true);
+    setActiveTab('home');
+    setIsAIChatOpen(false);
+    setUserName('사용자님');
+    setUserEmail('미인증 계정');
+    setSelectedProvince('');
+    setSelectedDistrict('');
+    setSelectedCropName('감자');
+    setApiReport(null);
+    setAnalysisState({ kind: 'IDLE' });
+    setLastAnalysisRequest(null);
+    setPendingCropRegistration(null);
+    setIsFieldRegistrationFlow(false);
+    setHomeData(null);
+    setMyFields([]);
+    setPosts([]);
+    setHomeLoadError(null);
+    setFieldLoadError(null);
+    setCommunityLoadError(null);
+    setCommunityComposeError(null);
+    setIsNewUser(true);
+    setViewStep('dashboard');
+  };
+
+  const returnToMyField = () => {
+    setIsFieldRegistrationFlow(false);
+    setPendingCropRegistration(null);
+    setActiveTab('myfield');
+    setViewStep('myfield');
+  };
+
+  const openCropRegistrationFromMyField = () => {
+    setActiveTab('myfield');
+    if (!canOpenReport(analysisState)) {
+      setIsFieldRegistrationFlow(false);
+      setPendingCropRegistration(null);
+      setViewStep('explore');
+      return;
+    }
+    setIsFieldRegistrationFlow(true);
+    setViewStep('condition');
+  };
+
+  const returnToCropCondition = () => {
+    if (!isFieldRegistrationFlow || !pendingCropRegistration || !apiReport || !canOpenReport(analysisState)) {
+      returnToMyField();
+      return;
+    }
+    setViewStep('condition');
+  };
+
+  const openExploreFromCropRegistration = () => {
+    setIsFieldRegistrationFlow(false);
+    setPendingCropRegistration(null);
+    setViewStep('explore');
+  };
+
   const safeSetViewStep = (targetStep: ExtendedViewStep) => {
-    const reportStep = targetStep === 'report_summary' || targetStep === 'report_risks' || targetStep === 'report_tips' || targetStep === 'recommended_crops' || targetStep === 'crop_suitability_report';
+    const cropRegistrationStep = targetStep === 'condition' || targetStep === 'recommended_crops' || targetStep === 'crop_suitability_report';
+    if (cropRegistrationStep) {
+      returnToMyField();
+      return;
+    }
+    const reportStep = targetStep === 'report_summary' || targetStep === 'report_risks' || targetStep === 'report_tips';
     if (reportStep && !canOpenReport(analysisState)) {
       if (analysisState.kind === 'ERROR' || analysisState.kind === 'UNAUTHORIZED') {
         setViewStep('analyzing');
@@ -151,6 +221,7 @@ export function App() {
     }
 
     const clearInvalidSession = (error: ApiError) => {
+      if (previewModeRef.current) return;
       localStorage.removeItem('jwtToken');
       localStorage.removeItem('token');
       if (!isCurrent) return;
@@ -165,7 +236,7 @@ export function App() {
       }
       try {
         const resData = await ApiService.getHome();
-        if (!isCurrent) return;
+        if (!isCurrent || previewModeRef.current) return;
         setHomeData(resData);
         setHomeLoadError(null);
         if (resData.user?.displayName) {
@@ -180,17 +251,17 @@ export function App() {
         setViewStep(targetView === 'explore' ? 'explore' : targetView === 'landing' ? 'landing' : 'dashboard');
 
         void ApiService.getCommunityPosts()
-          .then(data => { if (isCurrent) { setPosts(normalizeCommunityPosts(data)); setCommunityLoadError(null); } })
-          .catch(error => { if (isCurrent) setCommunityLoadError(error instanceof Error ? error.message : '게시글을 불러오지 못했습니다.'); });
+          .then(data => { if (isCurrent && !previewModeRef.current) { setPosts(normalizeCommunityPosts(data)); setCommunityLoadError(null); } })
+          .catch(error => { if (isCurrent && !previewModeRef.current) setCommunityLoadError(error instanceof Error ? error.message : '게시글을 불러오지 못했습니다.'); });
         void ApiService.getFields()
-          .then(data => { if (isCurrent) { setMyFields(data); setFieldLoadError(null); } })
-          .catch(error => { if (isCurrent) setFieldLoadError(error instanceof Error ? error.message : '밭 정보를 불러오지 못했습니다.'); });
+          .then(data => { if (isCurrent && !previewModeRef.current) { setMyFields(data); setFieldLoadError(null); } })
+          .catch(error => { if (isCurrent && !previewModeRef.current) setFieldLoadError(error instanceof Error ? error.message : '밭 정보를 불러오지 못했습니다.'); });
       } catch (error) {
         if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
           clearInvalidSession(error);
           return;
         }
-        if (isCurrent) {
+        if (isCurrent && !previewModeRef.current) {
           setHomeLoadError(error instanceof Error ? error.message : '계정 정보를 확인하지 못했습니다.');
           setViewStep('landing');
         }
@@ -267,6 +338,7 @@ export function App() {
     localStorage.setItem('farmflate_district', request.sigunguName);
     setApiReport(null);
     setPendingCropRegistration(null);
+    setIsFieldRegistrationFlow(false);
     setAnalysisState({ kind: 'SUBMITTING' });
     setViewStep('analyzing');
     try {
@@ -297,9 +369,8 @@ export function App() {
 
   /* Crop registration requires a verified server report. */
   const handleStartCropConditionAnalysis = (input: CropRegistrationInput) => {
-    if (!apiReport || !canOpenReport(analysisState)) {
-      setAnalysisState({ kind: 'ERROR', message: '농작물 적합도를 보기 전에 지역 분석을 완료해 주세요.', code: 'REPORT_REQUIRED', retryable: true });
-      setViewStep('analyzing');
+    if (!isFieldRegistrationFlow || !apiReport || !canOpenReport(analysisState)) {
+      returnToMyField();
       return;
     }
     setSelectedCropName(input.cropName);
@@ -308,9 +379,8 @@ export function App() {
   };
 
   const handleAddField = async () => {
-    if (!apiReport || !pendingCropRegistration) {
-      setAnalysisState({ kind: 'ERROR', message: '밭을 저장할 검증된 지역 리포트가 없습니다.', code: 'REPORT_REQUIRED', retryable: true });
-      setViewStep('analyzing');
+    if (!isFieldRegistrationFlow || !apiReport || !pendingCropRegistration) {
+      returnToMyField();
       return;
     }
     try {
@@ -326,6 +396,7 @@ export function App() {
       });
       setMyFields(previous => [field, ...previous.filter(item => item.id !== field.id)]);
       setPendingCropRegistration(null);
+      setIsFieldRegistrationFlow(false);
       setActiveTab('myfield');
       setViewStep('myfield');
     } catch (error) {
@@ -393,7 +464,7 @@ export function App() {
   };
 
   return (
-    <div className="mobile-wrapper min-h-screen bg-white">
+    <div className="mobile-wrapper min-h-screen bg-white" data-preview-mode={isPreviewMode ? 'true' : undefined}>
       {/* 0. Splash Screen */}
       {viewStep === 'splash' && (
         <SplashView onComplete={() => safeSetViewStep('landing')} />
@@ -401,7 +472,7 @@ export function App() {
 
       {/* 1. Landing Screen (Kakao OAuth Login) */}
       {viewStep === 'landing' && (
-        <LandingView errorMessage={homeLoadError} />
+        <LandingView errorMessage={homeLoadError} onOpenPreview={openPreviewDashboard} />
       )}
 
       {/* 2. Region Search Screen */}
@@ -415,9 +486,9 @@ export function App() {
       {/* 3. Crop Condition & Selection Screen (농작물/야채 등록 및 선택) */}
       {viewStep === 'condition' && (
         <CropConditionInputView
-          onBack={() => safeSetViewStep('dashboard')}
+          onBack={returnToMyField}
           onStartAnalysis={handleStartCropConditionAnalysis}
-          onOpenExplore={() => safeSetViewStep('explore')}
+          onOpenExplore={openExploreFromCropRegistration}
           selectedRegionName={apiReport?.region?.sidoName && apiReport?.region?.sigunguName ? `${apiReport.region.sidoName} ${apiReport.region.sigunguName}` : (selectedProvince && selectedDistrict ? `${selectedProvince} ${selectedDistrict}` : '지역 분석 전')}
         />
       )}
@@ -436,7 +507,11 @@ export function App() {
           }}
           onBack={() => {
             setAnalysisState({ kind: 'IDLE' });
-            safeSetViewStep('explore');
+            if ((analysisState.kind === 'ERROR' || analysisState.kind === 'UNAUTHORIZED') && analysisState.pendingAction === 'FIELD') {
+              returnToMyField();
+            } else {
+              safeSetViewStep('explore');
+            }
           }}
           onLogin={() => safeSetViewStep('landing')}
         />
@@ -468,7 +543,7 @@ export function App() {
           districtName={apiReport?.region?.sigunguName || selectedDistrict}
           report={apiReport}
           onBack={() => safeSetViewStep('report_risks')}
-          onGoToCreateField={() => safeSetViewStep('condition')}
+          onGoToCreateField={returnToMyField}
           onOpenAIChat={() => setIsAIChatOpen(true)}
         />
       )}
@@ -480,11 +555,7 @@ export function App() {
           report={apiReport}
           onBack={() => safeSetViewStep('report_tips')}
           onOpenAIChat={() => setIsAIChatOpen(true)}
-          onSelectCrop={(cropName) => {
-            setSelectedCropName(cropName);
-            setPendingCropRegistration(null);
-            safeSetViewStep('crop_suitability_report');
-          }}
+          onSelectCrop={returnToMyField}
         />
       )}
 
@@ -494,8 +565,8 @@ export function App() {
           fieldName={pendingCropRegistration?.fieldName}
           cropName={selectedCropName}
           report={apiReport}
-          onBack={() => safeSetViewStep(pendingCropRegistration ? 'condition' : 'recommended_crops')}
-          onRegisterCrop={pendingCropRegistration ? handleAddField : () => safeSetViewStep('condition')}
+          onBack={returnToCropCondition}
+          onRegisterCrop={isFieldRegistrationFlow && pendingCropRegistration ? handleAddField : returnToMyField}
         />
       )}
 
@@ -520,7 +591,7 @@ export function App() {
         <MyFieldListView
           fields={myFields}
           loadError={fieldLoadError}
-          onAddField={() => safeSetViewStep(canOpenReport(analysisState) ? 'condition' : 'explore')}
+          onAddField={openCropRegistrationFromMyField}
           onOpenAIChat={() => setIsAIChatOpen(true)}
           activeTab={activeTab}
           onTabChange={handleTabChange}

@@ -19,7 +19,9 @@ export const RegionReportSummaryView: React.FC<RegionReportSummaryViewProps> = (
   onOpenAIChat: _onOpenAIChat
 }) => {
   const score = report?.baseFitness ?? report?.regionScore ?? null;
-  const numericScore = score ?? 0;
+  const hasScore = typeof score === 'number';
+  const numericScore = hasScore ? score : 0;
+  const isPartialWithoutScore = report?.status === 'PARTIAL' && !hasScore;
   const cleanSummary = report?.summary || '자료 부족';
 
   // Translate English grades (GOOD, CAUTION, WARNING) to Korean (양호, 주의, 위험)
@@ -136,11 +138,24 @@ export const RegionReportSummaryView: React.FC<RegionReportSummaryViewProps> = (
             </svg>
 
             {/* Score Typography */}
-            <div style={{ position: 'absolute', display: 'flex', alignItems: 'baseline', gap: 2 }}>
-              <span style={{ fontSize: '3.1rem', fontWeight: 900, color: '#191F28', letterSpacing: '-0.05em', lineHeight: 1 }}>
-                {score === null ? '자료 부족' : score}
-              </span>
-              {score !== null && <span style={{ fontSize: '1.1rem', fontWeight: 800, color: '#2FA86A' }}>점</span>}
+            <div style={{ position: 'absolute', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+              {hasScore ? (
+                <>
+                  <span style={{ fontSize: '3.1rem', fontWeight: 900, color: '#191F28', letterSpacing: '-0.05em', lineHeight: 1 }}>
+                    {score}
+                  </span>
+                  <span style={{ fontSize: '1.1rem', fontWeight: 800, color: '#2FA86A', marginLeft: 2 }}>점</span>
+                </>
+              ) : (
+                <div aria-label={isPartialWithoutScore ? '부분 분석 완료, 적합도 점수 자료 부족' : '적합도 점수 자료 부족'} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, maxWidth: 112 }}>
+                  <strong style={{ fontSize: '0.92rem', fontWeight: 850, color: '#334155', lineHeight: 1.25 }}>
+                    {isPartialWithoutScore ? '부분 분석 완료' : '점수 자료 부족'}
+                  </strong>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#6E7671', lineHeight: 1.35 }}>
+                    적합도 산출 자료가 제공되지 않았습니다.
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 

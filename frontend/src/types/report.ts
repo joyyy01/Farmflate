@@ -209,7 +209,6 @@ export interface CreateFieldRequest {
   fieldName: string;
   cropCode?: string;
   cropName: string;
-  location?: LocationRequest;
   cultivationMethod: string;
   cultivationStartDate: string;
   stage?: string;

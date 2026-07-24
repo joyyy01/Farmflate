@@ -38,6 +38,9 @@ export const AnalyzingView: React.FC<AnalyzingViewProps> = ({
   return (
     <div className="full-screen-view" style={{
       backgroundColor: '#FFFFFF',
+      minHeight: '100dvh',
+      height: '100dvh',
+      boxSizing: 'border-box',
       justifyContent: 'center',
       alignItems: 'center',
       padding: '40px 24px'
