@@ -322,13 +322,6 @@ export const FieldDashboardView: React.FC<FieldDashboardViewProps> = ({ field, o
                 )}
               </div>
             </div>
-
-            {/* History */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <h3 style={{ fontSize: '1.02rem', fontWeight: 900, color: '#191F28', margin: 0 }}>최근 7일 관리 이력</h3>
-              <span style={{ fontSize: '0.8rem', color: '#2FA86A', fontWeight: 700 }}>더보기 ›</span>
-            </div>
-            <HistoryTable history={report.history} />
           </>
         ) : (
           <>
