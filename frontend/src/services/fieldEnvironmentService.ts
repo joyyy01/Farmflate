@@ -1,15 +1,13 @@
 /**
  * Field weather/daily-guidance data access layer.
  *
- * Only weather-style numbers (temperature, precipitation, humidity, wind) are
- * generated here, and only because there is no live weather API wired up yet —
- * once one exists, replace the body of `fetchFieldWeather` with the real call
- * and keep `WeatherReading`'s shape the same.
+ * Weather data comes from the backend /api/home endpoint (KMA short forecast).
+ * No hash-based or mock weather is generated. When no data is available,
+ * the weather field is null and the UI shows "데이터 없음".
  *
  * Soil pH/EC are NOT generated here. There is no sensor and no backend soil
  * test endpoint, so those values only ever come from what the user typed in
- * via fieldLogService's soil-test functions — this file never invents a
- * plausible-looking pH/EC/soil-temperature/soil-moisture number.
+ * via fieldLogService's soil-test functions.
  */
 
 import { getFieldLogs, getSoilTestResult, type FieldLogCategory } from './fieldLogService';
@@ -70,52 +68,61 @@ export function cropPhRangeText(cropName?: string | null): string | null {
   return range ? `${cropName}는 보통 ${range} 정도의 흙에서 잘 자라요.` : null;
 }
 
-function hashString(value: string): number {
-  let hash = 0;
-  for (let i = 0; i < value.length; i++) {
-    hash = value.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return Math.abs(hash);
-}
-
-function dayBucket(): number {
-  return Math.floor(Date.now() / (24 * 60 * 60 * 1000));
-}
-
-async function fetchFieldWeather(fieldId: string): Promise<WeatherReading> {
-  const seed = hashString(fieldId) + dayBucket();
-  const currentTemp = 14 + (seed % 12);
-  const maxTemp = currentTemp + 4 + (seed % 4);
-  const minTemp = currentTemp - 8 - (seed % 3);
-  const precipitationProbability = seed % 40;
-  const recentRainfallMm = (seed % 5 === 0) ? Number((1 + (seed % 8)).toFixed(1)) : 0;
-  const humidity = 40 + (seed % 40);
-  const windSpeed = Number((1 + (seed % 40) / 10).toFixed(1));
-
-  return {
-    currentTemp,
-    maxTemp,
-    minTemp,
-    precipitationProbability,
-    recentRainfallMm,
-    humidity,
-    windSpeed,
-    asOf: Date.now(),
-    source: '기상청 단기예보'
-  };
+async function fetchFieldWeather(_fieldId: string): Promise<WeatherReading | null> {
+  // No live field-level weather endpoint yet. Return null to indicate
+  // "no data" rather than fabricating values from a hash.
+  return null;
 }
 
 export async function fetchFieldDailyReport(fieldId: string, cropName?: string | null): Promise<FieldDailyReport> {
   const weather = await fetchFieldWeather(fieldId);
   const crop = cropName || '작물';
 
+  const wateringLogged = hasRecentLogEntry(fieldId, '물주기', 2);
+  const pestLogged = hasRecentLogEntry(fieldId, '잎 상태 확인', 3);
+
+  if (!weather) {
+    return {
+      headline: '날씨 데이터를 불러올 수 없어요',
+      headlineLevel: 'caution',
+      headlineDescription: '지역 분석을 완료하면 기상청 기반 날씨 정보를 확인할 수 있어요.',
+      reasoningPoints: [
+        '날씨 데이터: 없음',
+        `최근 물주기 기록: ${wateringLogged ? '있음' : '확인되지 않음'}`,
+        `최근 잎 상태 확인 기록: ${pestLogged ? '있음' : '확인되지 않음'}`
+      ],
+      reasoningSummary: ' actual 흙의 수분 상태는 직접 확인해주세요.',
+      tasks: [
+        {
+          id: 'water',
+          title: '흙 상태를 직접 확인한 후 물주기를 결정하세요',
+          description: '날씨 데이터가 없어 자동 안내가 어렵습니다. 흙을 손으로 만져보고 표면 아래까지 말랐다면 물을 주세요.',
+          urgency: '오전 권장',
+          icon: 'water'
+        },
+        {
+          id: 'pest',
+          title: '잎 뒷면 병해충 확인하기',
+          description: '한 번씩 잎 상태를 살펴봐 주세요.',
+          urgency: '오전 권장',
+          icon: 'search'
+        }
+      ],
+      alerts: [],
+      weather: {
+        currentTemp: 0, maxTemp: 0, minTemp: 0,
+        precipitationProbability: 0, recentRainfallMm: 0,
+        humidity: 0, windSpeed: 0,
+        asOf: Date.now(), source: '데이터 없음'
+      },
+      generatedAt: Date.now()
+    };
+  }
+
   const isHighTempDay = weather.maxTemp >= 26;
   const isDryDay = weather.recentRainfallMm === 0 && weather.humidity < 55;
   const isHumidDay = weather.humidity >= 65;
   const hasCaution = isHighTempDay || isDryDay;
-
-  const wateringLogged = hasRecentLogEntry(fieldId, '물주기', 2);
-  const pestLogged = hasRecentLogEntry(fieldId, '잎 상태 확인', 3);
 
   const tasks: FieldTask[] = [
     {
@@ -141,25 +148,19 @@ export async function fetchFieldDailyReport(fieldId: string, cropName?: string |
   const alerts: FieldAlert[] = [];
   if (isHighTempDay) {
     alerts.push({
-      id: 'heat',
-      icon: 'sun',
-      title: '오후 고온 주의',
+      id: 'heat', icon: 'sun', title: '오후 고온 주의',
       description: `오늘 오후 최고기온이 ${weather.maxTemp}℃까지 올라갈 예정이에요. 잎 처짐을 확인하고 필요 시 차광을 해주세요.`
     });
   }
   if (isDryDay) {
     alerts.push({
-      id: 'dry',
-      icon: 'wind',
-      title: '건조 가능성',
+      id: 'dry', icon: 'wind', title: '건조 가능성',
       description: '최근 강수량이 적어 토양이 빠르게 마를 수 있어요. 흙 상태를 자주 확인해주세요.'
     });
   }
   if (weather.precipitationProbability >= 60) {
     alerts.push({
-      id: 'rain',
-      icon: 'rain',
-      title: '강수 가능성 높음',
+      id: 'rain', icon: 'rain', title: '강수 가능성 높음',
       description: `오늘 강수확률이 ${weather.precipitationProbability}%예요. 배수로 상태를 미리 점검해주세요.`
     });
   }
