@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Sprout, Users } from 'lucide-react';
+import { Home, Sprout, Users, User } from 'lucide-react';
 import type { TabState } from '../../types/farmflate';
 
 interface BottomNavigationProps {
@@ -56,6 +56,9 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
         onClick={() => onTabChange('settings')}
         className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`}
       >
+        <div style={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <User size={22} color={activeTab === 'settings' ? '#2FA86A' : '#8E9892'} strokeWidth={activeTab === 'settings' ? 2.5 : 2} />
+        </div>
         <span>마이</span>
       </button>
     </nav>

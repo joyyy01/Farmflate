@@ -190,12 +190,6 @@ export const MyPageView: React.FC<MyPageViewProps> = ({
               </p>
             </div>
           </div>
-
-          <img
-            src="/svg-assets/brand/mascot/laugh.svg"
-            alt="웃는 마스코트"
-            style={{ width: 48, height: 48, objectFit: 'contain' }}
-          />
         </div>
 
         {/* Category 1: 계정 */}
