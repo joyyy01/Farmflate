@@ -2,12 +2,14 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Share2, CheckCircle, AlertTriangle } from 'lucide-react';
 import type { RegionReport } from '../../services/api';
+import type { FieldProfile } from '../../types/report';
 
 interface CropSuitabilityReportViewProps {
   fieldName?: string;
   cropName?: string;
   score?: number | null;
   report?: RegionReport | null;
+  fieldPreview?: FieldProfile | null;
   onBack: () => void;
   onRegisterCrop: () => void;
   onOpenTips: () => void;
@@ -18,11 +20,13 @@ export const CropSuitabilityReportView: React.FC<CropSuitabilityReportViewProps>
   cropName = '상추',
   score,
   report,
+  fieldPreview,
   onBack,
   onRegisterCrop,
   onOpenTips
 }) => {
-  // 1. Genuine DB Crop Decision & Score Lookup across recommendedCrops & cropResults
+  // Prefer server preview data when available
+  const previewSuitability = fieldPreview?.suitabilityReport;
   const targetCropName = (cropName || '상추').trim();
   const crop = report?.recommendedCrops?.find(item => {
     const name = item?.cropName ?? '';
@@ -32,7 +36,7 @@ export const CropSuitabilityReportView: React.FC<CropSuitabilityReportViewProps>
     return name === targetCropName || name.includes(targetCropName) || targetCropName.includes(name);
   }) ?? report?.recommendedCrops?.[0];
 
-  const numericScore = score ?? crop?.score ?? report?.regionScore ?? null;
+  const numericScore = previewSuitability?.suitabilityScore ?? score ?? crop?.score ?? report?.regionScore ?? null;
 
   // 2. Grade & Status Translation Maps
   const gradeLabels: Record<string, string> = {

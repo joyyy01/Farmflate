@@ -101,6 +101,8 @@ export function App() {
   const [lastAnalysisRequest, setLastAnalysisRequest] = useState<RegionAnalysisRequest | null>(null);
   const [pendingCropRegistration, setPendingCropRegistration] = useState<CropRegistrationInput | null>(null);
   const [isFieldRegistrationFlow, setIsFieldRegistrationFlow] = useState(false);
+  const [fieldPreview, setFieldPreview] = useState<FieldProfile | null>(null);
+  const [, setFieldPreviewLoading] = useState(false);
   const [homeData, setHomeData] = useState<HomeData | null>(null);
   const [myFields, setMyFields] = useState<FieldProfile[]>([]);
   const [selectedField, setSelectedField] = useState<FieldProfile | null>(null);
@@ -491,14 +493,36 @@ export function App() {
   };
 
   /* Crop registration requires a verified server report. */
-  const handleStartCropConditionAnalysis = (input: CropRegistrationInput) => {
+  const handleStartCropConditionAnalysis = async (input: CropRegistrationInput) => {
     if (!isFieldRegistrationFlow || !apiReport || !canOpenReport(analysisState)) {
       returnToMyField();
       return;
     }
     setSelectedCropName(input.cropName);
     setPendingCropRegistration(input);
-    setViewStep('crop_suitability_report');
+    setFieldPreview(null);
+    setFieldPreviewLoading(true);
+    setViewStep('analyzing');
+    try {
+      const crop = (apiReport.cropResults ?? apiReport.recommendedCrops ?? []).find(
+        item => item.cropName === input.cropName
+      );
+      const preview = await ApiService.previewField({
+        fieldName: input.fieldName,
+        cropCode: crop?.cropCode ?? undefined,
+        cropName: input.cropName,
+        cultivationMethod: input.farmType,
+        cultivationStartDate: input.startDate,
+        stage: input.stage,
+        regionAnalysisId: apiReport.analysisId
+      });
+      setFieldPreview(preview);
+      setViewStep('crop_suitability_report');
+    } catch (error) {
+      setAnalysisFailure(error, 'FIELD');
+    } finally {
+      setFieldPreviewLoading(false);
+    }
   };
 
   const handleAddField = async () => {
@@ -514,7 +538,7 @@ export function App() {
     if (isAddingFieldRef.current) return;
     isAddingFieldRef.current = true;
     try {
-      const crop = apiReport.recommendedCrops.find(item => item.cropName === pendingCropRegistration.cropName);
+      const crop = (apiReport.cropResults ?? apiReport.recommendedCrops ?? []).find(item => item.cropName === pendingCropRegistration.cropName);
       const field = await ApiService.createField({
         fieldName: pendingCropRegistration.fieldName,
         cropCode: crop?.cropCode ?? undefined,
@@ -712,6 +736,7 @@ export function App() {
           fieldName={pendingCropRegistration?.fieldName}
           cropName={selectedCropName}
           report={apiReport}
+          fieldPreview={fieldPreview}
           onBack={returnToCropCondition}
           onRegisterCrop={isFieldRegistrationFlow && pendingCropRegistration ? handleAddField : returnToMyField}
           onOpenTips={() => { setTipsReturnStep('crop_suitability_report'); safeSetViewStep('report_tips'); }}
