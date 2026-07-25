@@ -107,6 +107,37 @@ public class FieldService {
     }
 
     @Transactional(readOnly = true)
+    public FieldProfileResponseDto preview(String ownerEmail, CreateFieldRequestDto request) {
+        validate(request);
+        RegionAnalysisEntity analysis = regionAnalysisRepository
+                .findByIdAndUserEmail(request.getRegionAnalysisId(), ownerEmail)
+                .orElseThrow(() -> FieldException.analysisNotFound(request.getRegionAnalysisId()));
+        RegionReportResponseDto regionReport = readRegionReport(analysis);
+        CropResolution crop = resolveCrop(request, regionReport);
+        FieldSuitabilityReportDto suitability = buildSuitability(regionReport, crop.cropCode(), crop.cropName(), request);
+        LocationResolution location = regionReport.getLocation();
+
+        FarmEntity transientField = FarmEntity.builder()
+                .userEmail(ownerEmail)
+                .fieldName(request.getFieldName().trim())
+                .cropCode(crop.cropCode())
+                .cropName(crop.cropName())
+                .regionAnalysisId(request.getRegionAnalysisId())
+                .locationJson(write(location))
+                .cultivationMethod(request.getCultivationMethod().trim())
+                .cultivationStartDate(request.getCultivationStartDate())
+                .stage(normalizeStage(request.getStage()))
+                .active(true)
+                .daysPlanted(daysPlanted(request.getCultivationStartDate()))
+                .statusBadge("PREVIEW")
+                .statusBadgeColor("blue")
+                .todayTask(firstOr(suitability.getCurrentManagementPoints(), "분석 기준을 확인하세요."))
+                .reportTime("분석 기준 " + suitability.getAnalysisBasisDate())
+                .build();
+        return toProfile(transientField, location, suitability, null);
+    }
+
+    @Transactional(readOnly = true)
     public List<FieldProfileResponseDto> getFields(String ownerEmail) {
         return farmRepository.findByUserEmailOrderByCreatedAtDesc(ownerEmail).stream()
                 .map(field -> {

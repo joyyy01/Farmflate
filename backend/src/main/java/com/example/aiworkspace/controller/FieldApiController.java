@@ -37,6 +37,12 @@ public class FieldApiController {
         return ResponseEntity.status(HttpStatus.CREATED).body(fieldService.create(ownerEmail(userPrincipal), request));
     }
 
+    @PostMapping("/preview")
+    public ResponseEntity<FieldProfileResponseDto> previewField(@AuthenticationPrincipal UserPrincipal userPrincipal,
+                                                                  @RequestBody CreateFieldRequestDto request) {
+        return ResponseEntity.ok(fieldService.preview(ownerEmail(userPrincipal), request));
+    }
+
     @ExceptionHandler(FieldService.FieldException.class)
     public ResponseEntity<ApiErrorResponse> handleFieldException(FieldService.FieldException exception) {
         return ResponseEntity.status(exception.getHttpStatus())

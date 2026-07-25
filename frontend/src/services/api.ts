@@ -283,6 +283,15 @@ export const ApiService = {
     }
   },
 
+  async previewField(payload: CreateFieldRequest): Promise<FieldProfile> {
+    const response = await requestJson<unknown>('/fields/preview', {
+      method: 'POST',
+      headers: jsonHeaders(),
+      body: JSON.stringify(payload)
+    });
+    return normalizeField(response);
+  },
+
   async createField(payload: CreateFieldRequest): Promise<FieldProfile> {
     const response = await requestJson<unknown>('/fields', {
       method: 'POST',
