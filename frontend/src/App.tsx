@@ -761,18 +761,7 @@ export function App() {
       <AIChatModal
         isOpen={isAIChatOpen}
         onClose={() => setIsAIChatOpen(false)}
-        selectedRegion={apiReport?.region?.sidoName && apiReport?.region?.sigunguName ? `${apiReport.region.sidoName} ${apiReport.region.sigunguName}` : `${selectedProvince} ${selectedDistrict}`}
-        selectedCropInfo={selectedCropName}
-        pageContext={{
-          region: apiReport?.region?.sidoName && apiReport?.region?.sigunguName ? `${apiReport.region.sidoName} ${apiReport.region.sigunguName}` : `${selectedProvince} ${selectedDistrict}`,
-          selected_crop: selectedCropName,
-          report: apiReport ?? undefined,
-          home: homeData ? {
-            weather: homeData.weather,
-            todayAction: homeData.todayAction,
-            latestRegionAnalysis: homeData.latestRegionAnalysis
-          } : undefined
-        }}
+        regionAnalysisId={apiReport?.analysisId ?? null}
       />
     </div>
   );

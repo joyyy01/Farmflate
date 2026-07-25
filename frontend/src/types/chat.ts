@@ -2,6 +2,8 @@ export interface GroundingSource {
   title: string;
   detail?: string | null;
   observed_at?: string | null;
+  observedAt?: string | null;
+  sourceUrl?: string | null;
 }
 
 export interface Message {
@@ -13,39 +15,47 @@ export interface Message {
   grounded?: boolean;
 }
 
-export interface ChatPageContext {
-  region?: string;
-  selected_crop?: string;
-  report?: unknown;
-  home?: unknown;
-  fields?: unknown[];
-}
-
 export interface ChatRequest {
   message: string;
-  history?: { role: 'user' | 'assistant'; content: string }[];
-  context?: ChatPageContext;
-  temperature?: number;
+  history?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  context?: {
+    regionAnalysisId?: string | null;
+    fieldId?: string | null;
+    route?: string;
+  };
+}
+
+export interface StructuredAnswer {
+  answer: string;
+  basisType: string;
+  usedFactIds: string[];
+  usedSourceIds: string[];
+  mentionedNumbers: number[];
+  mentionedCrops: string[];
+  mentionedRisks: string[];
+  safetyNotice: string | null;
 }
 
 export interface ChatResponse {
-  reply: string;
-  status: 'grounded' | 'needs_context';
+  requestId: string;
+  status: string;
+  answer: StructuredAnswer;
   sources: GroundingSource[];
-  used_context: string[];
-  agent_steps: string[];
 }
 
 export interface AgentTaskRequest {
-  task: string;
-  context?: ChatPageContext;
-  history?: { role: 'user' | 'assistant'; content: string }[];
+  message: string;
+  history?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  context?: {
+    regionAnalysisId?: string | null;
+    fieldId?: string | null;
+    route?: string;
+  };
 }
 
 export interface AgentTaskResponse {
-  task_id: string;
-  status: 'completed' | 'needs_context';
-  result: string;
-  steps_taken: string[];
+  requestId: string;
+  status: string;
+  answer: StructuredAnswer;
   sources: GroundingSource[];
 }

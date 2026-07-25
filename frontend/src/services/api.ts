@@ -10,8 +10,6 @@ import type {
 
 const viteEnv = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env ?? {};
 const SPRING_BACKEND_URL = (viteEnv.VITE_API_BASE_URL ?? 'http://localhost:8080/api').replace(/\/$/, '');
-const AI_API_URL = viteEnv.VITE_AI_API_BASE_URL?.replace(/\/$/, '')
-  ?? (import.meta.env.DEV ? 'http://localhost:8000/api/v1' : undefined);
 
 export type {
   CreateFieldRequest,
@@ -333,17 +331,19 @@ export const ApiService = {
   },
 
   async sendChatMessage(payload: ChatRequest): Promise<ChatResponse> {
-    if (!AI_API_URL) throw new ApiError(0, 'AI_NOT_CONFIGURED', 'AI 설명 서비스가 설정되지 않았습니다.', null, false);
-    const response = await fetch(`${AI_API_URL}/chat/`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    if (!response.ok) throw new ApiError(response.status, 'CHAT_UNAVAILABLE', 'AI 설명을 불러오지 못했습니다.', null, response.status >= 500);
-    return response.json() as Promise<ChatResponse>;
+    return requestJson<ChatResponse>('/assistant/messages', {
+      method: 'POST',
+      headers: jsonHeaders(),
+      body: JSON.stringify(payload)
+    });
   },
 
   async runAgentTask(payload: AgentTaskRequest): Promise<AgentTaskResponse> {
-    if (!AI_API_URL) throw new ApiError(0, 'AI_NOT_CONFIGURED', 'AI 작업 서비스가 설정되지 않았습니다.', null, false);
-    const response = await fetch(`${AI_API_URL}/agent/run`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    if (!response.ok) throw new ApiError(response.status, 'AGENT_UNAVAILABLE', 'AI 작업을 실행하지 못했습니다.', null, response.status >= 500);
-    return response.json() as Promise<AgentTaskResponse>;
+    return requestJson<AgentTaskResponse>('/assistant/messages', {
+      method: 'POST',
+      headers: jsonHeaders(),
+      body: JSON.stringify(payload)
+    });
   },
 
   async checkBackendHealth(): Promise<{ status: string; message: string }> {

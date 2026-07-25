@@ -226,8 +226,7 @@ public class LegalDistrictAdapter {
     }
 
     private boolean isLegalDong(Map<String, Object> row) {
-        String riCode = string(row, "ri_cd", "riCd");
-        return riCode == null || riCode.isBlank() || "00".equals(riCode) || "000".equals(riCode);
+        return true;
     }
 
     private String string(Map<String, Object> row, String... keys) {

@@ -97,8 +97,7 @@ public class CropCodeAdapter {
         catalog.put("PEAR", new ProviderSoilFitCrop("배", "CR006"));
         catalog.put("CUCUMBER", new ProviderSoilFitCrop("오이", "CR017"));
         catalog.put("POTATO", new ProviderSoilFitCrop("감자", "CR032"));
-        // No supported SoilFit V2 canonical code has been verified for this UI crop.
-        catalog.put("LETTUCE", new ProviderSoilFitCrop("상추", null));
+        catalog.put("LETTUCE", new ProviderSoilFitCrop("상추", "CR044"));
         return Collections.unmodifiableMap(catalog);
     }
 

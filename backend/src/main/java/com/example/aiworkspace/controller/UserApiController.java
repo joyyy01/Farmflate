@@ -7,9 +7,11 @@ import com.example.aiworkspace.domain.user.UserRepository;
 import com.example.aiworkspace.security.UserPrincipal;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.HashMap;
 import java.util.List;
@@ -23,30 +25,24 @@ public class UserApiController {
     private final UserRepository userRepository;
     private final InquiryRepository inquiryRepository;
 
+    private String requireEmail(UserPrincipal principal) {
+        if (principal == null || principal.getEmail() == null || principal.getEmail().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "로그인이 필요합니다.");
+        }
+        return principal.getEmail();
+    }
+
     @GetMapping("/me")
     public ResponseEntity<UserProfileResponse> getCurrentUser(@AuthenticationPrincipal UserPrincipal userPrincipal) {
-        String email = userPrincipal != null && userPrincipal.getEmail() != null ? userPrincipal.getEmail() : "user@farmflate.com";
-        
+        String email = requireEmail(userPrincipal);
         User user = userRepository.findByEmail(email)
-                .orElse(User.builder()
-                        .email(email)
-                        .nickname("사용자님")
-                        .provider("kakao")
-                        .providerId("local_dev_id")
-                        .build());
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."));
 
         String displayName = (user.getNickname() != null && !user.getNickname().isBlank()) ? user.getNickname() : "사용자님";
         String provider = user.getProvider() != null ? user.getProvider() : "kakao";
         String role = user.getRole() != null ? user.getRole().name() : "USER";
 
-        UserProfileResponse response = new UserProfileResponse(
-                user.getEmail() != null ? user.getEmail() : email,
-                displayName,
-                provider,
-                role
-        );
-
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(new UserProfileResponse(user.getEmail(), displayName, provider, role));
     }
 
     @PutMapping("/me")
@@ -54,32 +50,20 @@ public class UserApiController {
             @AuthenticationPrincipal UserPrincipal userPrincipal,
             @RequestBody UpdateProfileRequestDto request) {
 
-        String email = userPrincipal != null && userPrincipal.getEmail() != null ? userPrincipal.getEmail() : "user@farmflate.com";
-
+        String email = requireEmail(userPrincipal);
         User user = userRepository.findByEmail(email)
-                .map(existing -> {
-                    if (request.getNickname() != null && !request.getNickname().isBlank()) {
-                        existing.update(request.getNickname());
-                    }
-                    return userRepository.save(existing);
-                })
-                .orElseGet(() -> userRepository.save(User.builder()
-                        .email(email)
-                        .nickname(request.getNickname() != null && !request.getNickname().isBlank() ? request.getNickname() : "사용자님")
-                        .provider("kakao")
-                        .providerId("local_dev_id")
-                        .build()));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."));
+
+        if (request.getNickname() != null && !request.getNickname().isBlank()) {
+            user.update(request.getNickname());
+            userRepository.save(user);
+        }
 
         String displayName = (user.getNickname() != null && !user.getNickname().isBlank()) ? user.getNickname() : "사용자님";
         String provider = user.getProvider() != null ? user.getProvider() : "kakao";
         String role = user.getRole() != null ? user.getRole().name() : "USER";
 
-        return ResponseEntity.ok(new UserProfileResponse(
-                user.getEmail() != null ? user.getEmail() : email,
-                displayName,
-                provider,
-                role
-        ));
+        return ResponseEntity.ok(new UserProfileResponse(user.getEmail(), displayName, provider, role));
     }
 
     @PostMapping("/inquiries")
@@ -87,7 +71,7 @@ public class UserApiController {
             @AuthenticationPrincipal UserPrincipal userPrincipal,
             @RequestBody InquiryRequestDto request) {
 
-        String email = userPrincipal != null && userPrincipal.getEmail() != null ? userPrincipal.getEmail() : "user@farmflate.com";
+        String email = requireEmail(userPrincipal);
 
         InquiryEntity inquiry = InquiryEntity.builder()
                 .userEmail(email)
@@ -108,7 +92,7 @@ public class UserApiController {
 
     @GetMapping("/inquiries")
     public ResponseEntity<List<InquiryEntity>> getUserInquiries(@AuthenticationPrincipal UserPrincipal userPrincipal) {
-        String email = userPrincipal != null && userPrincipal.getEmail() != null ? userPrincipal.getEmail() : "user@farmflate.com";
+        String email = requireEmail(userPrincipal);
         List<InquiryEntity> list = inquiryRepository.findByUserEmailOrderByCreatedAtDesc(email);
         return ResponseEntity.ok(list);
     }

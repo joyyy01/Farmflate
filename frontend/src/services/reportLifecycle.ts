@@ -164,7 +164,6 @@ export const normalizeRegionReport = (input: unknown, knownStatus?: AnalysisStat
   return {
     analysisId,
     status: status as TerminalAnalysisStatus,
-    dataMode: asString(input.dataMode),
     analyzedAt: asString(input.analyzedAt),
     region,
     location: normalizeLocation(input.location),

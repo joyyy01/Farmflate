@@ -251,7 +251,7 @@ public class SoilChemistryAdapter {
             setMetricValue(result, 3, value(row, "POSIFERT_K", "posifert_k"));
             setMetricValue(result, 4, value(row, "POSIFERT_CA", "posifert_ca"));
             setMetricValue(result, 5, value(row, "POSIFERT_MG", "posifert_mg"));
-            setMetricValue(result, 6, value(row, "EC", "ec"));
+            setMetricValue(result, 6, value(row, "ELCD", "EC", "ec"));
             if (result.ph != null) {
                 return ExternalResult.success(result);
             }

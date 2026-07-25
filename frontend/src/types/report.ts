@@ -1,6 +1,5 @@
 export type TerminalAnalysisStatus = 'COMPLETED' | 'PARTIAL';
 export type AnalysisStatus = 'PENDING' | 'PROCESSING' | TerminalAnalysisStatus | 'FAILED';
-export type DataMode = 'LIVE' | 'AUTO' | string;
 
 export interface RegionIdentity {
   sidoCode: string;
@@ -96,7 +95,6 @@ export interface PrioritizedAction {
 export interface RegionReport {
   analysisId: string;
   status: TerminalAnalysisStatus;
-  dataMode: DataMode | null;
   analyzedAt?: string | null;
   region: RegionIdentity;
   location?: LocationResolution | null;
