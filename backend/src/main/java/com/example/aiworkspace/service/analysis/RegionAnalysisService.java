@@ -12,7 +12,6 @@ import com.example.aiworkspace.dto.region.RegionDto;
 import com.example.aiworkspace.dto.region.RegionReportResponseDto;
 import com.example.aiworkspace.service.external.AsosAdapter;
 import com.example.aiworkspace.service.external.ExternalResult;
-import com.example.aiworkspace.service.external.FixtureProvider;
 import com.example.aiworkspace.service.external.NormalizedMetric;
 import com.example.aiworkspace.service.external.ShortForecastAdapter;
 import com.example.aiworkspace.service.external.SoilChemistryAdapter;
@@ -20,7 +19,6 @@ import com.example.aiworkspace.service.external.SoilSuitabilityAdapter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -37,7 +35,6 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -63,13 +60,10 @@ public class RegionAnalysisService {
             "CROP", "추천 작물을 계산하는 중",
             "REPORT", "지역 농사 환경 점수를 산출하는 중");
     private static final String OWNER_SCOPE = "OWNER";
-    private static final String PUBLIC_SCOPE = "PUBLIC";
-    private static final String PUBLIC_SCOPE_SUBJECT = "PUBLIC_REGION";
 
     private final RegionRepository regionRepository;
     private final RegionAnalysisRepository analysisRepository;
     private final CropScoringEngine cropScoringEngine;
-    private final FixtureProvider fixtureProvider;
     private final ObjectMapper objectMapper;
     private final ShortForecastAdapter shortForecastAdapter;
     private final AsosAdapter asosAdapter;
@@ -77,9 +71,6 @@ public class RegionAnalysisService {
     private final SoilSuitabilityAdapter soilSuitabilityAdapter;
     private final LocationResolutionService locationResolutionService;
     private final ApplicationEventPublisher applicationEventPublisher;
-
-    @Value("${app.data-mode:LIVE}")
-    private String dataMode;
 
     @Transactional(readOnly = true)
     public List<RegionDto> getSidos() {
@@ -110,16 +101,6 @@ public class RegionAnalysisService {
         return createInScope(userEmail, OWNER_SCOPE, userEmail, request);
     }
 
-    /**
-     * Public regional exploration has no user identity and is never eligible for
-     * field registration.  Its explicit scope makes idempotency/cache behavior
-     * predictable without masquerading as a logged-in owner.
-     */
-    @Transactional
-    public RegionAnalysisStatusDto createPublic(RegionAnalysisRequestDto request) {
-        return createInScope(null, PUBLIC_SCOPE, PUBLIC_SCOPE_SUBJECT, request);
-    }
-
     private RegionAnalysisStatusDto createInScope(String ownerEmail, String analysisScope,
                                                    String scopeSubject, RegionAnalysisRequestDto request) {
         if (hasText(request.getIdempotencyKey())) {
@@ -140,21 +121,6 @@ public class RegionAnalysisService {
 
         Region region = regionRepository.findBySidoCodeAndSigunguCode(request.getSidoCode(), request.getSigunguCode())
                 .orElseThrow(() -> RegionAnalysisException.mappingNotConfigured(request.getSidoCode(), request.getSigunguCode()));
-        String mode = normalizedDataMode();
-
-        if ("REPLAY".equals(mode)) {
-            LocationResolution location = locationResolutionService.resolve(request.getLocation(), region);
-            RegionReportResponseDto replay = fixtureProvider.getGochangFixture(
-                    region.getSidoCode(), region.getSigunguCode(), region.getSidoName(), region.getSigunguName());
-            RegionReportResponseDto explicitReplay = replay.toBuilder()
-                    .status("COMPLETED")
-                    .dataMode("REPLAY")
-                    .isReplay(true)
-                    .location(location)
-                    .build();
-            return saveAndReturn(explicitReplay, region, ownerEmail, analysisScope, scopeSubject,
-                    request.getIdempotencyKey(), "REPLAY");
-        }
 
         RegionAnalysisEntity pending = RegionAnalysisEntity.builder()
                 .id(UUID.randomUUID().toString())
@@ -169,7 +135,7 @@ public class RegionAnalysisService {
                 .sigunguName(region.getSigunguName())
                 .locationRequestJson(serializeLocationRequest(request.getLocation()))
                 .analyzedAt(LocalDateTime.now())
-                .dataMode(mode)
+                .dataMode("API")
                 .reportStatus("PENDING")
                 .currentStep("REGION")
                 .completedSteps("")
@@ -286,15 +252,11 @@ public class RegionAnalysisService {
                 .recommendedCrops(recommended)
                 .cropResults(cropResults)
                 .topRisks(risks)
-                .safeWorkWindows(toSafeWorkWindows(output.decisionOutput.safeWorkWindows))
-                .prioritizedActions(toPrioritizedActions(output.decisionOutput.prioritizedActions))
                 .tips(buildOfficialTips(missingMetrics))
                 .sources(sources)
                 .missingMetrics(missingMetrics)
                 .analyzedAt(LocalDateTime.now().format(DateTimeFormatter.ISO_DATE_TIME))
-                .dataMode("LIVE")
                 .isCached(false)
-                .isReplay(false)
                 .build();
     }
 
@@ -351,7 +313,7 @@ public class RegionAnalysisService {
                 .confidenceMessage(scopedReport.getDataConfidence() != null ? scopedReport.getDataConfidence().getMessage() : null)
                 .payloadJson(payload)
                 .analyzedAt(LocalDateTime.now())
-                .dataMode(mode)
+                .dataMode("API")
                 .reportStatus(scopedReport.getStatus())
                 .build();
         try {
@@ -515,17 +477,6 @@ public class RegionAnalysisService {
         return readReport(entity, analysisId);
     }
 
-    @Transactional(readOnly = true)
-    public RegionAnalysisStatusDto getPublicStatus(UUID analysisId) {
-        RegionAnalysisEntity entity = findPublicAnalysis(analysisId);
-        return statusFor(entity, false);
-    }
-
-    @Transactional(readOnly = true)
-    public RegionReportResponseDto getPublicReport(UUID analysisId) {
-        return readReport(findPublicAnalysis(analysisId), analysisId);
-    }
-
     private RegionReportResponseDto readReport(RegionAnalysisEntity entity, UUID analysisId) {
         if (!hasText(entity.getPayloadJson())) {
             throw RegionAnalysisException.reportPayloadUnavailable("저장된 분석 스냅샷이 없습니다.");
@@ -549,22 +500,18 @@ public class RegionAnalysisService {
         if (latest.isPresent()) {
             region = regionRepository.findBySidoCodeAndSigunguCode(latest.get().getSidoCode(), latest.get().getSigunguCode()).orElse(null);
         }
-        if (region == null) {
-            region = regionRepository.findBySidoCodeAndSigunguCode("52", "52180")
-                    .orElseGet(() -> regionRepository.findByEnabledTrueOrderBySidoNameAscSigunguNameAsc().stream().findFirst().orElse(null));
-        }
 
-        HomeResponseDto.WeatherDto weatherDto = buildWeatherForRegion(region);
-
-        if (latest.isEmpty()) {
+        if (latest.isEmpty() || region == null) {
             return HomeResponseDto.builder()
                     .user(HomeResponseDto.UserDto.builder().displayName(displayName).build())
-                    .weather(weatherDto)
+                    .weather(HomeResponseDto.WeatherDto.builder().status("UNAVAILABLE").build())
                     .todayAction(null)
                     .latestRegionAnalysis(null)
                     .farms(Collections.emptyList())
                     .build();
         }
+
+        HomeResponseDto.WeatherDto weatherDto = buildWeatherForRegion(region);
 
         RegionAnalysisEntity analysis = latest.get();
         RegionReportResponseDto report;
@@ -617,23 +564,31 @@ public class RegionAnalysisService {
             }
 
             ShortForecastAdapter.DailyForecast today = forecasts.get(0);
-            double currentTemp = (today.tmpValues != null && !today.tmpValues.isEmpty())
+            Double currentTemp = (today.tmpValues != null && !today.tmpValues.isEmpty())
                     ? today.tmpValues.get(0)
-                    : (today.minTemp != null && today.maxTemp != null ? (today.minTemp + today.maxTemp) / 2.0 : 20.0);
+                    : (today.minTemp != null && today.maxTemp != null ? (today.minTemp + today.maxTemp) / 2.0 : null);
 
-            double minTemp = today.minTemp != null ? today.minTemp : currentTemp - 3.0;
-            double maxTemp = today.maxTemp != null ? today.maxTemp : currentTemp + 4.0;
-            int pop = today.popMax != null ? today.popMax : 10;
-            double pcp = today.pcpTotal != null ? today.pcpTotal : 0.0;
+            Double minTemp = today.minTemp;
+            Double maxTemp = today.maxTemp;
+            Integer pop = today.popMax;
+            Double pcp = today.pcpTotal;
 
-            String condition = (pcp > 5.0 || pop >= 60) ? "RAIN" : (pop >= 30 ? "CLOUDY" : "SUNNY");
-            String timeStr = "기상청 실시간 예보 (" + java.time.ZonedDateTime.now(java.time.ZoneId.of("Asia/Seoul")).format(java.time.format.DateTimeFormatter.ofPattern("HH:00")) + ")";
+            String condition = null;
+            if (pcp != null && pcp > 5.0) condition = "RAIN";
+            else if (pop != null && pop >= 60) condition = "RAIN";
+            else if (pop != null && pop >= 30) condition = "CLOUDY";
+            else if (pop != null) condition = "SUNNY";
+
+            String timeStr = null;
+            if (today.date != null) {
+                timeStr = "기상청 예보 (" + today.date + ")";
+            }
 
             return HomeResponseDto.WeatherDto.builder()
                     .status("AVAILABLE")
-                    .temperature((double) Math.round(currentTemp * 10.0) / 10.0)
-                    .minTemperature((double) Math.round(minTemp * 10.0) / 10.0)
-                    .maxTemperature((double) Math.round(maxTemp * 10.0) / 10.0)
+                    .temperature(currentTemp != null ? (double) Math.round(currentTemp * 10.0) / 10.0 : null)
+                    .minTemperature(minTemp != null ? (double) Math.round(minTemp * 10.0) / 10.0 : null)
+                    .maxTemperature(maxTemp != null ? (double) Math.round(maxTemp * 10.0) / 10.0 : null)
                     .precipitationProbability(pop)
                     .condition(condition)
                     .observedOrForecastAt(timeStr)
@@ -717,28 +672,12 @@ public class RegionAnalysisService {
     }
 
     private RegionAnalysisEntity findAccessibleAnalysis(String ownerEmail, UUID analysisId) {
-        if (hasText(ownerEmail)) {
-            Optional<RegionAnalysisEntity> ownerAnalysis = analysisRepository.findByIdAndUserEmail(analysisId.toString(), ownerEmail);
-            if (ownerAnalysis.isPresent()) return ownerAnalysis.get();
-        }
-        return findPublicAnalysis(analysisId);
-    }
-
-    private RegionAnalysisEntity findPublicAnalysis(UUID analysisId) {
-        return analysisRepository.findByIdAndAnalysisScope(analysisId.toString(), PUBLIC_SCOPE)
+        return analysisRepository.findByIdAndUserEmail(analysisId.toString(), ownerEmail)
                 .orElseThrow(() -> RegionAnalysisException.analysisNotFound(analysisId));
     }
 
     private boolean hasExplicitLocation(RegionAnalysisRequestDto request) {
         return request.getLocation() != null && !request.getLocation().isRegionReference();
-    }
-
-    private String normalizedDataMode() {
-        String candidate = hasText(dataMode) ? dataMode.trim().toUpperCase(Locale.ROOT) : "LIVE";
-        return switch (candidate) {
-            case "LIVE", "AUTO", "REPLAY" -> candidate;
-            default -> "LIVE";
-        };
     }
 
     private RegionDto toRegionDto(Region region) {
@@ -790,26 +729,6 @@ public class RegionAnalysisService {
                     .evidenceRefs(evidence).source(evidence.isEmpty() ? null : evidence.get(0)).build());
         }
         return values;
-    }
-
-    private List<RegionReportResponseDto.SafeWorkWindowDto> toSafeWorkWindows(
-            List<CropScoringEngine.SafeWorkWindow> windows) {
-        if (windows == null) return List.of();
-        return windows.stream().map(window -> RegionReportResponseDto.SafeWorkWindowDto.builder()
-                .start(window.startDate).end(window.endDate)
-                .label(window.durationDays + "일 작업 가능")
-                .reason(window.rationale).confidence(80)
-                .sourceRefs(sourceRefs(window.evidenceRefs)).build()).toList();
-    }
-
-    private List<RegionReportResponseDto.PrioritizedActionDto> toPrioritizedActions(
-            List<CropScoringEngine.PrioritizedAction> actions) {
-        if (actions == null) return List.of();
-        return actions.stream().map(action -> RegionReportResponseDto.PrioritizedActionDto.builder()
-                .rank(action.rank).title(action.title)
-                .reason("기상 예보 기반 " + action.relatedRiskCode + " 대응 작업")
-                .leadTime(action.leadTimeDays == 0 ? "즉시" : "D-" + action.leadTimeDays)
-                .sourceRefs(sourceRefs(action.evidenceRefs)).build()).toList();
     }
 
     private RegionReportResponseDto.ConfidenceDto toDataConfidence(CropScoringEngine.DataConfidence confidence) {

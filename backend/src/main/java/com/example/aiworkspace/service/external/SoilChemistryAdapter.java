@@ -43,7 +43,6 @@ public class SoilChemistryAdapter {
     private final LegalDistrictAdapter legalDistrictAdapter;
     private final int cacheDays;
     private final int retryCount;
-    private final boolean replay;
     private final Map<String, CachedSoil> cache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, CompletableFuture<ExternalResult<SoilChemistryResult>>> inFlight = new ConcurrentHashMap<>();
 
@@ -58,14 +57,12 @@ public class SoilChemistryAdapter {
             @Value("${app.external.data-go-kr.service-key}") String serviceKey,
             LegalDistrictAdapter legalDistrictAdapter,
             @Value("${app.cache.soil-chemistry-days:30}") int cacheDays,
-            @Value("${app.external-api.retry-count:1}") int retryCount,
-            @Value("${app.data-mode:LIVE}") String dataMode) {
+            @Value("${app.external-api.retry-count:1}") int retryCount) {
         this.restTemplate = restTemplate;
         this.serviceKey = serviceKey;
         this.legalDistrictAdapter = legalDistrictAdapter;
         this.cacheDays = cacheDays;
         this.retryCount = retryCount;
-        this.replay = "REPLAY".equalsIgnoreCase(dataMode);
     }
 
     public static class SoilChemistryResult {
@@ -251,7 +248,7 @@ public class SoilChemistryAdapter {
             setMetricValue(result, 3, value(row, "POSIFERT_K", "posifert_k"));
             setMetricValue(result, 4, value(row, "POSIFERT_CA", "posifert_ca"));
             setMetricValue(result, 5, value(row, "POSIFERT_MG", "posifert_mg"));
-            setMetricValue(result, 6, value(row, "EC", "ec"));
+            setMetricValue(result, 6, value(row, "ELCD", "EC", "ec"));
             if (result.ph != null) {
                 return ExternalResult.success(result);
             }
@@ -372,16 +369,16 @@ public class SoilChemistryAdapter {
         for (int index = 0; index < values.size(); index++) {
             if (values.get(index) != null) {
                 metrics.add(ExternalAdapterSupport.metric(METRICS.get(index), values.get(index), null, UNITS.get(index),
-                        PROVIDER, SERVICE, result.spatialLevel, regionCode, null, true, replay,
+                        PROVIDER, SERVICE, result.spatialLevel, regionCode, null, true, false,
                         flags.isEmpty() ? "GOOD" : "PARTIAL", flags));
             }
         }
         metrics.add(ExternalAdapterSupport.metric("soil.eligible_legal_dongs", (double) result.totalDongs, null, "count",
-                PROVIDER, SERVICE, result.spatialLevel, regionCode, null, true, replay, "GOOD", flags));
+                PROVIDER, SERVICE, result.spatialLevel, regionCode, null, true, false, "GOOD", flags));
         metrics.add(ExternalAdapterSupport.metric("soil.sampled_legal_dongs", (double) result.sampledDongs, null, "count",
-                PROVIDER, SERVICE, result.spatialLevel, regionCode, null, true, replay, "GOOD", flags));
+                PROVIDER, SERVICE, result.spatialLevel, regionCode, null, true, false, "GOOD", flags));
         metrics.add(ExternalAdapterSupport.metric("soil.data_backed_legal_dongs", (double) result.coveredDongs, null, "count",
-                PROVIDER, SERVICE, result.spatialLevel, regionCode, null, true, replay, "GOOD", flags));
+                PROVIDER, SERVICE, result.spatialLevel, regionCode, null, true, false, "GOOD", flags));
         return metrics;
     }
 

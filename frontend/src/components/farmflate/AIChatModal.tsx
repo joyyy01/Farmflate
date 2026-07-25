@@ -3,22 +3,18 @@ import { motion, AnimatePresence } from 'framer-motion';
 import type { PanInfo } from 'framer-motion';
 import { ArrowUp, ChevronRight, X, Sparkles } from 'lucide-react';
 import { ApiError, ApiService } from '../../services/api';
-import type { ChatPageContext, Message } from '../../types/chat';
+import type { Message } from '../../types/chat';
 
 interface AIChatModalProps {
   isOpen: boolean;
   onClose: () => void;
-  selectedRegion?: string;
-  selectedCropInfo?: string;
-  pageContext?: ChatPageContext;
+  regionAnalysisId?: string | null;
 }
 
 export const AIChatModal: React.FC<AIChatModalProps> = ({
   isOpen,
   onClose,
-  selectedRegion,
-  selectedCropInfo,
-  pageContext
+  regionAnalysisId
 }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -29,7 +25,7 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
 
   const detailedQuestions = [
     { title: '이 상태가 왜 그런가요?', desc: '작물 상태나 문제 원인을 알려드려요.', img: '/svg-assets/ai/faq-icons/state-question.svg' },
-    { title: '오늘 물을 줘야 하나요?', desc: '날씨와 토양 정보를 바탕으로 알려드려요.', img: '/svg-assets/ai/faq-icons/season-question.svg' },
+    { title: '오늘 물을 줘야 하나요?', desc: '최근 날씨를 설명하고, 직접 확인할 토양 상태를 알려드려요.', img: '/svg-assets/ai/faq-icons/season-question.svg' },
     { title: '이 시기에는 무엇을 조심해야 하나요?', desc: '시기별 주의사항과 관리 팁을 알려드려요.', img: '/svg-assets/ai/faq-icons/crop-question.svg' },
     { title: '농사 용어가 어려워요', desc: '쉬운 설명으로 이해를 도와드려요.', img: '/svg-assets/ai/faq-icons/term-question.svg' }
   ];
@@ -62,18 +58,17 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
           content: message.content
         })),
         context: {
-          ...pageContext,
-          region: pageContext?.region || selectedRegion,
-          selected_crop: pageContext?.selected_crop || selectedCropInfo
+          regionAnalysisId: regionAnalysisId ?? null,
+          route: 'ai_chat'
         }
       });
       const aiMsg: Message = {
         id: crypto.randomUUID(),
         sender: 'assistant',
-        content: response.reply,
+        content: response.answer?.answer ?? '답변을 생성하지 못했습니다.',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         sources: response.sources,
-        grounded: response.status === 'grounded'
+        grounded: response.status === 'completed'
       };
       setMessages(prev => [...prev, aiMsg]);
     } catch (err) {

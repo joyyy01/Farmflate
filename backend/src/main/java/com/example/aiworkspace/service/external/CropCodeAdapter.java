@@ -29,15 +29,12 @@ public class CropCodeAdapter {
     private static final Map<String, ProviderSoilFitCrop> SOIL_FIT_CATALOG = soilFitCatalog();
 
     private final int cacheDays;
-    private final boolean replay;
     private final Map<String, CachedCropCodes> cache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, CompletableFuture<ExternalResult<Map<String, CropCodeMapping>>>> inFlight = new ConcurrentHashMap<>();
 
     public CropCodeAdapter(
-            @Value("${app.cache.crop-code-days:90}") int cacheDays,
-            @Value("${app.data-mode:LIVE}") String dataMode) {
+            @Value("${app.cache.crop-code-days:90}") int cacheDays) {
         this.cacheDays = cacheDays;
-        this.replay = "REPLAY".equalsIgnoreCase(dataMode);
     }
 
     public static class CropCodeMapping {
@@ -83,7 +80,7 @@ public class CropCodeAdapter {
         for (CropCodeMapping mapping : mappings.values()) {
             metrics.add(ExternalAdapterSupport.metric("crop_code", null,
                     mapping.resolved ? mapping.apiCropCode : mapping.cropName, null, PROVIDER, SERVICE,
-                    "NATIONAL", mapping.internalCode, null, false, replay,
+                    "NATIONAL", mapping.internalCode, null, false, false,
                     mapping.resolved ? "GOOD" : "PARTIAL",
                     mapping.resolved ? List.of() : List.of("UNSUPPORTED_BY_SOIL_FIT_CATALOG")));
         }
@@ -97,8 +94,7 @@ public class CropCodeAdapter {
         catalog.put("PEAR", new ProviderSoilFitCrop("배", "CR006"));
         catalog.put("CUCUMBER", new ProviderSoilFitCrop("오이", "CR017"));
         catalog.put("POTATO", new ProviderSoilFitCrop("감자", "CR032"));
-        // No supported SoilFit V2 canonical code has been verified for this UI crop.
-        catalog.put("LETTUCE", new ProviderSoilFitCrop("상추", null));
+        catalog.put("LETTUCE", new ProviderSoilFitCrop("상추", "CR044"));
         return Collections.unmodifiableMap(catalog);
     }
 

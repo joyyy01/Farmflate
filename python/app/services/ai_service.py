@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, AsyncGenerator, Iterable
 from uuid import uuid4
 
@@ -10,76 +11,117 @@ from typing_extensions import TypedDict
 
 from app.core.config import settings
 from app.schemas.chat import (
+    AgentRunRequest,
+    AgentRunResponse,
     AgentTaskRequest,
     AgentTaskResponse,
-    ChatPageContext,
     ChatRequest,
     ChatResponse,
+    FactPackage,
     GroundingSource,
+    StructuredAnswer,
+)
+from app.services.tools import (
+    explain_agricultural_term,
+    get_field_report,
+    get_region_analysis,
+    get_report_sources,
+    search_official_guidance,
+    get_crop_profile,
+    get_seasonal_advice,
+    get_risk_guide,
+    compare_crops,
+    CROP_PROFILES,
+    RISK_GUIDES,
 )
 
 
-class FarmAgentState(TypedDict, total=False):
-    request: ChatRequest
+class AgentState(TypedDict, total=False):
+    fact_package: FactPackage
     intent: str
-    facts: dict[str, Any]
-    fallback: str
-    reply: str
+    selected_tools: list[str]
+    tool_results: dict[str, Any]
+    structured_answer: StructuredAnswer
+    validation_passed: bool
+    final_answer: StructuredAnswer
+    final_sources: list[dict[str, Any]]
     trace: list[str]
 
 
 class AIService:
-    """A report-grounded assistant with an optional OpenAI synthesis step.
-
-    Facts are selected from the current page context before any model is called.
-    That keeps the fallback useful without credentials and prevents a configured
-    model from inventing a report, a public-data request, or a field condition.
-    """
-
-    _RISK_WORDS = ("위험", "주의", "조심", "병", "피해", "재해")
-    _CROP_WORDS = ("작물", "심", "재배", "추천", "감자", "배", "오이", "상추", "사과")
-    _WHY_WORDS = ("왜", "이유", "근거", "분석", "점수")
+    _RISK_WORDS = ("위험", "주의", "조심", "병", "피해", "재해", "호우", "폭염", "강풍", "저온", "서리", "가뭄", "태풍", "역병", "노균")
+    _CROP_WORDS = ("작물", "심", "재배", "추천", "감자", "배", "오이", "상추", "사과", "적합", "뭘", "어떤")
+    _WHY_WORDS = ("왜", "이유", "근거", "분석", "점수", "어떻게", "판정", "산출")
+    _TERM_WORDS = ("뜻", "의미", "뭐", "무엇", "용어", "EC", "pH", "유기물", "질소", "인산", "칼륨", "칼슘", "마그네슘", "배수", "적산온도", "생육적온", "도장", "엽소", "습해", "연작")
+    _GUIDANCE_WORDS = ("농사로", "공식", "가이드", "관리법", "안내", "지침", "요령", "방법")
+    _UNSUPPORTED_WORDS = ("바꿔", "변경", "수정", "조정해", "높여", "낮춰", "삭제", "취소")
+    _WATER_WORDS = ("물주기", "물줘", "물 줘", "급수", "관수", "물주", "물 주")
+    _SEASON_WORDS = ("계절", "시기", "달", "월", "언제", "파종", "정식", "수확", "전정", "가지치기", "심는", "거두", "심어야", "심어")
+    _COMPARE_WORDS = ("비교", "차이", "vs", "어느", "골라", "선택", "낫")
+    _SOIL_WORDS = ("토양", "흙", "산도", "비료", "퇴비", "석회", "양분", "거름")
 
     def __init__(self) -> None:
-        builder = StateGraph(FarmAgentState)
-        builder.add_node("classify_request", self._classify_request)
-        builder.add_node("collect_page_evidence", self._collect_page_evidence)
-        builder.add_node("draft_grounded_answer", self._draft_grounded_answer)
-        builder.add_node("verify_grounding", self._verify_grounding)
-        builder.add_edge(START, "classify_request")
-        builder.add_edge("classify_request", "collect_page_evidence")
-        builder.add_edge("collect_page_evidence", "draft_grounded_answer")
-        builder.add_edge("draft_grounded_answer", "verify_grounding")
-        builder.add_edge("verify_grounding", END)
+        builder = StateGraph(AgentState)
+        builder.add_node("validate_request", self._validate_request)
+        builder.add_node("classify_intent", self._classify_intent)
+        builder.add_node("select_tools", self._select_tools)
+        builder.add_node("execute_tools", self._execute_tools)
+        builder.add_node("compose_structured_answer", self._compose_structured_answer)
+        builder.add_node("validate_facts_and_sources", self._validate_facts_and_sources)
+        builder.add_node("fallback_or_return", self._fallback_or_return)
+        builder.add_edge(START, "validate_request")
+        builder.add_edge("validate_request", "classify_intent")
+        builder.add_edge("classify_intent", "select_tools")
+        builder.add_edge("select_tools", "execute_tools")
+        builder.add_edge("execute_tools", "compose_structured_answer")
+        builder.add_edge("compose_structured_answer", "validate_facts_and_sources")
+        builder.add_edge("validate_facts_and_sources", "fallback_or_return")
+        builder.add_edge("fallback_or_return", END)
         self._agent_graph = builder.compile()
 
+    async def run_agent(self, request: AgentRunRequest) -> AgentRunResponse:
+        fp = request.fact_package
+        state = await self._agent_graph.ainvoke({
+            "fact_package": fp,
+            "trace": [],
+        })
+        return AgentRunResponse(
+            requestId=fp.requestId,
+            status="completed" if state.get("validation_passed") else "fallback",
+            answer=state["final_answer"],
+            sources=state.get("final_sources", []),
+        )
+
     async def process_chat(self, request: ChatRequest) -> ChatResponse:
-        state = await self._run_agent_graph(request)
-        return self._response_from_state(state)
-
-    async def _run_agent_graph(self, request: ChatRequest) -> FarmAgentState:
-        return await self._agent_graph.ainvoke({"request": request, "trace": []})
-
-    def _response_from_state(self, state: FarmAgentState) -> ChatResponse:
-        facts = state["facts"]
+        fp = self._chat_request_to_fact_package(request)
+        agent_request = AgentRunRequest(fact_package=fp)
+        response = await self.run_agent(agent_request)
+        sources = [
+            GroundingSource(
+                title=s.get("provider", "") + " " + s.get("service", ""),
+                detail=s.get("dataDate"),
+                observed_at=s.get("dataDate"),
+                source_url=s.get("sourceUrl"),
+            )
+            for s in response.sources
+        ]
         return ChatResponse(
-            reply=state["reply"],
-            status="grounded" if facts["has_report"] else "needs_context",
-            sources=facts["sources"],
-            used_context=facts["used_context"],
-            agent_steps=state.get("trace", []),
+            reply=response.answer.answer,
+            status="grounded" if response.status == "completed" else "needs_context",
+            sources=sources,
+            used_context=response.answer.usedFactIds,
+            agent_steps=[],
         )
 
     async def stream_chat_response(self, request: ChatRequest) -> AsyncGenerator[str, None]:
-        """Stream one already-grounded answer; no simulated delay or fake stages."""
         response = await self.process_chat(request)
         for chunk in self._chunks(response.reply, 64):
             yield f"event: message\ndata: {json.dumps({'delta': chunk}, ensure_ascii=False)}\n\n"
         yield f"event: done\ndata: {response.model_dump_json()}\n\n"
 
     async def execute_agent_task(self, request: AgentTaskRequest) -> AgentTaskResponse:
-        state = await self._run_agent_graph(ChatRequest(message=request.task, history=request.history, context=request.context))
-        response = self._response_from_state(state)
+        chat_request = ChatRequest(message=request.task, history=request.history)
+        response = await self.process_chat(chat_request)
         return AgentTaskResponse(
             task_id=str(uuid4()),
             status="completed" if response.status == "grounded" else "needs_context",
@@ -88,228 +130,578 @@ class AIService:
             sources=response.sources,
         )
 
-    def _classify_request(self, state: FarmAgentState) -> dict[str, Any]:
-        intent = self._classify_intent(state["request"].message)
-        return {"intent": intent, "trace": [f"질문 의도를 ‘{intent}’로 분류했습니다."]}
+    def _chat_request_to_fact_package(self, request: ChatRequest) -> FactPackage:
+        ctx = request.context or {}
+        facts = {}
+        sources = []
+        if isinstance(ctx, dict):
+            report = ctx.get("report", {})
+            if isinstance(report, dict):
+                score = report.get("regionScore") or report.get("score")
+                if score is not None:
+                    facts["region.score"] = score
+                grade = report.get("regionGrade") or report.get("grade")
+                if grade:
+                    facts["region.grade"] = grade
+                region = report.get("region", {})
+                if isinstance(region, dict):
+                    parts = [region.get("sidoName", ""), region.get("sigunguName", "")]
+                    name = " ".join(p for p in parts if p)
+                    if name:
+                        facts["region.name"] = name
+                crops = report.get("recommendedCrops", [])
+                if isinstance(crops, list):
+                    for i, crop in enumerate(crops[:3], 1):
+                        if isinstance(crop, dict):
+                            facts[f"crop.{i}.name"] = crop.get("cropName", crop.get("name", ""))
+                            facts[f"crop.{i}.score"] = crop.get("score")
+                risks = report.get("topRisks", report.get("keyRisks", []))
+                if isinstance(risks, list):
+                    for i, risk in enumerate(risks[:3], 1):
+                        if isinstance(risk, dict):
+                            facts[f"risk.{i}.code"] = risk.get("riskCode", risk.get("code", ""))
+                            facts[f"risk.{i}.title"] = risk.get("title", risk.get("riskName", ""))
+                            action = risk.get("recommendedAction", risk.get("description", ""))
+                            if action:
+                                facts[f"risk.{i}.action.1"] = action
+        return FactPackage(
+            requestId=str(uuid4()),
+            question=request.message,
+            history=[{"role": m.role, "content": m.content} for m in request.history],
+            context=ctx if isinstance(ctx, dict) else {},
+            facts=facts,
+            sources=sources,
+        )
 
-    def _collect_page_evidence(self, state: FarmAgentState) -> dict[str, Any]:
-        facts = self._extract_facts(state["request"].context)
-        report_status = "완료된 분석 리포트의 근거를 확인했습니다." if facts["has_report"] else "완료된 분석 리포트가 없음을 확인했습니다."
-        return {"facts": facts, "trace": [*state["trace"], report_status]}
+    def _validate_request(self, state: AgentState) -> dict[str, Any]:
+        fp = state["fact_package"]
+        if not fp.question or not fp.question.strip():
+            raise ValueError("질문이 비어 있습니다.")
+        return {"trace": ["요청을 검증했습니다."]}
 
-    def _draft_grounded_answer(self, state: FarmAgentState) -> dict[str, Any]:
-        fallback = self._build_grounded_reply(state["request"].message, state["facts"], state["intent"])
-        return {"fallback": fallback, "trace": [*state["trace"], "확인된 근거만으로 답변 초안을 만들었습니다."]}
+    def _classify_intent(self, state: AgentState) -> dict[str, Any]:
+        question = state["fact_package"].question
+        intent = self._classify(question)
+        return {"intent": intent, "trace": [*state["trace"], f"의도 분류: {intent}"]}
 
-    async def _verify_grounding(self, state: FarmAgentState) -> dict[str, Any]:
-        reply = await self._optionally_synthesize(state["request"], state["facts"], state["fallback"])
-        reply = reply.strip() if isinstance(reply, str) else state["fallback"]
-        if not reply or len(reply) > 1_600:
-            reply = state["fallback"]
-        return {"reply": reply, "trace": [*state["trace"], "답변의 화면 근거와 응답 길이를 검증했습니다."]}
-
-    def _classify_intent(self, message: str) -> str:
+    def _classify(self, message: str) -> str:
         lowered = message.replace(" ", "")
-        if any(word in lowered for word in self._RISK_WORDS):
-            return "위험·관리 확인"
-        if any(word in lowered for word in self._CROP_WORDS):
-            return "작물 추천 확인"
-        if any(word in lowered for word in self._WHY_WORDS):
-            return "리포트 근거 확인"
-        return "현재 리포트 요약"
+        if any(w in lowered for w in self._UNSUPPORTED_WORDS):
+            return "UNSUPPORTED_ACTION"
+        if any(w in lowered for w in self._TERM_WORDS):
+            return "TERM_EXPLANATION"
+        if any(w in lowered for w in self._WATER_WORDS):
+            return "WATERING_GUIDANCE"
+        if any(w in lowered for w in self._SEASON_WORDS):
+            return "SEASONAL_ADVICE"
+        if any(w in lowered for w in self._COMPARE_WORDS):
+            return "CROP_COMPARISON"
+        if any(w in lowered for w in self._SOIL_WORDS):
+            return "SOIL_ADVICE"
+        if any(w in lowered for w in self._GUIDANCE_WORDS):
+            return "OFFICIAL_GUIDANCE"
+        if any(w in lowered for w in self._RISK_WORDS):
+            return "RISK_EXPLANATION"
+        if any(w in lowered for w in self._CROP_WORDS):
+            return "CROP_RECOMMENDATION"
+        if any(w in lowered for w in self._WHY_WORDS):
+            return "REPORT_REASON"
+        return "GENERAL_INFORMATION"
 
-    async def _optionally_synthesize(self, request: ChatRequest, facts: dict[str, Any], fallback: str) -> str:
-        """Use OpenAI only when explicitly configured; a timeout always falls back safely."""
-        if not settings.OPENAI_API_KEY or settings.LLM_PROVIDER.lower() != "openai":
-            return fallback
+    def _select_tools(self, state: AgentState) -> dict[str, Any]:
+        intent = state["intent"]
+        tool_map: dict[str, list[str]] = {
+            "REPORT_REASON": ["get_region_analysis", "get_report_sources"],
+            "RISK_EXPLANATION": ["get_region_analysis", "get_risk_guide", "get_report_sources"],
+            "CROP_RECOMMENDATION": ["get_region_analysis", "get_crop_profile", "get_report_sources"],
+            "CROP_COMPARISON": ["get_region_analysis", "compare_crops", "get_report_sources"],
+            "TERM_EXPLANATION": ["explain_agricultural_term"],
+            "SEASONAL_ADVICE": ["get_region_analysis", "get_seasonal_advice", "get_report_sources"],
+            "WATERING_GUIDANCE": ["get_region_analysis", "get_crop_profile", "get_report_sources"],
+            "SOIL_ADVICE": ["get_region_analysis", "get_crop_profile", "get_report_sources"],
+            "OFFICIAL_GUIDANCE": ["search_official_guidance", "get_report_sources"],
+            "GENERAL_INFORMATION": ["get_region_analysis", "get_report_sources"],
+            "UNSUPPORTED_ACTION": [],
+        }
+        selected = tool_map.get(intent, ["get_region_analysis", "get_report_sources"])
+        return {"selected_tools": selected, "trace": [*state["trace"], f"도구 선택: {selected}"]}
 
-        evidence = self._model_evidence(facts)
-        if not evidence:
-            return fallback
+    def _execute_tools(self, state: AgentState) -> dict[str, Any]:
+        fp = state["fact_package"]
+        results: dict[str, Any] = {}
+        for tool_name in state.get("selected_tools", []):
+            if tool_name == "get_region_analysis":
+                results["region_analysis"] = get_region_analysis(fp.facts)
+            elif tool_name == "get_report_sources":
+                results["report_sources"] = get_report_sources(fp.sources)
+            elif tool_name == "get_field_report":
+                results["field_report"] = get_field_report(fp.facts)
+            elif tool_name == "explain_agricultural_term":
+                term = self._extract_term(fp.question)
+                results["term_explanation"] = explain_agricultural_term(term)
+            elif tool_name == "search_official_guidance":
+                results["official_guidance"] = search_official_guidance(fp.facts, fp.sources)
+            elif tool_name == "get_crop_profile":
+                crop = self._extract_crop_name(fp.question, fp.facts)
+                results["crop_profile"] = get_crop_profile(crop) if crop else None
+            elif tool_name == "get_seasonal_advice":
+                crop = self._extract_crop_name(fp.question, fp.facts)
+                results["seasonal_advice"] = get_seasonal_advice(crop) if crop else None
+            elif tool_name == "get_risk_guide":
+                risk_code = fp.facts.get("risk.1.code", "")
+                results["risk_guide"] = get_risk_guide(str(risk_code)) if risk_code else None
+            elif tool_name == "compare_crops":
+                results["crop_comparison"] = compare_crops(fp.facts)
+        return {"tool_results": results, "trace": [*state["trace"], f"도구 실행: {list(results.keys())}"]}
 
+    def _extract_crop_name(self, question: str, facts: dict[str, Any]) -> str | None:
+        for code, profile in CROP_PROFILES.items():
+            if profile["name"] in question:
+                return profile["name"]
+        top_crop = facts.get("crop.1.name")
+        return str(top_crop) if top_crop else None
+
+    def _extract_term(self, question: str) -> str:
+        from app.services.tools import AGRICULTURAL_GLOSSARY
+        for term in AGRICULTURAL_GLOSSARY:
+            if term.lower() in question.lower():
+                return term
+        return question.strip()
+
+    async def _compose_structured_answer(self, state: AgentState) -> dict[str, Any]:
+        fp = state["fact_package"]
+        intent = state["intent"]
+        tool_results = state.get("tool_results", {})
+
+        if intent == "UNSUPPORTED_ACTION":
+            answer = StructuredAnswer(
+                answer="죄송합니다. 점수 변경, 데이터 수정과 같은 작업은 지원되지 않습니다. 리포트의 분석 결과에 대한 설명이나 농업 정보 안내를 도와드릴 수 있습니다.",
+                basisType="UNSUPPORTED",
+            )
+            return {"structured_answer": answer, "trace": [*state["trace"], "지원 불가 응답 생성"]}
+
+        if intent == "TERM_EXPLANATION" and "term_explanation" in tool_results:
+            term_result = tool_results["term_explanation"]
+            if term_result.get("found"):
+                answer = StructuredAnswer(
+                    answer=f"{term_result['term']}: {term_result['definition']}",
+                    basisType="TERM_DEFINITION",
+                )
+                return {"structured_answer": answer, "trace": [*state["trace"], "용어 사전 응답 생성"]}
+
+        region_analysis = tool_results.get("region_analysis", {})
+        if not region_analysis:
+            answer = StructuredAnswer(
+                answer="완료된 분석 리포트를 아직 확인하지 못했습니다. 지역 환경 분석이 완료된 뒤 다시 질문해 주시면 리포트의 점수·위험 요소·추천 작물 근거를 바탕으로 안내할게요.",
+                basisType="CURRENT_REPORT",
+            )
+            return {"structured_answer": answer, "trace": [*state["trace"], "리포트 없음 응답 생성"]}
+
+        if settings.OPENAI_API_KEY and settings.LLM_PROVIDER.lower() == "openai":
+            llm_answer = await self._call_openai(fp, intent, tool_results)
+            if llm_answer is not None:
+                return {"structured_answer": llm_answer, "trace": [*state["trace"], "LLM 응답 생성"]}
+
+        fallback_answer = self._build_deterministic_answer(fp, intent, region_analysis, tool_results)
+        return {"structured_answer": fallback_answer, "trace": [*state["trace"], "규칙 기반 응답 생성"]}
+
+    async def _call_openai(
+        self, fp: FactPackage, intent: str, tool_results: dict[str, Any]
+    ) -> StructuredAnswer | None:
+        facts_text = "\n".join(f"{k}: {v}" for k, v in fp.facts.items() if v is not None)
+        sources_text = "\n".join(
+            f"- {s.get('provider', '')} {s.get('service', '')} ({s.get('dataDate', '')})"
+            for s in fp.sources
+        )
+        system_prompt = (
+            "당신은 Farmflate 농사 안내 도우미입니다. 반드시 제공된 Fact만 사용해 한국어로 답하세요. "
+            "제공되지 않은 수치, 작물, 위험, 공공 API 결과를 추정하거나 만들어 내지 마세요. "
+            "농약량·비료량 처방, 병해충 확정 판단을 하지 마세요. "
+            "반드시 아래 JSON 형식으로만 응답하세요:\n"
+            '{"answer": "답변 텍스트", "basisType": "CURRENT_REPORT", '
+            '"usedFactIds": ["사용한 fact key"], "usedSourceIds": ["사용한 sourceId"], '
+            '"mentionedNumbers": [숫자], "mentionedCrops": ["작물명"], "mentionedRisks": ["위험명"], '
+            '"safetyNotice": null}\n'
+            "safetyNotice는 토양수분 센서 부재 등 불확실성이 있을 때만 작성하세요."
+        )
+        user_content = f"질문: {fp.question}\n\nFact:\n{facts_text}\n\n출처:\n{sources_text or '없음'}"
         messages = [
-            {
-                "role": "system",
-                "content": (
-                    "당신은 Farmflate 농사 안내 도우미입니다. 반드시 제공된 근거만 사용해 한국어로 답하세요. "
-                    "제공되지 않은 날씨, 토양 수치, 병해, 작물 적합도, 공공 API 호출 결과를 추정하거나 만들어 내지 마세요. "
-                    "의료·농약 처방처럼 단정적인 지시는 피하고, 근거와 다음 확인 행동을 짧게 설명하세요."
-                ),
-            },
-            *[{"role": item.role, "content": item.content} for item in request.history[-8:]],
-            {"role": "user", "content": f"질문: {request.message}\n\n현재 화면 근거:\n{evidence}"},
+            {"role": "system", "content": system_prompt},
+            *[{"role": h.get("role", "user"), "content": h.get("content", "")} for h in fp.history[-8:]],
+            {"role": "user", "content": user_content},
         ]
-        payload = {"model": settings.OPENAI_MODEL, "messages": messages, "temperature": request.temperature}
         try:
             async with httpx.AsyncClient(timeout=settings.LLM_TIMEOUT_SECONDS) as client:
                 result = await client.post(
                     f"{settings.OPENAI_BASE_URL.rstrip('/')}/chat/completions",
                     headers={"Authorization": f"Bearer {settings.OPENAI_API_KEY}"},
-                    json=payload,
+                    json={"model": settings.OPENAI_MODEL, "messages": messages, "temperature": 0.2},
                 )
                 result.raise_for_status()
                 content = result.json()["choices"][0]["message"]["content"].strip()
-                return content or fallback
-        except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError):
-            return fallback
+                if content.startswith("```"):
+                    content = re.sub(r"^```(?:json)?\s*", "", content)
+                    content = re.sub(r"\s*```$", "", content)
+                parsed = json.loads(content)
+                return StructuredAnswer(**parsed)
+        except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError):
+            return None
 
-    def _extract_facts(self, context: ChatPageContext | None) -> dict[str, Any]:
-        context = context or ChatPageContext()
-        report = context.report or {}
-        home = context.home or {}
-        region = context.region or self._region_from_report(report)
-        crop = context.selected_crop
-        score = self._first_value(report, "score", "overallScore", "environmentScore")
-        recommendations = self._records(report.get("recommendedCrops") or report.get("recommendations"), 3)
-        risks = self._records(report.get("keyRisks") or report.get("risks"), 3)
-        features = self._strings(report.get("environmentFeatures"), 3)
-        today_action = home.get("todayAction") if isinstance(home.get("todayAction"), dict) else None
-        sources = self._build_sources(report, region)
-        has_report = bool(score is not None or recommendations or risks or features)
-        used_context = []
-        if region:
-            used_context.append("선택 지역")
-        if has_report:
-            used_context.append("완료된 지역 분석 리포트")
-        if context.fields:
-            used_context.append("마이팜 등록 농작물")
-        if today_action:
-            used_context.append("오늘 할 일")
-        return {
-            "region": region,
-            "crop": crop,
-            "score": score,
-            "recommendations": recommendations,
-            "risks": risks,
-            "features": features,
-            "today_action": today_action,
-            "fields": context.fields,
-            "has_report": has_report,
-            "sources": sources,
-            "used_context": used_context,
-        }
+    def _build_deterministic_answer(
+        self, fp: FactPackage, intent: str, region_analysis: dict[str, Any], tool_results: dict[str, Any]
+    ) -> StructuredAnswer:
+        facts = fp.facts
+        used_fact_ids: list[str] = []
+        used_source_ids = [s.get("sourceId", "") for s in fp.sources if isinstance(s, dict)]
+        mentioned_numbers: list[float] = []
+        mentioned_crops: list[str] = []
+        mentioned_risks: list[str] = []
+        safety_notice: str | None = None
 
-    def _build_grounded_reply(self, message: str, facts: dict[str, Any], intent: str) -> str:
-        if not facts["has_report"]:
-            region_text = f"{facts['region']}의 " if facts["region"] else ""
-            return (
-                f"{region_text}완료된 분석 리포트를 아직 확인하지 못했습니다. "
-                "지역 환경 분석이 완료된 뒤 다시 질문해 주시면, 리포트의 점수·위험 요소·추천 작물 근거를 바탕으로 안내할게요."
+        region_name = facts.get("region.name", "")
+        region_score = facts.get("region.score")
+        region_grade = facts.get("region.grade", "")
+
+        if self._is_watering_question(fp.question):
+            crop_profile = tool_results.get("crop_profile")
+            parts = ["실제 토양수분 센서값이 없어 물주기 필요 여부를 확정할 수 없습니다."]
+            parts.append("최근 강수와 예보를 확인하고 뿌리 주변 흙의 수분 상태를 직접 확인하세요.")
+            if crop_profile and isinstance(crop_profile, dict):
+                watering = crop_profile.get("watering", "")
+                if watering:
+                    parts.append(f"\n💧 {crop_profile.get('name', '')} 관수 참고: {watering}")
+                    mentioned_crops.append(str(crop_profile.get("name", "")))
+            used_fact_ids = [k for k in facts if k.startswith("region.")]
+            safety_notice = "실제 토양수분 센서값이 없어 물주기 필요 여부를 확정할 수 없습니다."
+            return StructuredAnswer(
+                answer=" ".join(parts), basisType="CURRENT_REPORT",
+                usedFactIds=used_fact_ids, usedSourceIds=used_source_ids,
+                mentionedNumbers=[], mentionedCrops=mentioned_crops,
+                mentionedRisks=[], safetyNotice=safety_notice,
             )
 
-        intro = f"{facts['region']} 분석 리포트 기준으로 " if facts["region"] else "현재 분석 리포트 기준으로 "
-        if intent == "위험·관리 확인":
-            risk_text = self._risk_summary(facts["risks"])
-            return intro + (risk_text or "표시된 핵심 위험 항목이 없습니다.") + self._next_check(facts)
-        if intent == "작물 추천 확인":
-            crop_text = self._crop_summary(facts["recommendations"])
-            return intro + (crop_text or "추천 작물 데이터가 아직 없습니다.") + self._next_check(facts)
-        if intent == "리포트 근거 확인":
-            score = f"기본 적합도는 {facts['score']}점입니다. " if facts["score"] is not None else ""
-            feature_text = " ".join(facts["features"][:2])
-            return intro + score + (feature_text or self._crop_summary(facts["recommendations"]) or "리포트의 세부 근거를 확인해 주세요.") + self._next_check(facts)
+        if intent == "RISK_EXPLANATION":
+            parts = []
+            if region_name:
+                parts.append(f"📍 {region_name} 분석 기준입니다.")
+                used_fact_ids.append("region.name")
+            risk_title = facts.get("risk.1.title", "")
+            risk_code = facts.get("risk.1.code", "")
+            risk_guide = tool_results.get("risk_guide")
+            if risk_title:
+                parts.append(f"가장 큰 위험은 '{risk_title}'입니다.")
+                used_fact_ids.append("risk.1.title")
+                mentioned_risks.append(str(risk_title))
+                if risk_guide and isinstance(risk_guide, dict):
+                    parts.append(f"\n⚠️ {risk_guide.get('title', '')} 상세: {risk_guide.get('detail', '')}")
+                    parts.append(f"\n✅ 권장 대응: {risk_guide.get('action', '')}")
+            else:
+                parts.append("현재 기상 예보에서 확인된 주요 위험은 없습니다. 🟢")
+                parts.append("다만, 일기예보는 수시로 변동되므로 정기적으로 확인하세요.")
+            risk_action = facts.get("risk.1.action.1", "")
+            if risk_action and not risk_guide:
+                parts.append(f"권장 행동: {risk_action}")
+                used_fact_ids.append("risk.1.action.1")
+            answer_text = "\n".join(parts)
 
-        parts = []
-        if facts["score"] is not None:
-            parts.append(f"기본 적합도는 {facts['score']}점입니다.")
-        crop_text = self._crop_summary(facts["recommendations"])
-        if crop_text:
-            parts.append(crop_text)
-        risk_text = self._risk_summary(facts["risks"])
-        if risk_text:
-            parts.append(risk_text)
-        return intro + " ".join(parts[:3]) + self._next_check(facts)
+        elif intent == "CROP_RECOMMENDATION":
+            parts = []
+            if region_name:
+                parts.append(f"📍 {region_name} 기준 추천 작물입니다.")
+                used_fact_ids.append("region.name")
+            crop_parts = []
+            for i in range(1, 4):
+                name = facts.get(f"crop.{i}.name")
+                score = facts.get(f"crop.{i}.score")
+                if name:
+                    profile = get_crop_profile(str(name))
+                    emoji = profile.get("emoji", "") if profile else ""
+                    label = f"{emoji} {name}"
+                    if score is not None:
+                        label += f" ({score}점)"
+                        mentioned_numbers.append(float(score))
+                        used_fact_ids.append(f"crop.{i}.score")
+                    crop_parts.append(label)
+                    used_fact_ids.append(f"crop.{i}.name")
+                    mentioned_crops.append(str(name))
+            if crop_parts:
+                parts.append("추천 순위: " + " > ".join(crop_parts))
+            if region_score is not None:
+                parts.append(f"지역 종합 점수: {region_score}점 ({region_grade})")
+                used_fact_ids.append("region.score")
+                mentioned_numbers.append(float(region_score))
+            top_crop = facts.get("crop.1.name")
+            if top_crop:
+                profile = get_crop_profile(str(top_crop))
+                if profile:
+                    parts.append(f"\n🌱 {profile['name']} 재배 정보:")
+                    parts.append(f"  · 생육 적온: {profile['temp_optimal']}")
+                    parts.append(f"  · 적정 pH: {profile['ph_optimal']}")
+                    parts.append(f"  · 파종/정식: {profile['planting']}")
+                    parts.append(f"  · 수확: {profile['harvest']}")
+            answer_text = "\n".join(parts) if parts else "현재 리포트에 추천 작물 데이터가 없습니다."
+
+        elif intent == "CROP_COMPARISON":
+            comparison = tool_results.get("crop_comparison", [])
+            parts = []
+            if region_name:
+                parts.append(f"📍 {region_name} 기준 작물 비교입니다.")
+                used_fact_ids.append("region.name")
+            if comparison:
+                parts.append(f"{'작물':<6} {'점수':<6} {'적온':<12} {'적정pH':<10} {'파종시기'}")
+                parts.append("─" * 55)
+                for c in comparison:
+                    score_str = f"{c['score']}점" if c.get("score") is not None else "-"
+                    temp = c.get("temp_optimal", "-") or "-"
+                    ph = c.get("ph_optimal", "-") or "-"
+                    planting = c.get("planting", "-") or "-"
+                    parts.append(f"{c['name']:<6} {score_str:<6} {temp:<12} {ph:<10} {planting}")
+                    used_fact_ids.append(f"crop.{c['rank']}.name")
+                    mentioned_crops.append(str(c["name"]))
+                    if c.get("score") is not None:
+                        mentioned_numbers.append(float(c["score"]))
+            else:
+                parts.append("비교할 작물 데이터가 없습니다.")
+            answer_text = "\n".join(parts)
+
+        elif intent == "SEASONAL_ADVICE":
+            seasonal = tool_results.get("seasonal_advice")
+            parts = []
+            if seasonal and isinstance(seasonal, dict) and seasonal.get("advice"):
+                crop_name = seasonal.get("crop", "")
+                month = seasonal.get("month", 0)
+                parts.append(f"🗓️ {month}월 {crop_name} 농사 일정:")
+                parts.append(f"  {seasonal['advice']}")
+                parts.append(f"\n🌡️ 생육 적온: {seasonal.get('temp_optimal', '-')}")
+                parts.append(f"💧 관수: {seasonal.get('watering', '-')}")
+                mentioned_crops.append(crop_name)
+                used_fact_ids.append("crop.1.name")
+            elif region_name:
+                parts.append(f"📍 {region_name}의 현재 분석 데이터입니다.")
+                if region_score is not None:
+                    parts.append(f"지역 점수: {region_score}점 ({region_grade})")
+                    used_fact_ids.append("region.score")
+                    mentioned_numbers.append(float(region_score))
+                parts.append("특정 작물을 지정하시면 월별 농사 일정을 안내해 드릴게요.")
+            else:
+                parts.append("지역 분석을 먼저 완료하시면 계절별 농사 일정을 안내해 드릴게요.")
+            answer_text = "\n".join(parts)
+
+        elif intent == "SOIL_ADVICE":
+            parts = []
+            crop_profile = tool_results.get("crop_profile")
+            if region_name:
+                parts.append(f"📍 {region_name} 토양 정보입니다.")
+                used_fact_ids.append("region.name")
+            if crop_profile and isinstance(crop_profile, dict):
+                parts.append(f"🌱 {crop_profile.get('name', '')} 토양 요건:")
+                parts.append(f"  · 적정 pH: {crop_profile.get('ph_optimal', '-')}")
+                parts.append(f"  · 토양: {crop_profile.get('soil_note', '-')}")
+                mentioned_crops.append(str(crop_profile.get("name", "")))
+            if region_score is not None:
+                parts.append(f"\n현재 지역 토양·환경 종합 점수: {region_score}점")
+                used_fact_ids.append("region.score")
+                mentioned_numbers.append(float(region_score))
+            if not parts:
+                parts.append("토양 관련 데이터를 확인하려면 지역 분석을 먼저 완료해 주세요.")
+            answer_text = "\n".join(parts)
+
+        elif intent == "REPORT_REASON":
+            parts = []
+            if region_name:
+                parts.append(f"📍 {region_name}의 분석 결과입니다.")
+                used_fact_ids.append("region.name")
+            if region_score is not None:
+                parts.append(f"지역 종합 점수: {region_score}점 ({region_grade})")
+                used_fact_ids.append("region.score")
+                mentioned_numbers.append(float(region_score))
+            crop1 = facts.get("crop.1.name")
+            crop1_score = facts.get("crop.1.score")
+            if crop1:
+                label = f"최우선 추천 작물: {crop1}"
+                if crop1_score is not None:
+                    label += f" ({crop1_score}점)"
+                    mentioned_numbers.append(float(crop1_score))
+                parts.append(label)
+                used_fact_ids.append("crop.1.name")
+                mentioned_crops.append(str(crop1))
+            risk_title = facts.get("risk.1.title")
+            if risk_title:
+                parts.append(f"주요 위험: {risk_title}")
+                used_fact_ids.append("risk.1.title")
+                mentioned_risks.append(str(risk_title))
+            else:
+                parts.append("현재 예보에서 확인된 주요 위험은 없습니다.")
+            answer_text = "\n".join(parts) if parts else "리포트의 세부 근거를 확인해 주세요."
+
+        elif intent == "OFFICIAL_GUIDANCE":
+            guidance = tool_results.get("official_guidance", [])
+            tips = [g for g in guidance if g.get("type") == "tip"]
+            if tips:
+                answer_text = "📋 " + tips[0]["content"]
+                used_fact_ids.append(tips[0].get("factKey", ""))
+            else:
+                answer_text = "현재 리포트에 저장된 공식 자료가 없습니다.\n농사로(nongsaro.go.kr)에서 작물별 재배 기술을 직접 확인하실 수 있습니다."
+
+        else:
+            parts = []
+            if region_name:
+                parts.append(f"📍 {region_name} 분석 결과입니다.")
+                used_fact_ids.append("region.name")
+            if region_score is not None:
+                parts.append(f"지역 점수: {region_score}점 ({region_grade})")
+                used_fact_ids.append("region.score")
+                mentioned_numbers.append(float(region_score))
+            crop1 = facts.get("crop.1.name")
+            if crop1:
+                parts.append(f"추천 1순위: {crop1}")
+                used_fact_ids.append("crop.1.name")
+                mentioned_crops.append(str(crop1))
+            risk_title = facts.get("risk.1.title")
+            if risk_title:
+                parts.append(f"주요 위험: {risk_title}")
+                used_fact_ids.append("risk.1.title")
+                mentioned_risks.append(str(risk_title))
+            else:
+                parts.append("현재 확인된 주요 위험은 없습니다.")
+            parts.append("\n💡 궁금한 점: 작물 추천 이유, 위험 대응법, 계절별 농사 일정, 용어 설명 등을 물어보세요!")
+            answer_text = "\n".join(parts) if parts else "완료된 분석 리포트를 확인한 뒤 다시 질문해 주세요."
+
+        return StructuredAnswer(
+            answer=answer_text,
+            basisType="CURRENT_REPORT",
+            usedFactIds=[f for f in used_fact_ids if f],
+            usedSourceIds=used_source_ids,
+            mentionedNumbers=mentioned_numbers,
+            mentionedCrops=mentioned_crops,
+            mentionedRisks=mentioned_risks,
+            safetyNotice=safety_notice,
+        )
 
     @staticmethod
-    def _next_check(facts: dict[str, Any]) -> str:
-        action = facts.get("today_action") or {}
-        title = action.get("title") if isinstance(action, dict) else None
-        return f" 현재 확인할 일은 ‘{title}’입니다." if isinstance(title, str) and title.strip() else " 리포트의 데이터 기준일과 위험 카드도 함께 확인해 주세요."
+    def _is_watering_question(question: str) -> bool:
+        lowered = question.replace(" ", "")
+        return any(w in lowered for w in ("물주기", "물줘", "물주", "급수", "관수"))
 
-    @staticmethod
-    def _first_value(record: dict[str, Any], *keys: str) -> Any:
-        for key in keys:
-            value = record.get(key)
-            if isinstance(value, (str, int, float)) and str(value).strip():
-                return value
-        summary = record.get("summary")
-        return AIService._first_value(summary, *keys) if isinstance(summary, dict) else None
+    def _validate_facts_and_sources(self, state: AgentState) -> dict[str, Any]:
+        answer = state.get("structured_answer")
+        if answer is None:
+            return {"validation_passed": False, "trace": [*state["trace"], "답변 없음 — 검증 실패"]}
 
-    @staticmethod
-    def _records(value: Any, limit: int) -> list[dict[str, Any]]:
-        return [item for item in value if isinstance(item, dict)][:limit] if isinstance(value, list) else []
+        fp = state["fact_package"]
+        valid_fact_keys = set(fp.facts.keys())
+        valid_source_ids = {s.get("sourceId", "") for s in fp.sources if isinstance(s, dict)}
+        fact_values = set()
+        for v in fp.facts.values():
+            if isinstance(v, (int, float)):
+                fact_values.add(float(v))
+        crop_names = set()
+        risk_titles = set()
+        for k, v in fp.facts.items():
+            if k.startswith("crop.") and k.endswith(".name") and isinstance(v, str):
+                crop_names.add(v)
+            if k.startswith("risk.") and k.endswith(".title") and isinstance(v, str):
+                risk_titles.add(v)
 
-    @staticmethod
-    def _strings(value: Any, limit: int) -> list[str]:
-        if not isinstance(value, list):
-            return []
-        result = []
-        for item in value:
-            if isinstance(item, str) and item.strip():
-                result.append(item.strip())
-            elif isinstance(item, dict):
-                text = item.get("description") or item.get("label") or item.get("title")
-                if isinstance(text, str) and text.strip():
-                    result.append(text.strip())
-        return result[:limit]
+        errors: list[str] = []
+        for fid in answer.usedFactIds:
+            if fid and fid not in valid_fact_keys:
+                errors.append(f"Fact '{fid}' not in FactPackage")
+        for num in answer.mentionedNumbers:
+            if float(num) not in fact_values:
+                errors.append(f"Number {num} not in fact values")
+        for crop in answer.mentionedCrops:
+            if crop and crop not in crop_names:
+                errors.append(f"Crop '{crop}' not in fact crops")
+        for risk in answer.mentionedRisks:
+            if risk and risk not in risk_titles:
+                errors.append(f"Risk '{risk}' not in fact risks")
 
-    @staticmethod
-    def _region_from_report(report: dict[str, Any]) -> str | None:
-        region = report.get("region")
-        if not isinstance(region, dict):
-            return None
-        parts = [region.get(key) for key in ("sidoName", "sigunguName")]
-        text = " ".join(str(value).strip() for value in parts if isinstance(value, str) and value.strip())
-        return text or None
+        if answer.basisType in ("CURRENT_REPORT", "OFFICIAL_GUIDANCE") and not answer.usedSourceIds:
+            if fp.sources:
+                errors.append("basisType requires sources but usedSourceIds is empty")
 
-    def _build_sources(self, report: dict[str, Any], region: str | None) -> list[GroundingSource]:
-        sources = []
-        if report:
-            observed_at = self._first_value(report, "analyzedAt", "createdAt", "dataDate", "analysisDate")
-            sources.append(GroundingSource(title="현재 화면의 지역 분석 리포트", detail=region, observed_at=str(observed_at) if observed_at else None))
-        return sources
+        for num in answer.mentionedNumbers:
+            if num not in fact_values:
+                errors.append(f"Mentioned number {num} not in facts")
 
-    @staticmethod
-    def _crop_summary(records: list[dict[str, Any]]) -> str:
-        labels = []
-        for item in records:
-            name = item.get("cropName") or item.get("name")
-            score = item.get("score")
-            if isinstance(name, str) and name.strip():
-                labels.append(f"{name.strip()}{f' {score}점' if isinstance(score, (int, float)) else ''}")
-        return f"추천 작물은 {', '.join(labels)}입니다." if labels else ""
+        passed = len(errors) == 0
+        trace_msg = "Fact/Source 검증 통과" if passed else f"검증 실패: {errors}"
+        return {"validation_passed": passed, "trace": [*state["trace"], trace_msg]}
 
-    @staticmethod
-    def _risk_summary(records: list[dict[str, Any]]) -> str:
-        labels = []
-        for item in records:
-            title = item.get("title") or item.get("riskName") or item.get("riskCode")
-            action = item.get("recommendedAction") or item.get("description")
-            if isinstance(title, str) and title.strip():
-                label = title.strip()
-                if isinstance(action, str) and action.strip():
-                    label += f": {action.strip()}"
-                labels.append(label)
-        return f"우선 확인할 위험은 {' / '.join(labels)}입니다." if labels else ""
+    def _fallback_or_return(self, state: AgentState) -> dict[str, Any]:
+        fp = state["fact_package"]
+        if state.get("validation_passed") and state.get("structured_answer"):
+            return {
+                "final_answer": state["structured_answer"],
+                "final_sources": fp.sources,
+                "trace": [*state["trace"], "검증된 답변 반환"],
+            }
 
-    @staticmethod
-    def _model_evidence(facts: dict[str, Any]) -> str:
-        blocks = []
-        if facts["region"]:
-            blocks.append(f"지역: {facts['region']}")
-        if facts["score"] is not None:
-            blocks.append(f"기본 적합도: {facts['score']}")
-        if facts["recommendations"]:
-            blocks.append("추천 작물: " + AIService._crop_summary(facts["recommendations"]))
-        if facts["risks"]:
-            blocks.append("핵심 위험: " + AIService._risk_summary(facts["risks"]))
-        if facts["features"]:
-            blocks.append("환경 특징: " + " | ".join(facts["features"]))
-        return "\n".join(blocks)
+        facts = fp.facts
+        parts: list[str] = []
+        used_ids: list[str] = []
+        mentioned_nums: list[float] = []
+        mentioned_crops_list: list[str] = []
+        mentioned_risks_list: list[str] = []
+
+        score = facts.get("region.score")
+        grade = facts.get("region.grade")
+        if score is not None:
+            grade_str = f"({grade})" if grade else ""
+            parts.append(f"현재 리포트의 지역 점수는 {score}점{grade_str}입니다.")
+            used_ids.append("region.score")
+            mentioned_nums.append(float(score))
+
+        crop_parts = []
+        for i in range(1, 4):
+            name = facts.get(f"crop.{i}.name")
+            cscore = facts.get(f"crop.{i}.score")
+            if name:
+                label = str(name)
+                if cscore is not None:
+                    label += f"({cscore}점)"
+                    mentioned_nums.append(float(cscore))
+                    used_ids.append(f"crop.{i}.score")
+                crop_parts.append(label)
+                used_ids.append(f"crop.{i}.name")
+                mentioned_crops_list.append(str(name))
+        if crop_parts:
+            parts.append(f"추천 작물은 {', '.join(crop_parts)}입니다.")
+
+        risk_title = facts.get("risk.1.title")
+        if risk_title:
+            parts.append(f"가장 큰 위험은 '{risk_title}'입니다.")
+            used_ids.append("risk.1.title")
+            mentioned_risks_list.append(str(risk_title))
+            risk_action = facts.get("risk.1.action.1")
+            if risk_action:
+                parts.append(f"권장 행동은 {risk_action}입니다.")
+                used_ids.append("risk.1.action.1")
+        elif score is not None:
+            parts.append("현재 기상 예보에서 확인된 주요 위험은 없습니다.")
+
+        if not parts:
+            parts.append("완료된 분석 리포트를 확인한 뒤 다시 질문해 주세요.")
+
+        fallback = StructuredAnswer(
+            answer=" ".join(parts),
+            basisType="CURRENT_REPORT",
+            usedFactIds=used_ids,
+            usedSourceIds=[s.get("sourceId", "") for s in fp.sources if isinstance(s, dict)],
+            mentionedNumbers=mentioned_nums,
+            mentionedCrops=mentioned_crops_list,
+            mentionedRisks=mentioned_risks_list,
+        )
+        return {
+            "final_answer": fallback,
+            "final_sources": fp.sources,
+            "trace": [*state["trace"], "Deterministic fallback 반환"],
+        }
 
     @staticmethod
     def _chunks(value: str, width: int) -> Iterable[str]:
-        return (value[index : index + width] for index in range(0, len(value), width))
+        return (value[i : i + width] for i in range(0, len(value), width))
 
 
 ai_service = AIService()

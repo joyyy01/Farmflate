@@ -13,6 +13,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.UUID;
@@ -25,24 +26,20 @@ public class RegionApiController {
     private final RegionAnalysisService regionAnalysisService;
     private final UserRepository userRepository;
 
+    private String requireEmail(UserPrincipal principal) {
+        if (principal == null || principal.getEmail() == null || principal.getEmail().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "로그인이 필요합니다.");
+        }
+        return principal.getEmail();
+    }
+
     @GetMapping("/home")
     public ResponseEntity<HomeResponseDto> getHome(@AuthenticationPrincipal UserPrincipal userPrincipal) {
-        if (userPrincipal == null) {
-            return ResponseEntity.ok(HomeResponseDto.builder()
-                    .user(HomeResponseDto.UserDto.builder().displayName("Farmflate 사용자").build())
-                    .weather(HomeResponseDto.WeatherDto.builder().status("UNAVAILABLE").build())
-                    .todayAction(null)
-                    .latestRegionAnalysis(null)
-                    .farms(List.of())
-                    .build());
-        }
-
-        String email = userPrincipal.getEmail();
+        String email = requireEmail(userPrincipal);
         User user = userRepository.findByEmail(email).orElse(null);
         String displayName = (user != null && user.getNickname() != null && !user.getNickname().isBlank())
                 ? user.getNickname()
                 : "Farmflate 사용자";
-
         return ResponseEntity.ok(regionAnalysisService.getHome(email, displayName));
     }
 
@@ -61,23 +58,24 @@ public class RegionApiController {
             @AuthenticationPrincipal UserPrincipal userPrincipal,
             @RequestBody RegionAnalysisRequestDto request) {
         validateRequest(request);
-        return ResponseEntity.ok(userPrincipal == null
-                ? regionAnalysisService.createPublic(request)
-                : regionAnalysisService.create(userPrincipal.getEmail(), request));
+        String email = requireEmail(userPrincipal);
+        return ResponseEntity.ok(regionAnalysisService.create(email, request));
     }
 
     @GetMapping("/regions/analysis/{analysisId}/status")
     public ResponseEntity<RegionAnalysisStatusDto> getStatus(
             @AuthenticationPrincipal UserPrincipal userPrincipal,
             @PathVariable UUID analysisId) {
-        return ResponseEntity.ok(regionAnalysisService.getStatus(userPrincipal == null ? null : userPrincipal.getEmail(), analysisId));
+        String email = requireEmail(userPrincipal);
+        return ResponseEntity.ok(regionAnalysisService.getStatus(email, analysisId));
     }
 
     @GetMapping("/regions/reports/{analysisId}")
     public ResponseEntity<RegionReportResponseDto> getReport(
             @AuthenticationPrincipal UserPrincipal userPrincipal,
             @PathVariable UUID analysisId) {
-        return ResponseEntity.ok(regionAnalysisService.getReport(userPrincipal == null ? null : userPrincipal.getEmail(), analysisId));
+        String email = requireEmail(userPrincipal);
+        return ResponseEntity.ok(regionAnalysisService.getReport(email, analysisId));
     }
 
     @ExceptionHandler(RegionAnalysisService.RegionAnalysisException.class)

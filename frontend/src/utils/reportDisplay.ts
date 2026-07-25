@@ -10,8 +10,6 @@ const exactStatusLabels: Record<string, string> = {
   HIGH: '높음',
   MEDIUM: '보통',
   LOW: '낮음',
-  LIVE: '실시간 공공데이터',
-  REPLAY: '저장된 분석 데이터',
   LETTUCE_HEAT_HUMIDITY: '상추 고온·다습 주의',
   HEAT: '고온 위험',
   HEAVY_RAIN: '집중호우 위험'
@@ -31,8 +29,7 @@ const reportTextReplacements: Array<[RegExp, string]> = [
   [/\bRISK\b/g, '주의'],
   [/\bGOOD\b/g, '양호'],
   [/\bEXCELLENT\b/g, '매우 양호'],
-  [/\bHIGH\b/g, '높음'],
-  [/\bLIVE\b/g, '실시간 공공데이터']
+  [/\bHIGH\b/g, '높음']
 ];
 
 /** UI-only formatter. Domain codes remain untouched in API state. */

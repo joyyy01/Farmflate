@@ -35,7 +35,6 @@ public class AsosAdapter {
     private final String serviceKey;
     private final int cacheHours;
     private final int retryCount;
-    private final boolean replay;
     private final Map<String, CachedAsos> cache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, CompletableFuture<ExternalResult<Asos30DaySummary>>> inFlight = new ConcurrentHashMap<>();
 
@@ -43,13 +42,11 @@ public class AsosAdapter {
             @Qualifier("externalApiRestTemplate") RestTemplate restTemplate,
             @Value("${app.external.data-go-kr.service-key}") String serviceKey,
             @Value("${app.cache.asos-hours:24}") int cacheHours,
-            @Value("${app.external-api.retry-count:1}") int retryCount,
-            @Value("${app.data-mode:LIVE}") String dataMode) {
+            @Value("${app.external-api.retry-count:1}") int retryCount) {
         this.restTemplate = restTemplate;
         this.serviceKey = serviceKey;
         this.cacheHours = cacheHours;
         this.retryCount = retryCount;
-        this.replay = "REPLAY".equalsIgnoreCase(dataMode);
     }
 
     public static class Asos30DaySummary {
@@ -286,7 +283,7 @@ public class AsosAdapter {
                            String stationId, String dataDate, List<String> flags) {
         if (value != null) {
             target.add(ExternalAdapterSupport.metric(name, value, null, unit, PROVIDER, SERVICE, "STATION",
-                    stationId, dataDate, false, replay, flags.isEmpty() ? "GOOD" : "PARTIAL", flags));
+                    stationId, dataDate, false, false, flags.isEmpty() ? "GOOD" : "PARTIAL", flags));
         }
     }
 

@@ -3,13 +3,16 @@ package com.example.aiworkspace.controller;
 import com.example.aiworkspace.domain.community.CommunityCommentEntity;
 import com.example.aiworkspace.domain.community.CommunityPostEntity;
 import com.example.aiworkspace.domain.community.CommunityPostRepository;
+import com.example.aiworkspace.domain.user.UserRepository;
 import com.example.aiworkspace.security.UserPrincipal;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -23,6 +26,20 @@ import java.util.stream.Collectors;
 public class CommunityApiController {
 
     private final CommunityPostRepository communityPostRepository;
+    private final UserRepository userRepository;
+
+    private String requireEmail(UserPrincipal principal) {
+        if (principal == null || principal.getEmail() == null || principal.getEmail().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "로그인이 필요합니다.");
+        }
+        return principal.getEmail();
+    }
+
+    private String resolveNickname(String email) {
+        return userRepository.findByEmail(email)
+                .map(u -> u.getNickname() != null && !u.getNickname().isBlank() ? u.getNickname() : "사용자")
+                .orElse("사용자");
+    }
 
     @GetMapping("/posts")
     public ResponseEntity<List<PostResponse>> getPosts(@RequestParam(required = false) String category) {
@@ -38,14 +55,15 @@ public class CommunityApiController {
             @AuthenticationPrincipal UserPrincipal userPrincipal,
             @RequestBody CreatePostRequest request) {
 
-        String authorEmail = userPrincipal != null && userPrincipal.getEmail() != null ? userPrincipal.getEmail() : "user@farmflate.com";
+        String authorEmail = requireEmail(userPrincipal);
+        String authorName = resolveNickname(authorEmail);
 
         CommunityPostEntity post = CommunityPostEntity.builder()
                 .category(request.getCategory() != null ? request.getCategory() : "농가 노하우")
-                .tagLocation(request.getTagLocation() != null ? request.getTagLocation() : "전북 고창군")
+                .tagLocation(request.getTagLocation() != null ? request.getTagLocation() : "")
                 .title(request.getTitle() != null ? request.getTitle() : "농가 소식")
                 .content(request.getContent() != null ? request.getContent() : "")
-                .author(request.getAuthor() != null && !request.getAuthor().isBlank() ? request.getAuthor() : "초보농부")
+                .author(authorName)
                 .authorEmail(authorEmail)
                 .imageUrl(request.getImageUrl() != null ? request.getImageUrl() : "")
                 .likeCount(0)
@@ -72,13 +90,14 @@ public class CommunityApiController {
             @PathVariable Long id,
             @RequestBody AddCommentRequest request) {
 
-        String authorEmail = userPrincipal != null && userPrincipal.getEmail() != null ? userPrincipal.getEmail() : "user@farmflate.com";
+        String authorEmail = requireEmail(userPrincipal);
+        String authorName = resolveNickname(authorEmail);
         CommunityPostEntity post = communityPostRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Post not found: " + id));
 
         CommunityCommentEntity comment = CommunityCommentEntity.builder()
                 .post(post)
-                .author(request.getAuthor() != null && !request.getAuthor().isBlank() ? request.getAuthor() : "사용자")
+                .author(authorName)
                 .authorEmail(authorEmail)
                 .content(request.getContent() != null ? request.getContent() : "")
                 .build();
@@ -103,8 +122,7 @@ public class CommunityApiController {
         CommunityPostEntity post = communityPostRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Post not found: " + id));
 
-        String email = userPrincipal != null && userPrincipal.getEmail() != null ? userPrincipal.getEmail() : "";
-        // Only author or anyone in dev mode can delete
+        String email = requireEmail(userPrincipal);
         if (post.getAuthorEmail() != null && !post.getAuthorEmail().isBlank() && !post.getAuthorEmail().equals(email)) {
             Map<String, Object> err = new HashMap<>();
             err.put("status", "FORBIDDEN");

@@ -1,4 +1,4 @@
-import type { AgentTaskRequest, AgentTaskResponse, ChatRequest, ChatResponse } from '../types/chat';
+import type { ChatRequest, ChatResponse } from '../types/chat';
 import { normalizeRegionReport } from './reportLifecycle.ts';
 import type {
   CreateFieldRequest,
@@ -10,8 +10,6 @@ import type {
 
 const viteEnv = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env ?? {};
 const SPRING_BACKEND_URL = (viteEnv.VITE_API_BASE_URL ?? 'http://localhost:8080/api').replace(/\/$/, '');
-const AI_API_URL = viteEnv.VITE_AI_API_BASE_URL?.replace(/\/$/, '')
-  ?? (import.meta.env.DEV ? 'http://localhost:8000/api/v1' : undefined);
 
 export type {
   CreateFieldRequest,
@@ -224,10 +222,6 @@ export const ApiService = {
     return requestJson<HomeData>('/home', { headers: getAuthHeaders() });
   },
 
-  async getUserProfile(): Promise<UserProfileDto> {
-    return requestJson<UserProfileDto>('/users/me', { headers: getAuthHeaders() });
-  },
-
   async updateUserProfile(payload: { nickname: string }): Promise<UserProfileDto> {
     return requestJson<UserProfileDto>('/users/me', {
       method: 'PUT',
@@ -311,7 +305,7 @@ export const ApiService = {
     return response;
   },
 
-  async createCommunityPost(payload: { category: string; tagLocation: string; title: string; content: string; author: string; imageUrl?: string }): Promise<unknown> {
+  async createCommunityPost(payload: { category: string; tagLocation: string; title: string; content: string; author?: string; imageUrl?: string }): Promise<unknown> {
     return requestJson<unknown>('/community/posts', { method: 'POST', headers: jsonHeaders(), body: JSON.stringify(payload) });
   },
 
@@ -319,7 +313,7 @@ export const ApiService = {
     return requestJson<unknown>(`/community/posts/${encodeURIComponent(postId)}/like`, { method: 'POST', headers: getAuthHeaders() });
   },
 
-  async addCommunityComment(postId: string, payload: { author: string; content: string }): Promise<unknown> {
+  async addCommunityComment(postId: string, payload: { author?: string; content: string }): Promise<unknown> {
     return requestJson<unknown>(`/community/posts/${encodeURIComponent(postId)}/comments`, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify(payload) });
   },
 
@@ -333,20 +327,10 @@ export const ApiService = {
   },
 
   async sendChatMessage(payload: ChatRequest): Promise<ChatResponse> {
-    if (!AI_API_URL) throw new ApiError(0, 'AI_NOT_CONFIGURED', 'AI 설명 서비스가 설정되지 않았습니다.', null, false);
-    const response = await fetch(`${AI_API_URL}/chat/`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    if (!response.ok) throw new ApiError(response.status, 'CHAT_UNAVAILABLE', 'AI 설명을 불러오지 못했습니다.', null, response.status >= 500);
-    return response.json() as Promise<ChatResponse>;
-  },
-
-  async runAgentTask(payload: AgentTaskRequest): Promise<AgentTaskResponse> {
-    if (!AI_API_URL) throw new ApiError(0, 'AI_NOT_CONFIGURED', 'AI 작업 서비스가 설정되지 않았습니다.', null, false);
-    const response = await fetch(`${AI_API_URL}/agent/run`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    if (!response.ok) throw new ApiError(response.status, 'AGENT_UNAVAILABLE', 'AI 작업을 실행하지 못했습니다.', null, response.status >= 500);
-    return response.json() as Promise<AgentTaskResponse>;
-  },
-
-  async checkBackendHealth(): Promise<{ status: string; message: string }> {
-    return requestJson<{ status: string; message: string }>('/health');
+    return requestJson<ChatResponse>('/assistant/messages', {
+      method: 'POST',
+      headers: jsonHeaders(),
+      body: JSON.stringify(payload)
+    });
   }
 };

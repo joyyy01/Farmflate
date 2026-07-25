@@ -50,7 +50,6 @@ app:
       api-key: ${PARCEL_IDENTIFIER_API_KEY:}
     nongsaro:
       api-key: ${NONGSARO_API_KEY:local_nongsaro_key}
-  data-mode: ${DATA_MODE:LIVE}
   external-api:
     timeout-ms: ${EXTERNAL_API_TIMEOUT_MS:8000}
     location-timeout-ms: ${LOCATION_API_TIMEOUT_MS:5000}
@@ -68,3 +67,5 @@ app:
     crop-code-days: ${CROP_CODE_CACHE_DAYS:90}
   python-server:
     url: ${PYTHON_SERVER_URL:http://localhost:8000}
+    internal-api-key: ${PYTHON_INTERNAL_API_KEY:farmflate-local-internal-key}
+    request-timeout-ms: ${AI_REQUEST_TIMEOUT_MS:15000}

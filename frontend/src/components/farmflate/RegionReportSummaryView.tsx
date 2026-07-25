@@ -278,7 +278,6 @@ export const RegionReportSummaryView: React.FC<RegionReportSummaryViewProps> = (
         <div style={{ borderTop: '1px solid #EEF1EF', paddingTop: 14, marginBottom: 12, color: '#6F7772', fontSize: '0.74rem', lineHeight: 1.5 }}>
           <strong style={{ color: '#4B574F' }}>데이터 근거</strong><br />
           {report?.sources[0] ? `${[report.sources[0].provider, report.sources[0].service].filter(Boolean).join(' / ') || '제공자 정보 없음'} · ${report.sources[0].dataDate ?? '날짜 정보 없음'}` : '출처 정보가 제공되지 않았습니다.'}
-          {report?.dataMode ? ` · ${formatReportLabel(report.dataMode)}` : ''}
           {report?.sources.some(source => source.isFallback) ? ' · 대체 데이터 포함' : ''}
         </div>
 

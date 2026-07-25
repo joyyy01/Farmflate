@@ -5,9 +5,11 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator
 
 
-class ChatMessage(BaseModel):
-    """A bounded prior turn supplied by the client."""
+# ---------------------------------------------------------------------------
+# Legacy chat models (kept for backward-compatible /chat/ endpoint)
+# ---------------------------------------------------------------------------
 
+class ChatMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str = Field(min_length=1, max_length=1_200)
 
@@ -20,30 +22,10 @@ class ChatMessage(BaseModel):
         return value
 
 
-class ChatPageContext(BaseModel):
-    """Read-only facts from the page currently visible to the user.
-
-    The server deliberately accepts only page data.  It never receives API keys,
-    authentication tokens, or browser storage values.
-    """
-
-    region: str | None = Field(default=None, max_length=120)
-    selected_crop: str | None = Field(default=None, max_length=80)
-    report: dict[str, Any] = Field(default_factory=dict)
-    home: dict[str, Any] = Field(default_factory=dict)
-    fields: list[dict[str, Any]] = Field(default_factory=list, max_length=20)
-
-    @field_validator("region", "selected_crop")
-    @classmethod
-    def trim_optional_text(cls, value: str | None) -> str | None:
-        return value.strip() if value and value.strip() else None
-
-
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=1_200)
     history: list[ChatMessage] = Field(default_factory=list, max_length=12)
-    context: ChatPageContext | None = None
-    temperature: float = Field(default=0.2, ge=0.0, le=1.0)
+    context: dict[str, Any] | None = None
 
     @field_validator("message")
     @classmethod
@@ -58,6 +40,7 @@ class GroundingSource(BaseModel):
     title: str
     detail: str | None = None
     observed_at: str | None = None
+    source_url: str | None = None
 
 
 class ChatResponse(BaseModel):
@@ -68,9 +51,57 @@ class ChatResponse(BaseModel):
     agent_steps: list[str] = Field(default_factory=list)
 
 
+# ---------------------------------------------------------------------------
+# FactPackage models (Spring Boot AI proxy → Python Agent)
+# ---------------------------------------------------------------------------
+
+class FactPackage(BaseModel):
+    requestId: str
+    userScope: dict[str, Any] = Field(default_factory=dict)
+    question: str = Field(..., min_length=1, max_length=1_200)
+    history: list[dict[str, Any]] = Field(default_factory=list, max_length=12)
+    context: dict[str, Any] = Field(default_factory=dict)
+    facts: dict[str, Any] = Field(default_factory=dict)
+    sources: list[dict[str, Any]] = Field(default_factory=list)
+
+    @field_validator("question")
+    @classmethod
+    def trim_question(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("질문을 입력해 주세요.")
+        return value
+
+
+class AgentRunRequest(BaseModel):
+    fact_package: FactPackage
+
+
+class StructuredAnswer(BaseModel):
+    answer: str
+    basisType: str = "CURRENT_REPORT"
+    usedFactIds: list[str] = Field(default_factory=list)
+    usedSourceIds: list[str] = Field(default_factory=list)
+    mentionedNumbers: list[float] = Field(default_factory=list)
+    mentionedCrops: list[str] = Field(default_factory=list)
+    mentionedRisks: list[str] = Field(default_factory=list)
+    safetyNotice: str | None = None
+
+
+class AgentRunResponse(BaseModel):
+    requestId: str
+    status: str = "completed"
+    answer: StructuredAnswer
+    sources: list[dict[str, Any]] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Legacy agent models (kept for backward compat)
+# ---------------------------------------------------------------------------
+
 class AgentTaskRequest(BaseModel):
     task: str = Field(min_length=1, max_length=1_200)
-    context: ChatPageContext | None = None
+    context: dict[str, Any] | None = None
     history: list[ChatMessage] = Field(default_factory=list, max_length=12)
 
     @field_validator("task")
