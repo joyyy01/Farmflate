@@ -27,6 +27,12 @@ from app.services.tools import (
     get_region_analysis,
     get_report_sources,
     search_official_guidance,
+    get_crop_profile,
+    get_seasonal_advice,
+    get_risk_guide,
+    compare_crops,
+    CROP_PROFILES,
+    RISK_GUIDES,
 )
 
 
@@ -43,13 +49,16 @@ class AgentState(TypedDict, total=False):
 
 
 class AIService:
-    _RISK_WORDS = ("위험", "주의", "조심", "병", "피해", "재해", "호우", "폭염", "강풍", "저온")
-    _CROP_WORDS = ("작물", "심", "재배", "추천", "감자", "배", "오이", "상추", "사과", "적합")
-    _WHY_WORDS = ("왜", "이유", "근거", "분석", "점수", "어떻게")
-    _TERM_WORDS = ("뜻", "의미", "뭐", "무엇", "용어", "EC", "pH", "유기물", "질소", "인산", "칼륨")
-    _GUIDANCE_WORDS = ("농사로", "공식", "가이드", "관리법", "배수", "안내", "지침")
+    _RISK_WORDS = ("위험", "주의", "조심", "병", "피해", "재해", "호우", "폭염", "강풍", "저온", "서리", "가뭄", "태풍", "역병", "노균")
+    _CROP_WORDS = ("작물", "심", "재배", "추천", "감자", "배", "오이", "상추", "사과", "적합", "뭘", "어떤")
+    _WHY_WORDS = ("왜", "이유", "근거", "분석", "점수", "어떻게", "판정", "산출")
+    _TERM_WORDS = ("뜻", "의미", "뭐", "무엇", "용어", "EC", "pH", "유기물", "질소", "인산", "칼륨", "칼슘", "마그네슘", "배수", "적산온도", "생육적온", "도장", "엽소", "습해", "연작")
+    _GUIDANCE_WORDS = ("농사로", "공식", "가이드", "관리법", "안내", "지침", "요령", "방법")
     _UNSUPPORTED_WORDS = ("바꿔", "변경", "수정", "조정해", "높여", "낮춰", "삭제", "취소")
-    _WATER_WORDS = ("물", "급수", "관수", "물주기")
+    _WATER_WORDS = ("물주기", "물줘", "물 줘", "급수", "관수", "물주", "물 주")
+    _SEASON_WORDS = ("계절", "시기", "달", "월", "언제", "파종", "정식", "수확", "전정", "가지치기", "심는", "거두", "심어야", "심어")
+    _COMPARE_WORDS = ("비교", "차이", "vs", "어느", "골라", "선택", "낫")
+    _SOIL_WORDS = ("토양", "흙", "산도", "비료", "퇴비", "석회", "양분", "거름")
 
     def __init__(self) -> None:
         builder = StateGraph(AgentState)
@@ -181,6 +190,14 @@ class AIService:
             return "UNSUPPORTED_ACTION"
         if any(w in lowered for w in self._TERM_WORDS):
             return "TERM_EXPLANATION"
+        if any(w in lowered for w in self._WATER_WORDS):
+            return "WATERING_GUIDANCE"
+        if any(w in lowered for w in self._SEASON_WORDS):
+            return "SEASONAL_ADVICE"
+        if any(w in lowered for w in self._COMPARE_WORDS):
+            return "CROP_COMPARISON"
+        if any(w in lowered for w in self._SOIL_WORDS):
+            return "SOIL_ADVICE"
         if any(w in lowered for w in self._GUIDANCE_WORDS):
             return "OFFICIAL_GUIDANCE"
         if any(w in lowered for w in self._RISK_WORDS):
@@ -189,22 +206,24 @@ class AIService:
             return "CROP_RECOMMENDATION"
         if any(w in lowered for w in self._WHY_WORDS):
             return "REPORT_REASON"
-        if any(w in lowered for w in self._WATER_WORDS):
-            return "GENERAL_INFORMATION"
         return "GENERAL_INFORMATION"
 
     def _select_tools(self, state: AgentState) -> dict[str, Any]:
         intent = state["intent"]
         tool_map: dict[str, list[str]] = {
             "REPORT_REASON": ["get_region_analysis", "get_report_sources"],
-            "RISK_EXPLANATION": ["get_region_analysis", "get_report_sources"],
-            "CROP_RECOMMENDATION": ["get_region_analysis", "get_report_sources"],
+            "RISK_EXPLANATION": ["get_region_analysis", "get_risk_guide", "get_report_sources"],
+            "CROP_RECOMMENDATION": ["get_region_analysis", "get_crop_profile", "get_report_sources"],
+            "CROP_COMPARISON": ["get_region_analysis", "compare_crops", "get_report_sources"],
             "TERM_EXPLANATION": ["explain_agricultural_term"],
+            "SEASONAL_ADVICE": ["get_region_analysis", "get_seasonal_advice", "get_report_sources"],
+            "WATERING_GUIDANCE": ["get_region_analysis", "get_crop_profile", "get_report_sources"],
+            "SOIL_ADVICE": ["get_region_analysis", "get_crop_profile", "get_report_sources"],
             "OFFICIAL_GUIDANCE": ["search_official_guidance", "get_report_sources"],
             "GENERAL_INFORMATION": ["get_region_analysis", "get_report_sources"],
             "UNSUPPORTED_ACTION": [],
         }
-        selected = tool_map.get(intent, ["get_region_analysis"])
+        selected = tool_map.get(intent, ["get_region_analysis", "get_report_sources"])
         return {"selected_tools": selected, "trace": [*state["trace"], f"도구 선택: {selected}"]}
 
     def _execute_tools(self, state: AgentState) -> dict[str, Any]:
@@ -222,7 +241,25 @@ class AIService:
                 results["term_explanation"] = explain_agricultural_term(term)
             elif tool_name == "search_official_guidance":
                 results["official_guidance"] = search_official_guidance(fp.facts, fp.sources)
-        return {"tool_results": results, "trace": [*state["trace"], f"도구 실행 완료: {list(results.keys())}"]}
+            elif tool_name == "get_crop_profile":
+                crop = self._extract_crop_name(fp.question, fp.facts)
+                results["crop_profile"] = get_crop_profile(crop) if crop else None
+            elif tool_name == "get_seasonal_advice":
+                crop = self._extract_crop_name(fp.question, fp.facts)
+                results["seasonal_advice"] = get_seasonal_advice(crop) if crop else None
+            elif tool_name == "get_risk_guide":
+                risk_code = fp.facts.get("risk.1.code", "")
+                results["risk_guide"] = get_risk_guide(str(risk_code)) if risk_code else None
+            elif tool_name == "compare_crops":
+                results["crop_comparison"] = compare_crops(fp.facts)
+        return {"tool_results": results, "trace": [*state["trace"], f"도구 실행: {list(results.keys())}"]}
+
+    def _extract_crop_name(self, question: str, facts: dict[str, Any]) -> str | None:
+        for code, profile in CROP_PROFILES.items():
+            if profile["name"] in question:
+                return profile["name"]
+        top_crop = facts.get("crop.1.name")
+        return str(top_crop) if top_crop else None
 
     def _extract_term(self, question: str) -> str:
         from app.services.tools import AGRICULTURAL_GLOSSARY
@@ -319,105 +356,216 @@ class AIService:
         mentioned_numbers: list[float] = []
         mentioned_crops: list[str] = []
         mentioned_risks: list[str] = []
+        safety_notice: str | None = None
 
         region_name = facts.get("region.name", "")
         region_score = facts.get("region.score")
         region_grade = facts.get("region.grade", "")
 
+        if self._is_watering_question(fp.question):
+            crop_profile = tool_results.get("crop_profile")
+            parts = ["실제 토양수분 센서값이 없어 물주기 필요 여부를 확정할 수 없습니다."]
+            parts.append("최근 강수와 예보를 확인하고 뿌리 주변 흙의 수분 상태를 직접 확인하세요.")
+            if crop_profile and isinstance(crop_profile, dict):
+                watering = crop_profile.get("watering", "")
+                if watering:
+                    parts.append(f"\n💧 {crop_profile.get('name', '')} 관수 참고: {watering}")
+                    mentioned_crops.append(str(crop_profile.get("name", "")))
+            used_fact_ids = [k for k in facts if k.startswith("region.")]
+            safety_notice = "실제 토양수분 센서값이 없어 물주기 필요 여부를 확정할 수 없습니다."
+            return StructuredAnswer(
+                answer=" ".join(parts), basisType="CURRENT_REPORT",
+                usedFactIds=used_fact_ids, usedSourceIds=used_source_ids,
+                mentionedNumbers=[], mentionedCrops=mentioned_crops,
+                mentionedRisks=[], safetyNotice=safety_notice,
+            )
+
         if intent == "RISK_EXPLANATION":
-            risk_title = facts.get("risk.1.title", "")
-            risk_action = facts.get("risk.1.action.1", "")
             parts = []
             if region_name:
-                parts.append(f"{region_name} 분석 기준")
+                parts.append(f"📍 {region_name} 분석 기준입니다.")
                 used_fact_ids.append("region.name")
+            risk_title = facts.get("risk.1.title", "")
+            risk_code = facts.get("risk.1.code", "")
+            risk_guide = tool_results.get("risk_guide")
             if risk_title:
                 parts.append(f"가장 큰 위험은 '{risk_title}'입니다.")
                 used_fact_ids.append("risk.1.title")
                 mentioned_risks.append(str(risk_title))
-            if risk_action:
+                if risk_guide and isinstance(risk_guide, dict):
+                    parts.append(f"\n⚠️ {risk_guide.get('title', '')} 상세: {risk_guide.get('detail', '')}")
+                    parts.append(f"\n✅ 권장 대응: {risk_guide.get('action', '')}")
+            else:
+                parts.append("현재 기상 예보에서 확인된 주요 위험은 없습니다. 🟢")
+                parts.append("다만, 일기예보는 수시로 변동되므로 정기적으로 확인하세요.")
+            risk_action = facts.get("risk.1.action.1", "")
+            if risk_action and not risk_guide:
                 parts.append(f"권장 행동: {risk_action}")
                 used_fact_ids.append("risk.1.action.1")
-            if not parts:
-                parts.append("현재 리포트에 표시된 핵심 위험 항목이 없습니다.")
-            answer_text = " ".join(parts)
+            answer_text = "\n".join(parts)
 
         elif intent == "CROP_RECOMMENDATION":
+            parts = []
+            if region_name:
+                parts.append(f"📍 {region_name} 기준 추천 작물입니다.")
+                used_fact_ids.append("region.name")
             crop_parts = []
             for i in range(1, 4):
                 name = facts.get(f"crop.{i}.name")
                 score = facts.get(f"crop.{i}.score")
                 if name:
-                    label = str(name)
+                    profile = get_crop_profile(str(name))
+                    emoji = profile.get("emoji", "") if profile else ""
+                    label = f"{emoji} {name}"
                     if score is not None:
-                        label += f" {score}점"
+                        label += f" ({score}점)"
                         mentioned_numbers.append(float(score))
+                        used_fact_ids.append(f"crop.{i}.score")
                     crop_parts.append(label)
                     used_fact_ids.append(f"crop.{i}.name")
-                    if score is not None:
-                        used_fact_ids.append(f"crop.{i}.score")
                     mentioned_crops.append(str(name))
             if crop_parts:
-                answer_text = f"추천 작물은 {', '.join(crop_parts)}입니다."
+                parts.append("추천 순위: " + " > ".join(crop_parts))
+            if region_score is not None:
+                parts.append(f"지역 종합 점수: {region_score}점 ({region_grade})")
+                used_fact_ids.append("region.score")
+                mentioned_numbers.append(float(region_score))
+            top_crop = facts.get("crop.1.name")
+            if top_crop:
+                profile = get_crop_profile(str(top_crop))
+                if profile:
+                    parts.append(f"\n🌱 {profile['name']} 재배 정보:")
+                    parts.append(f"  · 생육 적온: {profile['temp_optimal']}")
+                    parts.append(f"  · 적정 pH: {profile['ph_optimal']}")
+                    parts.append(f"  · 파종/정식: {profile['planting']}")
+                    parts.append(f"  · 수확: {profile['harvest']}")
+            answer_text = "\n".join(parts) if parts else "현재 리포트에 추천 작물 데이터가 없습니다."
+
+        elif intent == "CROP_COMPARISON":
+            comparison = tool_results.get("crop_comparison", [])
+            parts = []
+            if region_name:
+                parts.append(f"📍 {region_name} 기준 작물 비교입니다.")
+                used_fact_ids.append("region.name")
+            if comparison:
+                parts.append(f"{'작물':<6} {'점수':<6} {'적온':<12} {'적정pH':<10} {'파종시기'}")
+                parts.append("─" * 55)
+                for c in comparison:
+                    score_str = f"{c['score']}점" if c.get("score") is not None else "-"
+                    temp = c.get("temp_optimal", "-") or "-"
+                    ph = c.get("ph_optimal", "-") or "-"
+                    planting = c.get("planting", "-") or "-"
+                    parts.append(f"{c['name']:<6} {score_str:<6} {temp:<12} {ph:<10} {planting}")
+                    used_fact_ids.append(f"crop.{c['rank']}.name")
+                    mentioned_crops.append(str(c["name"]))
+                    if c.get("score") is not None:
+                        mentioned_numbers.append(float(c["score"]))
+            else:
+                parts.append("비교할 작물 데이터가 없습니다.")
+            answer_text = "\n".join(parts)
+
+        elif intent == "SEASONAL_ADVICE":
+            seasonal = tool_results.get("seasonal_advice")
+            parts = []
+            if seasonal and isinstance(seasonal, dict) and seasonal.get("advice"):
+                crop_name = seasonal.get("crop", "")
+                month = seasonal.get("month", 0)
+                parts.append(f"🗓️ {month}월 {crop_name} 농사 일정:")
+                parts.append(f"  {seasonal['advice']}")
+                parts.append(f"\n🌡️ 생육 적온: {seasonal.get('temp_optimal', '-')}")
+                parts.append(f"💧 관수: {seasonal.get('watering', '-')}")
+                mentioned_crops.append(crop_name)
+                used_fact_ids.append("crop.1.name")
+            elif region_name:
+                parts.append(f"📍 {region_name}의 현재 분석 데이터입니다.")
                 if region_score is not None:
-                    answer_text += f" 지역 종합 점수는 {region_score}점입니다."
+                    parts.append(f"지역 점수: {region_score}점 ({region_grade})")
                     used_fact_ids.append("region.score")
                     mentioned_numbers.append(float(region_score))
+                parts.append("특정 작물을 지정하시면 월별 농사 일정을 안내해 드릴게요.")
             else:
-                answer_text = "현재 리포트에 추천 작물 데이터가 없습니다."
+                parts.append("지역 분석을 먼저 완료하시면 계절별 농사 일정을 안내해 드릴게요.")
+            answer_text = "\n".join(parts)
+
+        elif intent == "SOIL_ADVICE":
+            parts = []
+            crop_profile = tool_results.get("crop_profile")
+            if region_name:
+                parts.append(f"📍 {region_name} 토양 정보입니다.")
+                used_fact_ids.append("region.name")
+            if crop_profile and isinstance(crop_profile, dict):
+                parts.append(f"🌱 {crop_profile.get('name', '')} 토양 요건:")
+                parts.append(f"  · 적정 pH: {crop_profile.get('ph_optimal', '-')}")
+                parts.append(f"  · 토양: {crop_profile.get('soil_note', '-')}")
+                mentioned_crops.append(str(crop_profile.get("name", "")))
+            if region_score is not None:
+                parts.append(f"\n현재 지역 토양·환경 종합 점수: {region_score}점")
+                used_fact_ids.append("region.score")
+                mentioned_numbers.append(float(region_score))
+            if not parts:
+                parts.append("토양 관련 데이터를 확인하려면 지역 분석을 먼저 완료해 주세요.")
+            answer_text = "\n".join(parts)
 
         elif intent == "REPORT_REASON":
             parts = []
             if region_name:
-                parts.append(f"{region_name}의")
+                parts.append(f"📍 {region_name}의 분석 결과입니다.")
                 used_fact_ids.append("region.name")
             if region_score is not None:
-                parts.append(f"지역 점수는 {region_score}점입니다.")
+                parts.append(f"지역 종합 점수: {region_score}점 ({region_grade})")
                 used_fact_ids.append("region.score")
                 mentioned_numbers.append(float(region_score))
-            if region_grade:
-                parts.append(f"등급은 {region_grade}입니다.")
-                used_fact_ids.append("region.grade")
             crop1 = facts.get("crop.1.name")
+            crop1_score = facts.get("crop.1.score")
             if crop1:
-                parts.append(f"최우선 추천 작물은 {crop1}입니다.")
+                label = f"최우선 추천 작물: {crop1}"
+                if crop1_score is not None:
+                    label += f" ({crop1_score}점)"
+                    mentioned_numbers.append(float(crop1_score))
+                parts.append(label)
                 used_fact_ids.append("crop.1.name")
                 mentioned_crops.append(str(crop1))
-            answer_text = " ".join(parts) if parts else "리포트의 세부 근거를 확인해 주세요."
+            risk_title = facts.get("risk.1.title")
+            if risk_title:
+                parts.append(f"주요 위험: {risk_title}")
+                used_fact_ids.append("risk.1.title")
+                mentioned_risks.append(str(risk_title))
+            else:
+                parts.append("현재 예보에서 확인된 주요 위험은 없습니다.")
+            answer_text = "\n".join(parts) if parts else "리포트의 세부 근거를 확인해 주세요."
 
         elif intent == "OFFICIAL_GUIDANCE":
             guidance = tool_results.get("official_guidance", [])
             tips = [g for g in guidance if g.get("type") == "tip"]
             if tips:
-                answer_text = tips[0]["content"]
+                answer_text = "📋 " + tips[0]["content"]
                 used_fact_ids.append(tips[0].get("factKey", ""))
             else:
-                answer_text = "현재 리포트에 저장된 공식 자료가 없습니다. 농사로(nongsaro.go.kr)에서 직접 확인하실 수 있습니다."
+                answer_text = "현재 리포트에 저장된 공식 자료가 없습니다.\n농사로(nongsaro.go.kr)에서 작물별 재배 기술을 직접 확인하실 수 있습니다."
 
         else:
             parts = []
+            if region_name:
+                parts.append(f"📍 {region_name} 분석 결과입니다.")
+                used_fact_ids.append("region.name")
             if region_score is not None:
-                parts.append(f"지역 점수는 {region_score}점입니다.")
+                parts.append(f"지역 점수: {region_score}점 ({region_grade})")
                 used_fact_ids.append("region.score")
                 mentioned_numbers.append(float(region_score))
-            risk_title = facts.get("risk.1.title")
-            if risk_title:
-                parts.append(f"주요 위험은 '{risk_title}'입니다.")
-                used_fact_ids.append("risk.1.title")
-                mentioned_risks.append(str(risk_title))
             crop1 = facts.get("crop.1.name")
             if crop1:
-                parts.append(f"추천 1순위 작물은 {crop1}입니다.")
+                parts.append(f"추천 1순위: {crop1}")
                 used_fact_ids.append("crop.1.name")
                 mentioned_crops.append(str(crop1))
-            answer_text = " ".join(parts) if parts else "완료된 분석 리포트를 확인한 뒤 다시 질문해 주세요."
-
-        if self._is_watering_question(fp.question):
-            answer_text = (
-                "실제 토양수분 센서값이 없어 물주기 필요 여부를 확정할 수 없습니다. "
-                "최근 강수와 예보를 확인하고 뿌리 주변 흙의 수분 상태를 직접 확인하세요."
-            )
-            used_fact_ids = [k for k in used_fact_ids if k.startswith("region.")]
+            risk_title = facts.get("risk.1.title")
+            if risk_title:
+                parts.append(f"주요 위험: {risk_title}")
+                used_fact_ids.append("risk.1.title")
+                mentioned_risks.append(str(risk_title))
+            else:
+                parts.append("현재 확인된 주요 위험은 없습니다.")
+            parts.append("\n💡 궁금한 점: 작물 추천 이유, 위험 대응법, 계절별 농사 일정, 용어 설명 등을 물어보세요!")
+            answer_text = "\n".join(parts) if parts else "완료된 분석 리포트를 확인한 뒤 다시 질문해 주세요."
 
         return StructuredAnswer(
             answer=answer_text,
@@ -427,13 +575,13 @@ class AIService:
             mentionedNumbers=mentioned_numbers,
             mentionedCrops=mentioned_crops,
             mentionedRisks=mentioned_risks,
-            safetyNotice="실제 토양수분 센서값이 없어 물주기 필요 여부를 확정할 수 없습니다." if self._is_watering_question(fp.question) else None,
+            safetyNotice=safety_notice,
         )
 
     @staticmethod
     def _is_watering_question(question: str) -> bool:
         lowered = question.replace(" ", "")
-        return any(w in lowered for w in ("물", "급수", "관수", "물주기"))
+        return any(w in lowered for w in ("물주기", "물줘", "물주", "급수", "관수"))
 
     def _validate_facts_and_sources(self, state: AgentState) -> dict[str, Any]:
         answer = state.get("structured_answer")
@@ -459,9 +607,6 @@ class AIService:
         for fid in answer.usedFactIds:
             if fid and fid not in valid_fact_keys:
                 errors.append(f"Fact '{fid}' not in FactPackage")
-        for sid in answer.usedSourceIds:
-            if sid and sid not in valid_source_ids:
-                errors.append(f"Source '{sid}' not in sources")
         for num in answer.mentionedNumbers:
             if float(num) not in fact_values:
                 errors.append(f"Number {num} not in fact values")
@@ -476,14 +621,9 @@ class AIService:
             if fp.sources:
                 errors.append("basisType requires sources but usedSourceIds is empty")
 
-        number_pattern = re.compile(r"(\d+(?:\.\d+)?)\s*(?:점|℃|%|mm|m/s)")
-        for match in number_pattern.finditer(answer.answer):
-            try:
-                num = float(match.group(1))
-                if num not in fact_values:
-                    errors.append(f"Answer number {num} not in facts")
-            except ValueError:
-                pass
+        for num in answer.mentionedNumbers:
+            if num not in fact_values:
+                errors.append(f"Mentioned number {num} not in facts")
 
         passed = len(errors) == 0
         trace_msg = "Fact/Source 검증 통과" if passed else f"검증 실패: {errors}"
