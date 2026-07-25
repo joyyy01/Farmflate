@@ -169,6 +169,16 @@ export function App() {
   const [isAIChatOpen, setIsAIChatOpen] = useState(false);
   const [isPreviewMode, setIsPreviewMode] = useState(false);
 
+  /* Explore Screen Context (Fresh Region Analysis vs Changing an Existing Selection) */
+  const [exploreMode, setExploreMode] = useState<'analyze' | 'change'>('analyze');
+
+  /* Where the Region Tips screen's back button should return to */
+  const [tipsReturnStep, setTipsReturnStep] = useState<ExtendedViewStep>('report_risks');
+
+  /* Whether the report_summary -> report_risks -> report_tips chain was entered
+     fresh (onboarding) or by re-viewing an already-analyzed report from the dashboard */
+  const [reportFlowSource, setReportFlowSource] = useState<'onboarding' | 'view'>('onboarding');
+
   /* Clean Unauthenticated Default States (No Hardcoded Private Names) */
   const [isNewUser, setIsNewUser] = useState<boolean>(() => {
     if (!checkHasToken()) return true;
@@ -300,6 +310,7 @@ export function App() {
   const openExploreFromCropRegistration = () => {
     setIsFieldRegistrationFlow(false);
     setPendingCropRegistration(null);
+    setExploreMode('change');
     setViewStep('explore');
   };
 
@@ -465,6 +476,7 @@ export function App() {
       return;
     }
     setReportReturnStep(sourceStep);
+    setReportFlowSource('view');
     const previousAnalysisState = analysisState;
     try {
       setAnalysisState({ kind: 'SUBMITTING' });
@@ -543,6 +555,7 @@ export function App() {
   /* Region analysis completes only when the backend returns a validated terminal report. */
   const handleStartAnalysis = async (input: Omit<RegionAnalysisRequest, 'idempotencyKey'>) => {
     if (pollTimerRef.current !== null) window.clearTimeout(pollTimerRef.current);
+    setReportFlowSource('onboarding');
     const request: RegionAnalysisRequest = { ...input, idempotencyKey: crypto.randomUUID() };
     setLastAnalysisRequest(request);
     setSelectedProvince(request.sidoName);
@@ -697,6 +710,7 @@ export function App() {
         <RegionExploreView
           onBack={() => safeSetViewStep('dashboard')}
           onStartAnalysis={handleStartAnalysis}
+          mode={exploreMode}
         />
       )}
 
@@ -753,7 +767,7 @@ export function App() {
         <RegionRisksView
           report={apiReport}
           onBack={() => safeSetViewStep('report_summary')}
-          onNext={() => safeSetViewStep('report_tips')}
+          onNext={() => { setTipsReturnStep('report_risks'); safeSetViewStep('report_tips'); }}
         />
       )}
 
@@ -762,12 +776,18 @@ export function App() {
         <RegionTipsView
           districtName={apiReport?.region?.sigunguName || selectedDistrict}
           report={apiReport}
-          onBack={() => safeSetViewStep('report_risks')}
-          variant="cropRegister"
+          onBack={() => setViewStep(tipsReturnStep)}
+          variant={tipsReturnStep === 'crop_suitability_report' ? 'cropRegister' : (reportFlowSource === 'view' ? 'view' : 'default')}
           onRegisterCrop={() => {
             setIsFieldRegistrationFlow(true);
             setViewStep('condition');
           }}
+          onSave={() => {
+            setIsNewUser(false);
+            localStorage.setItem('farmflate_is_new_user', 'false');
+            handleTabChange('home');
+          }}
+          onConfirm={() => handleTabChange('home')}
           onOpenAIChat={() => setIsAIChatOpen(true)}
         />
       )}
@@ -791,7 +811,7 @@ export function App() {
           report={apiReport}
           onBack={returnToCropCondition}
           onRegisterCrop={isFieldRegistrationFlow && pendingCropRegistration ? handleAddField : returnToMyField}
-          onOpenTips={() => safeSetViewStep('report_tips')}
+          onOpenTips={() => { setTipsReturnStep('crop_suitability_report'); safeSetViewStep('report_tips'); }}
         />
       )}
 
@@ -803,7 +823,7 @@ export function App() {
           analyzedRegion={apiReport?.region?.sidoName && apiReport?.region?.sigunguName ? `${apiReport.region.sidoName} ${apiReport.region.sigunguName}` : undefined}
           homeData={homeData}
           loadError={homeLoadError}
-          onGoToExplore={() => safeSetViewStep('explore')}
+          onGoToExplore={() => { setExploreMode('analyze'); safeSetViewStep('explore'); }}
           onOpenReport={() => { void handleOpenConfirmedReport(undefined, 'dashboard'); }}
           onOpenAIChat={() => setIsAIChatOpen(true)}
           activeTab={activeTab}
@@ -859,7 +879,7 @@ export function App() {
           onOpenAIChat={() => setIsAIChatOpen(true)}
           activeTab={activeTab}
           onTabChange={handleTabChange}
-          onGoToExplore={() => safeSetViewStep('explore')}
+          onGoToExplore={() => { setExploreMode('analyze'); safeSetViewStep('explore'); }}
           onUpdateUserName={setUserName}
           onLogout={handleLogout}
           onToggleLike={handleToggleLike}
