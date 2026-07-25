@@ -1,5 +1,6 @@
 package com.example.aiworkspace.service.external;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -14,6 +15,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -31,18 +33,22 @@ public class LegalDistrictAdapter {
     private final String serviceKey;
     private final int cacheDays;
     private final int retryCount;
+    private final ExternalApiCacheService dbCache;
     private final Map<String, CachedDistrict> cache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, CompletableFuture<ExternalResult<List<LegalDistrict>>>> inFlight = new ConcurrentHashMap<>();
+    private static final TypeReference<List<LegalDistrict>> DISTRICT_TYPE = new TypeReference<>() {};
 
     public LegalDistrictAdapter(
             @Qualifier("externalApiRestTemplate") RestTemplate restTemplate,
             @Value("${app.external.data-go-kr.service-key}") String serviceKey,
             @Value("${app.cache.legal-district-days:30}") int cacheDays,
-            @Value("${app.external-api.retry-count:1}") int retryCount) {
+            @Value("${app.external-api.retry-count:1}") int retryCount,
+            ExternalApiCacheService dbCache) {
         this.restTemplate = restTemplate;
         this.serviceKey = serviceKey;
         this.cacheDays = cacheDays;
         this.retryCount = retryCount;
+        this.dbCache = dbCache;
     }
 
     public static class LegalDistrict {
@@ -62,9 +68,24 @@ public class LegalDistrictAdapter {
             if (cached != null && Duration.between(cached.cachedAt(), Instant.now()).toDays() < cacheDays) {
                 return cached.result().asCached();
             }
+            String dbKey = "LEGAL_DISTRICTS:" + sidoName + ":" + sigunguName;
+            Optional<List<LegalDistrict>> dbHit = dbCache.tryReadCache(dbKey, DISTRICT_TYPE);
+            if (dbHit.isPresent()) {
+                ExternalResult<List<LegalDistrict>> result = ExternalResult.success(dbHit.get());
+                cache.put(cacheKey, new CachedDistrict(result, Instant.now()));
+                return result.asCached();
+            }
             ExternalResult<List<LegalDistrict>> result = fetchDistricts(sidoName + " " + sigunguName);
             if (!result.isFailure()) {
                 cache.put(cacheKey, new CachedDistrict(result, Instant.now()));
+                if (result.isSuccess() && result.value() != null) {
+                    dbCache.writeCache(dbKey, PROVIDER, SERVICE, sigunguName, result.value(), Duration.ofDays(cacheDays));
+                }
+            } else {
+                Optional<List<LegalDistrict>> stale = dbCache.tryReadStale(dbKey, DISTRICT_TYPE);
+                if (stale.isPresent()) {
+                    return ExternalResult.success(stale.get()).asCached();
+                }
             }
             return result;
         });

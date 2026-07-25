@@ -1,5 +1,6 @@
 package com.example.aiworkspace.service.external;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -43,8 +44,10 @@ public class SoilChemistryAdapter {
     private final LegalDistrictAdapter legalDistrictAdapter;
     private final int cacheDays;
     private final int retryCount;
+    private final ExternalApiCacheService dbCache;
     private final Map<String, CachedSoil> cache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, CompletableFuture<ExternalResult<SoilChemistryResult>>> inFlight = new ConcurrentHashMap<>();
+    private static final TypeReference<SoilChemistryResult> SOIL_CHEM_TYPE = new TypeReference<>() {};
 
     @Value("${app.external-api.rda-min-interval-ms:500}")
     private int rdaMinIntervalMs;
@@ -57,12 +60,14 @@ public class SoilChemistryAdapter {
             @Value("${app.external.data-go-kr.service-key}") String serviceKey,
             LegalDistrictAdapter legalDistrictAdapter,
             @Value("${app.cache.soil-chemistry-days:30}") int cacheDays,
-            @Value("${app.external-api.retry-count:1}") int retryCount) {
+            @Value("${app.external-api.retry-count:1}") int retryCount,
+            ExternalApiCacheService dbCache) {
         this.restTemplate = restTemplate;
         this.serviceKey = serviceKey;
         this.legalDistrictAdapter = legalDistrictAdapter;
         this.cacheDays = cacheDays;
         this.retryCount = retryCount;
+        this.dbCache = dbCache;
     }
 
     public static class SoilChemistryResult {
@@ -119,9 +124,21 @@ public class SoilChemistryAdapter {
             return cached.result().asCached();
         }
 
+        String dbKey = "RDA_SOIL_CHEMISTRY:" + sigunguCode;
+        java.util.Optional<SoilChemistryResult> dbHit = dbCache.tryReadCache(dbKey, SOIL_CHEM_TYPE);
+        if (dbHit.isPresent()) {
+            ExternalResult<SoilChemistryResult> result = ExternalResult.success(dbHit.get());
+            cache.put(cacheKey, new CachedSoil(result, Instant.now()));
+            return result.asCached();
+        }
+
         ExternalResult<List<LegalDistrictAdapter.LegalDistrict>> legal = resolveLegalDongs(
                 sigunguCode, sidoName, sigunguName);
         if (legal.isFailure() || legal.isEmpty()) {
+            java.util.Optional<SoilChemistryResult> stale = dbCache.tryReadStale(dbKey, SOIL_CHEM_TYPE);
+            if (stale.isPresent()) {
+                return ExternalResult.success(stale.get()).asCached();
+            }
             return legal.isEmpty()
                     ? ExternalResult.failure("SOIL_CHEMISTRY_LOCATION_NOT_RESOLVED", legal.metrics())
                     : ExternalResult.failure("SOIL_CHEMISTRY_LOCATION_LOOKUP_FAILED_" + legal.errorCode(), legal.metrics());
@@ -131,6 +148,9 @@ public class SoilChemistryAdapter {
         ExternalResult<SoilChemistryResult> result = aggregateSample(sample, legal.value().size(), sigunguCode);
         if (result.isSuccess()) {
             cache.put(cacheKey, new CachedSoil(result, Instant.now()));
+            if (result.value() != null) {
+                dbCache.writeCache(dbKey, PROVIDER, SERVICE, sigunguCode, result.value(), Duration.ofDays(cacheDays));
+            }
         }
         return result;
     }

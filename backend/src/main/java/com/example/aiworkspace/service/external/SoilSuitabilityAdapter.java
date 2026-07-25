@@ -1,5 +1,6 @@
 package com.example.aiworkspace.service.external;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -37,8 +38,10 @@ public class SoilSuitabilityAdapter {
     private final CropCodeAdapter cropCodeAdapter;
     private final int cacheDays;
     private final int retryCount;
+    private final ExternalApiCacheService dbCache;
     private final Map<String, CachedSuitability> cache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, CompletableFuture<ExternalResult<Map<String, SoilSuitabilityResult>>>> inFlight = new ConcurrentHashMap<>();
+    private static final TypeReference<Map<String, SoilSuitabilityResult>> SUITABILITY_TYPE = new TypeReference<>() {};
 
     @Value("${app.external-api.rda-min-interval-ms:500}")
     private int rdaMinIntervalMs;
@@ -52,13 +55,15 @@ public class SoilSuitabilityAdapter {
             LegalDistrictAdapter legalDistrictAdapter,
             CropCodeAdapter cropCodeAdapter,
             @Value("${app.cache.soil-suitability-days:90}") int cacheDays,
-            @Value("${app.external-api.retry-count:1}") int retryCount) {
+            @Value("${app.external-api.retry-count:1}") int retryCount,
+            ExternalApiCacheService dbCache) {
         this.restTemplate = restTemplate;
         this.serviceKey = serviceKey;
         this.legalDistrictAdapter = legalDistrictAdapter;
         this.cropCodeAdapter = cropCodeAdapter;
         this.cacheDays = cacheDays;
         this.retryCount = retryCount;
+        this.dbCache = dbCache;
     }
 
     public static class SoilSuitabilityResult {
@@ -103,6 +108,13 @@ public class SoilSuitabilityAdapter {
         CachedSuitability cached = cache.get(cacheKey);
         if (cached != null && Duration.between(cached.cachedAt(), Instant.now()).toDays() < cacheDays) {
             return cached.result().asCached();
+        }
+        String dbKey = "RDA_SOIL_SUITABILITY:" + sigunguCode;
+        java.util.Optional<Map<String, SoilSuitabilityResult>> dbHit = dbCache.tryReadCache(dbKey, SUITABILITY_TYPE);
+        if (dbHit.isPresent()) {
+            ExternalResult<Map<String, SoilSuitabilityResult>> result = ExternalResult.success(dbHit.get());
+            cache.put(cacheKey, new CachedSuitability(result, Instant.now()));
+            return result.asCached();
         }
         ExternalResult<Map<String, CropCodeAdapter.CropCodeMapping>> cropCodes = cropCodeAdapter.getCropCodeMappings();
         if (cropCodes.isFailure()) {
@@ -177,6 +189,7 @@ public class SoilSuitabilityAdapter {
         if (withData > 0) {
             ExternalResult<Map<String, SoilSuitabilityResult>> result = ExternalResult.success(results, metrics);
             cache.put(cacheKey, new CachedSuitability(result, Instant.now()));
+            dbCache.writeCache(dbKey, PROVIDER, SERVICE, sigunguCode, results, Duration.ofDays(cacheDays));
             return result;
         }
         return ExternalResult.empty(metrics);

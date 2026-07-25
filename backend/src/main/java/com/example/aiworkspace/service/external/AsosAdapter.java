@@ -1,5 +1,6 @@
 package com.example.aiworkspace.service.external;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -17,6 +18,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -35,18 +37,22 @@ public class AsosAdapter {
     private final String serviceKey;
     private final int cacheHours;
     private final int retryCount;
+    private final ExternalApiCacheService dbCache;
     private final Map<String, CachedAsos> cache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, CompletableFuture<ExternalResult<Asos30DaySummary>>> inFlight = new ConcurrentHashMap<>();
+    private static final TypeReference<Asos30DaySummary> ASOS_TYPE = new TypeReference<>() {};
 
     public AsosAdapter(
             @Qualifier("externalApiRestTemplate") RestTemplate restTemplate,
             @Value("${app.external.data-go-kr.service-key}") String serviceKey,
             @Value("${app.cache.asos-hours:24}") int cacheHours,
-            @Value("${app.external-api.retry-count:1}") int retryCount) {
+            @Value("${app.external-api.retry-count:1}") int retryCount,
+            ExternalApiCacheService dbCache) {
         this.restTemplate = restTemplate;
         this.serviceKey = serviceKey;
         this.cacheHours = cacheHours;
         this.retryCount = retryCount;
+        this.dbCache = dbCache;
     }
 
     public static class Asos30DaySummary {
@@ -96,6 +102,16 @@ public class AsosAdapter {
             return cached.result().asCached();
         }
 
+        String dbKey = "KMA_ASOS_30D:" + stationId;
+        Optional<Asos30DaySummary> dbHit = dbCache.tryReadCache(dbKey, ASOS_TYPE);
+        if (dbHit.isPresent()) {
+            log.debug("ASOS DB cache hit: {}", dbKey);
+            ExternalResult<Asos30DaySummary> result = ExternalResult.success(
+                    dbHit.get(), metricsFor(dbHit.get(), stationId, null));
+            cache.put(cacheKey, new CachedAsos(result, Instant.now()));
+            return result.asCached();
+        }
+
         LocalDate endDate = LocalDate.now(KST).minusDays(1);
         LocalDate startDate = endDate.minusDays(29);
         List<Map<String, Object>> allItems = new ArrayList<>();
@@ -106,6 +122,11 @@ public class AsosAdapter {
             ExternalResult<AsosPage> page = fetchPage(stationId, startDate, endDate, pageNumber);
             if (page.isFailure()) {
                 if (allItems.isEmpty()) {
+                    Optional<Asos30DaySummary> stale = dbCache.tryReadStale(dbKey, ASOS_TYPE);
+                    if (stale.isPresent()) {
+                        log.info("ASOS using stale DB cache: {}", dbKey);
+                        return ExternalResult.success(stale.get(), metricsFor(stale.get(), stationId, null)).asCached();
+                    }
                     return ExternalResult.failure(page.errorCode(), page.metrics());
                 }
                 partial = true;
@@ -129,6 +150,7 @@ public class AsosAdapter {
         ExternalResult<Asos30DaySummary> result = ExternalResult.success(
                 summary, metricsFor(summary, stationId, endDate.toString()));
         cache.put(cacheKey, new CachedAsos(result, Instant.now()));
+        dbCache.writeCache(dbKey, PROVIDER, SERVICE, stationId, summary, Duration.ofHours(cacheHours));
         return result;
     }
 
