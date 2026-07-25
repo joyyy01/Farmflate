@@ -322,6 +322,10 @@ export const ApiService = {
     return requestJson<unknown>(`/community/posts/${encodeURIComponent(postId)}/like`, { method: 'POST', headers: getAuthHeaders() });
   },
 
+  async saveCommunityPost(postId: string): Promise<{ postId: number; isSaved: boolean }> {
+    return requestJson<{ postId: number; isSaved: boolean }>(`/community/posts/${encodeURIComponent(postId)}/save`, { method: 'POST', headers: getAuthHeaders() });
+  },
+
   async addCommunityComment(postId: string, payload: { author?: string; content: string }): Promise<unknown> {
     return requestJson<unknown>(`/community/posts/${encodeURIComponent(postId)}/comments`, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify(payload) });
   },

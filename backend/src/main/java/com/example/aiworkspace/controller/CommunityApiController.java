@@ -3,6 +3,8 @@ package com.example.aiworkspace.controller;
 import com.example.aiworkspace.domain.community.CommunityCommentEntity;
 import com.example.aiworkspace.domain.community.CommunityPostEntity;
 import com.example.aiworkspace.domain.community.CommunityPostRepository;
+import com.example.aiworkspace.domain.community.CommunitySaveEntity;
+import com.example.aiworkspace.domain.community.CommunitySaveRepository;
 import com.example.aiworkspace.domain.user.UserRepository;
 import com.example.aiworkspace.security.UserPrincipal;
 import com.fasterxml.jackson.annotation.JsonFormat;
@@ -26,6 +28,7 @@ import java.util.stream.Collectors;
 public class CommunityApiController {
 
     private final CommunityPostRepository communityPostRepository;
+    private final CommunitySaveRepository communitySaveRepository;
     private final UserRepository userRepository;
 
     private String requireEmail(UserPrincipal principal) {
@@ -78,10 +81,30 @@ public class CommunityApiController {
     public ResponseEntity<PostResponse> toggleLike(@PathVariable Long id) {
         CommunityPostEntity post = communityPostRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Post not found: " + id));
-        
+
         post.incrementLike();
         CommunityPostEntity saved = communityPostRepository.save(post);
         return ResponseEntity.ok(toPostResponse(saved));
+    }
+
+    @PostMapping("/posts/{id}/save")
+    public ResponseEntity<Map<String, Object>> toggleSave(
+            @AuthenticationPrincipal UserPrincipal userPrincipal,
+            @PathVariable Long id) {
+        String email = requireEmail(userPrincipal);
+        communityPostRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Post not found: " + id));
+
+        boolean nowSaved;
+        if (communitySaveRepository.existsByUserEmailAndPostId(email, id)) {
+            communitySaveRepository.deleteByUserEmailAndPostId(email, id);
+            nowSaved = false;
+        } else {
+            communitySaveRepository.save(CommunitySaveEntity.builder()
+                    .userEmail(email).postId(id).build());
+            nowSaved = true;
+        }
+        return ResponseEntity.ok(Map.of("postId", id, "isSaved", nowSaved));
     }
 
     @PostMapping("/posts/{id}/comments")

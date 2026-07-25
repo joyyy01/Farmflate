@@ -584,8 +584,13 @@ export function App() {
     }
   };
 
-  const handleToggleSave = (postId: string) => {
-    setPosts(prev => prev.map(p => p.id === postId ? { ...p, isSaved: !p.isSaved } : p));
+  const handleToggleSave = async (postId: string) => {
+    try {
+      const result = await ApiService.saveCommunityPost(postId);
+      setPosts(prev => prev.map(p => p.id === postId ? { ...p, isSaved: result.isSaved } : p));
+    } catch {
+      setCommunityLoadError('저장 처리에 실패했습니다.');
+    }
   };
 
   const handleAddComment = async (postId: string, commentText: string) => {
