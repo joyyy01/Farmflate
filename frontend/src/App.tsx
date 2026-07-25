@@ -522,7 +522,7 @@ export function App() {
       const postsFromServer = await ApiService.getCommunityPosts();
       setPosts(normalizeCommunityPosts(postsFromServer));
     } catch (err) {
-      console.warn('Like post backend sync error:', err);
+      setCommunityLoadError('좋아요 처리에 실패했습니다. 다시 시도해 주세요.');
     }
   };
 
@@ -533,13 +533,12 @@ export function App() {
   const handleAddComment = async (postId: string, commentText: string) => {
     try {
       await ApiService.addCommunityComment(postId, {
-        author: userName,
         content: commentText
       });
       const postsFromServer = await ApiService.getCommunityPosts();
       setPosts(normalizeCommunityPosts(postsFromServer));
     } catch (err) {
-      console.warn('Add comment backend sync error:', err);
+      setCommunityLoadError('댓글 등록에 실패했습니다. 다시 시도해 주세요.');
     }
   };
 
@@ -551,7 +550,6 @@ export function App() {
         content,
         category: category || '농가 노하우',
         tagLocation: locationTag || `${selectedProvince} ${selectedDistrict}`,
-        author: userName,
         imageUrl: imageUrl || ''
       });
       const postsFromServer = await ApiService.getCommunityPosts();
@@ -560,7 +558,6 @@ export function App() {
       safeSetViewStep('community');
       setActiveTab('community');
     } catch (err) {
-      console.warn('Create post backend sync error:', err);
       setCommunityComposeError(err instanceof Error ? err.message : '게시글을 등록하지 못했습니다.');
     }
   };

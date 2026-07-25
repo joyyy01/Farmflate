@@ -4,8 +4,7 @@ import { ChevronRight, AlertTriangle, MoveRight, Bell, Bot } from 'lucide-react'
 import type { TabState } from '../../types/farmflate';
 import { BottomNavigation } from '../common/BottomNavigation';
 import type { HomeData } from '../../services/api';
-import { useWeather } from '../../hooks/useWeather';
-import { WEATHER_ILLUSTRATIONS } from '../../services/weatherService';
+import { WEATHER_ILLUSTRATIONS, snapshotFromBackend } from '../../services/weatherService';
 
 interface MainDashboardViewProps {
   userName?: string;
@@ -36,19 +35,17 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
   const regionName = homeData?.latestRegionAnalysis?.regionName || analyzedRegion || '지역 분석 전';
   const shortRegion = regionName.split(' ').pop() || regionName;
 
-  // Weather: useWeather() hook (see hooks/useWeather.ts + services/weatherService.ts) is the
-  // primary source for the illustration/humidity/wind/condition copy. Real backend fields on
-  // homeData.weather (temperature/min/max/precipitation) win whenever the API has provided them.
-  const weather = useWeather(regionName);
-  const temp = homeData?.weather?.temperature ?? weather?.temperature ?? 0;
-  const minTemp = homeData?.weather?.minTemperature ?? weather?.minTemperature ?? temp - 3;
-  const maxTemp = homeData?.weather?.maxTemperature ?? weather?.maxTemperature ?? temp + 4;
-  const rainProb = homeData?.weather?.precipitationProbability ?? weather?.precipitationProbability ?? 0;
-  const humidity = weather?.humidity ?? 0;
-  const wind = weather?.windSpeed ?? 0;
+  // Weather: derived entirely from the backend /api/home weather DTO (KMA data).
+  const weather = snapshotFromBackend(homeData?.weather);
+  const temp = weather?.temperature ?? 0;
+  const minTemp = weather?.minTemperature ?? temp - 3;
+  const maxTemp = weather?.maxTemperature ?? temp + 4;
+  const rainProb = weather?.precipitationProbability ?? 0;
   const condition = weather?.condition ?? 'clear';
   const weatherStateText = weather?.conditionLabel ?? '';
   const forecastText = weather?.forecastText ?? '';
+  const humidity = 0;
+  const wind = 0;
 
   // Today's Action / Risk parameters from Backend API
   const hasAction = Boolean(homeData?.todayAction?.title || homeData?.todayAction?.reason);

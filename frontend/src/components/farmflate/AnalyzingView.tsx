@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { motion } from 'framer-motion';
 import type { AnalysisState } from '../../services/reportLifecycle';
 
@@ -65,21 +65,6 @@ export const AnalyzingView: React.FC<AnalyzingViewProps> = ({
   const isUnauthorized = state.kind === 'UNAUTHORIZED';
   const errorMessage = state.kind === 'ERROR' || state.kind === 'UNAUTHORIZED' ? state.message : null;
 
-  // Guaranteed smooth step-by-step progress timer
-  const [simulatedStep, setSimulatedStep] = useState<number>(0);
-
-  useEffect(() => {
-    if (!isWorking) {
-      setSimulatedStep(0);
-      return;
-    }
-    const interval = setInterval(() => {
-      setSimulatedStep(prev => (prev < steps.length - 1 ? prev + 1 : prev));
-    }, 750);
-
-    return () => clearInterval(interval);
-  }, [isWorking, steps.length]);
-
   // Determine server target step index with full normalization
   let serverStepIndex = 0;
   if (state.kind === 'POLLING' && state.currentStep) {
@@ -92,8 +77,8 @@ export const AnalyzingView: React.FC<AnalyzingViewProps> = ({
     }
   }
 
-  // Active step is the maximum of simulated step and server step
-  const activeStep = isWorking ? Math.max(simulatedStep, serverStepIndex) : 0;
+  // Active step reflects only real server progress
+  const activeStep = isWorking ? serverStepIndex : 0;
 
   // Completed steps calculation
   const pollingCompletedSteps = state.kind === 'POLLING' ? state.completedSteps : [];

@@ -1,11 +1,10 @@
 /**
  * Weather data access layer.
  *
- * The app currently has no live weather backend wired up, so `fetchWeather`
- * below returns generated mock data. Once a real weather endpoint exists,
- * replace the body of `fetchWeather` with the actual API call — keep the
- * function name, signature, and `WeatherSnapshot` return shape the same so
- * none of the calling code (hooks/components) needs to change.
+ * Maps the backend /api/home weather DTO to the WeatherSnapshot shape
+ * consumed by the dashboard illustration and condition labels.
+ * No mock data — all values come from the Spring Boot backend
+ * (KMA short forecast via RegionAnalysisService).
  */
 
 export type WeatherCondition =
@@ -56,47 +55,39 @@ const CONDITION_FORECASTS: Record<WeatherCondition, string> = {
   snow: '노면 결빙에 유의하세요'
 };
 
-const CONDITIONS: WeatherCondition[] = ['clear', 'partlyCloudy', 'cloudy', 'rain', 'heavyRain', 'snow'];
-
-function hashString(value: string): number {
-  let hash = 0;
-  for (let i = 0; i < value.length; i++) {
-    hash = value.charCodeAt(i) + ((hash << 5) - hash);
+/** Maps the backend condition enum to the frontend illustration enum. */
+export function mapBackendCondition(backendCondition: string | null | undefined): WeatherCondition {
+  switch ((backendCondition ?? '').toUpperCase()) {
+    case 'SUNNY': return 'clear';
+    case 'RAIN': return 'rain';
+    case 'CLOUDY': return 'cloudy';
+    case 'SNOW': return 'snow';
+    default: return 'clear';
   }
-  return Math.abs(hash);
 }
 
-// --- Mock generator ---------------------------------------------------
-// Varies by region name and by the current hour, so the card visibly
-// changes between hourly refreshes without needing a real backend yet.
-function generateMockWeather(regionName: string): WeatherSnapshot {
-  const hourBucket = Math.floor(Date.now() / (60 * 60 * 1000));
-  const seed = hashString(regionName) + hourBucket;
-
-  const condition = CONDITIONS[seed % CONDITIONS.length];
-  const baseTemp = condition === 'snow' ? seed % 5 : 10 + (seed % 20);
-  const humidity = 40 + (seed % 45);
-  const windSpeed = 1 + (seed % 5);
-  const precipitationProbability =
-    condition === 'heavyRain' ? 60 + (seed % 35)
-      : condition === 'rain' ? 30 + (seed % 40)
-        : condition === 'snow' ? 20 + (seed % 30)
-          : seed % 30;
-
+/** Builds a WeatherSnapshot from the backend home weather DTO. */
+export function snapshotFromBackend(weather: {
+  temperature?: number | null;
+  minTemperature?: number | null;
+  maxTemperature?: number | null;
+  precipitationProbability?: number | null;
+  condition?: string | null;
+  status?: string | null;
+} | null | undefined): WeatherSnapshot | null {
+  if (!weather || weather.status === 'UNAVAILABLE') return null;
+  const condition = mapBackendCondition(weather.condition);
+  const temp = weather.temperature ?? 0;
   return {
-    temperature: baseTemp,
-    minTemperature: baseTemp - 3,
-    maxTemperature: baseTemp + 4,
-    humidity,
-    windSpeed,
-    precipitationProbability,
+    temperature: temp,
+    minTemperature: weather.minTemperature ?? temp - 3,
+    maxTemperature: weather.maxTemperature ?? temp + 4,
+    humidity: 0,
+    windSpeed: 0,
+    precipitationProbability: weather.precipitationProbability ?? 0,
     condition,
     conditionLabel: CONDITION_LABELS[condition],
     forecastText: CONDITION_FORECASTS[condition],
-    fetchedAt: Date.now()
+    fetchedAt: Date.now(),
   };
-}
-
-export async function fetchWeather(regionName: string): Promise<WeatherSnapshot> {
-  return generateMockWeather(regionName);
 }

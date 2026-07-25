@@ -1,4 +1,4 @@
-import type { AgentTaskRequest, AgentTaskResponse, ChatRequest, ChatResponse } from '../types/chat';
+import type { ChatRequest, ChatResponse } from '../types/chat';
 import { normalizeRegionReport } from './reportLifecycle.ts';
 import type {
   CreateFieldRequest,
@@ -222,10 +222,6 @@ export const ApiService = {
     return requestJson<HomeData>('/home', { headers: getAuthHeaders() });
   },
 
-  async getUserProfile(): Promise<UserProfileDto> {
-    return requestJson<UserProfileDto>('/users/me', { headers: getAuthHeaders() });
-  },
-
   async updateUserProfile(payload: { nickname: string }): Promise<UserProfileDto> {
     return requestJson<UserProfileDto>('/users/me', {
       method: 'PUT',
@@ -309,7 +305,7 @@ export const ApiService = {
     return response;
   },
 
-  async createCommunityPost(payload: { category: string; tagLocation: string; title: string; content: string; author: string; imageUrl?: string }): Promise<unknown> {
+  async createCommunityPost(payload: { category: string; tagLocation: string; title: string; content: string; author?: string; imageUrl?: string }): Promise<unknown> {
     return requestJson<unknown>('/community/posts', { method: 'POST', headers: jsonHeaders(), body: JSON.stringify(payload) });
   },
 
@@ -317,7 +313,7 @@ export const ApiService = {
     return requestJson<unknown>(`/community/posts/${encodeURIComponent(postId)}/like`, { method: 'POST', headers: getAuthHeaders() });
   },
 
-  async addCommunityComment(postId: string, payload: { author: string; content: string }): Promise<unknown> {
+  async addCommunityComment(postId: string, payload: { author?: string; content: string }): Promise<unknown> {
     return requestJson<unknown>(`/community/posts/${encodeURIComponent(postId)}/comments`, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify(payload) });
   },
 
@@ -336,17 +332,5 @@ export const ApiService = {
       headers: jsonHeaders(),
       body: JSON.stringify(payload)
     });
-  },
-
-  async runAgentTask(payload: AgentTaskRequest): Promise<AgentTaskResponse> {
-    return requestJson<AgentTaskResponse>('/assistant/messages', {
-      method: 'POST',
-      headers: jsonHeaders(),
-      body: JSON.stringify(payload)
-    });
-  },
-
-  async checkBackendHealth(): Promise<{ status: string; message: string }> {
-    return requestJson<{ status: string; message: string }>('/health');
   }
 };
