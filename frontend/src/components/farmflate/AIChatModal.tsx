@@ -253,7 +253,7 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 <div style={{ flex: 1, overflowY: 'auto', padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
-                    <span style={{ fontSize: '0.82rem', color: '#2e9f5b', fontWeight: 800 }}>Farmflate AI</span>
+                    <img src="/assets/brand-wordmark-new.png" alt="Farmflate" style={{ height: 18 }} />
                     <button onClick={handleReset} style={{ background: 'none', border: 'none', color: '#9CA3AF', fontSize: '0.76rem', cursor: 'pointer' }}>
                       처음으로
                     </button>
