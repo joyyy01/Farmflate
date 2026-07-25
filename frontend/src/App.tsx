@@ -220,6 +220,7 @@ export function App() {
   const [communityComposeError, setCommunityComposeError] = useState<string | null>(null);
   const pollTimerRef = useRef<number | null>(null);
   const previewModeRef = useRef(false);
+  const isAddingFieldRef = useRef(false);
 
   /* Full 100% Reliable Logout Reset Handler */
   const handleLogout = () => {
@@ -609,6 +610,13 @@ export function App() {
       returnToMyField();
       return;
     }
+    // Guard against duplicate registrations from rapid repeat clicks on
+    // "농작물 등록하기" — only the first click while a submission is in
+    // flight actually calls the backend; the rest are no-ops. Checked via a
+    // ref (not state) because it must take effect synchronously, before any
+    // re-render could disable the button.
+    if (isAddingFieldRef.current) return;
+    isAddingFieldRef.current = true;
     try {
       const crop = apiReport.recommendedCrops.find(item => item.cropName === pendingCropRegistration.cropName);
       const field = await ApiService.createField({
@@ -627,6 +635,8 @@ export function App() {
       setViewStep('myfield');
     } catch (error) {
       setAnalysisFailure(error, 'FIELD');
+    } finally {
+      isAddingFieldRef.current = false;
     }
   };
 
