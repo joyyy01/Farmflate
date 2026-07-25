@@ -42,7 +42,7 @@ public class SecurityConfig {
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(CorsUtils::isPreFlightRequest).permitAll()
-                .requestMatchers("/", "/oauth2/**", "/login/**", "/api/health", "/api/test/**", "/error", "/favicon.ico").permitAll()
+                .requestMatchers("/", "/oauth2/**", "/login/**", "/api/health", "/error", "/favicon.ico").permitAll()
                 .requestMatchers("/api/**").authenticated()
                 .anyRequest().authenticated()
             )
