@@ -10,6 +10,7 @@ export type ViewStep =
   | 'crop_suitability_report'
   | 'condition'
   | 'dashboard'
+  | 'field_dashboard'
   | 'myfield'
   | 'community'
   | 'community_create'

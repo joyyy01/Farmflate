@@ -12,6 +12,7 @@ import { CropSuitabilityReportView } from './components/farmflate/CropSuitabilit
 import { CropConditionInputView, type CropRegistrationInput } from './components/farmflate/CropConditionInputView';
 import { MainDashboardView } from './components/farmflate/MainDashboardView';
 import { MyFieldListView } from './components/farmflate/MyFieldListView';
+import { FieldDashboardView } from './components/farmflate/FieldDashboardView';
 import { CommunityListView } from './components/farmflate/CommunityListView';
 import { CommunityCreatePostView } from './components/farmflate/CommunityCreatePostView';
 import { MyPageView } from './components/farmflate/MyPageView';
@@ -213,6 +214,7 @@ export function App() {
   const [isFieldRegistrationFlow, setIsFieldRegistrationFlow] = useState(false);
   const [homeData, setHomeData] = useState<HomeData | null>(null);
   const [myFields, setMyFields] = useState<FieldProfile[]>(MOCK_FIELDS);
+  const [selectedField, setSelectedField] = useState<FieldProfile | null>(null);
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [homeLoadError, setHomeLoadError] = useState<string | null>(null);
   const [fieldLoadError, setFieldLoadError] = useState<string | null>(null);
@@ -286,6 +288,11 @@ export function App() {
     setPendingCropRegistration(null);
     setActiveTab('myfield');
     setViewStep('myfield');
+  };
+
+  const handleSelectField = (field: FieldProfile) => {
+    setSelectedField(field);
+    setViewStep('field_dashboard');
   };
 
   const openCropRegistrationFromMyField = () => {
@@ -848,9 +855,19 @@ export function App() {
           fields={myFields}
           loadError={fieldLoadError}
           onAddField={openCropRegistrationFromMyField}
+          onSelectField={handleSelectField}
           onOpenAIChat={() => setIsAIChatOpen(true)}
           activeTab={activeTab}
           onTabChange={handleTabChange}
+        />
+      )}
+
+      {/* 11b. Field Detail Dashboard Screen */}
+      {viewStep === 'field_dashboard' && selectedField && (
+        <FieldDashboardView
+          field={selectedField}
+          onBack={returnToMyField}
+          onOpenAIChat={() => setIsAIChatOpen(true)}
         />
       )}
 

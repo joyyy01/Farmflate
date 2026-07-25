@@ -9,6 +9,7 @@ interface MyFieldListViewProps {
   fields: FieldProfile[];
   loadError?: string | null;
   onAddField: () => void;
+  onSelectField: (field: FieldProfile) => void;
   onOpenAIChat: () => void;
   activeTab: TabState;
   onTabChange: (tab: TabState) => void;
@@ -18,6 +19,7 @@ export const MyFieldListView: React.FC<MyFieldListViewProps> = ({
   fields = [],
   loadError,
   onAddField,
+  onSelectField,
   onOpenAIChat,
   activeTab,
   onTabChange
@@ -63,11 +65,16 @@ export const MyFieldListView: React.FC<MyFieldListViewProps> = ({
             return (
               <div
                 key={field.id}
+                onClick={() => onSelectField(field)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === 'Enter') onSelectField(field); }}
                 style={{
                   backgroundColor: '#FFFFFF',
                   borderRadius: 20,
                   padding: 20,
-                  border: '1px solid #E5E8EB'
+                  border: '1px solid #E5E8EB',
+                  cursor: 'pointer'
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
