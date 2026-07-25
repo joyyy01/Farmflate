@@ -1,18 +1,46 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import type { AnalysisState } from '../../services/reportLifecycle';
+import type { AnalysisState, FieldPreviewState } from '../../services/reportLifecycle';
 
 interface AnalyzingViewProps {
   regionName: string;
   cropName?: string;
   analysisType?: 'region' | 'crop';
-  state: AnalysisState;
+  state: AnalysisState | FieldPreviewState;
   onRetry: () => void;
   onBack: () => void;
   onLogin: () => void;
   /** Optional label (e.g. field/crop name) shown as a small badge in crop mode illustrations. */
   fieldLabel?: string;
 }
+
+const STEP_CODE_TO_INDEX: Record<string, number> = {
+  REGION: 0,
+  RECENT_WEATHER: 1,
+  FORECAST: 1,
+  SOIL: 2,
+  CROP: 3,
+  REPORT: 4
+};
+
+const KOREAN_STEP_TO_INDEX: Record<string, number> = {
+  '지역 정보 확인 중': 0,
+  '기상청 데이터를 불러오는 중': 1,
+  '흙토람 토양 정보를 분석하는 중': 2,
+  '추천 작물을 계산하는 중': 3,
+  '지역 농사 환경 점수를 산출하는 중': 4
+};
+
+const resolveStepIndex = (code: string | null | undefined, steps: string[]): number => {
+  if (!code) return 0;
+  const upper = code.trim().toUpperCase();
+  if (STEP_CODE_TO_INDEX[upper] !== undefined) return STEP_CODE_TO_INDEX[upper];
+  const lower = code.trim().toLowerCase();
+  const koreanEntry = Object.entries(KOREAN_STEP_TO_INDEX).find(([k]) => k.toLowerCase() === lower);
+  if (koreanEntry) return koreanEntry[1];
+  const idx = steps.findIndex(s => s.toLowerCase() === lower);
+  return idx !== -1 ? idx : 0;
+};
 
 export const AnalyzingView: React.FC<AnalyzingViewProps> = ({
   regionName,
@@ -26,7 +54,6 @@ export const AnalyzingView: React.FC<AnalyzingViewProps> = ({
 }) => {
   const isCropMode = analysisType === 'crop';
 
-  // 1. Regional Analysis Dedicated Steps & Terminology
   const regionSteps = [
     '지역 행정구역 및 법정동 정보 확인 중',
     '기상청 30일 기온 관측 및 단기예보 수집 중',
@@ -35,7 +62,6 @@ export const AnalyzingView: React.FC<AnalyzingViewProps> = ({
     '지역 통합 농사 환경 평가 점수 계산 중'
   ];
 
-  // 2. Vegetable / Crop Specific Dedicated Steps & Terminology
   const cropSteps = [
     `${cropName} 최적 생육 온도 및 토양 조건 확인 중`,
     `지역 기상청 단기예보 및 최근 기온 데이터 매칭 중`,
@@ -46,48 +72,44 @@ export const AnalyzingView: React.FC<AnalyzingViewProps> = ({
 
   const steps = isCropMode ? cropSteps : regionSteps;
 
-  // Normalized Step Code Mapping
-  const STEP_CODE_TO_INDEX: Record<string, number> = {
-    'region': 0,
-    'recent_weather': 1,
-    'forecast': 1,
-    'soil': 2,
-    'crop': 3,
-    'report': 4,
-    '지역 정보 확인 중': 0,
-    '기상청 데이터를 불러오는 중': 1,
-    '흙토람 토양 정보를 분석하는 중': 2,
-    '추천 작물을 계산하는 중': 3,
-    '지역 농사 환경 점수를 산출하는 중': 4
-  };
-
-  const isWorking = state.kind === 'SUBMITTING' || state.kind === 'POLLING';
+  // Normalize state into common display values
+  const isWorking = state.kind === 'SUBMITTING' || state.kind === 'POLLING' || state.kind === 'COMPLETING';
   const isUnauthorized = state.kind === 'UNAUTHORIZED';
   const errorMessage = state.kind === 'ERROR' || state.kind === 'UNAUTHORIZED' ? state.message : null;
 
-  // Determine server target step index with full normalization
-  let serverStepIndex = 0;
-  if (state.kind === 'POLLING' && state.currentStep) {
-    const norm = state.currentStep.trim().toLowerCase();
-    if (STEP_CODE_TO_INDEX[norm] !== undefined) {
-      serverStepIndex = STEP_CODE_TO_INDEX[norm];
+  // Server-driven step (from POLLING or COMPLETING)
+  let serverStep = 0;
+  let serverCompleted: number[] = [];
+
+  if (state.kind === 'POLLING') {
+    const codeIndex = resolveStepIndex(state.currentStepCode, steps);
+    const labelIndex = resolveStepIndex(state.currentStep, steps);
+    serverStep = state.currentStepCode ? codeIndex : labelIndex;
+
+    const codes = state.completedStepCodes ?? [];
+    if (codes.length > 0) {
+      serverCompleted = codes
+        .map(c => STEP_CODE_TO_INDEX[c.toUpperCase()])
+        .filter((i): i is number => i !== undefined);
     } else {
-      const idx = steps.findIndex(s => s.toLowerCase() === norm);
-      if (idx !== -1) serverStepIndex = idx;
+      serverCompleted = (state.completedSteps ?? [])
+        .map(s => resolveStepIndex(s, steps))
+        .filter(i => i >= 0);
     }
+    for (let i = 0; i < serverStep; i++) {
+      if (!serverCompleted.includes(i)) serverCompleted.push(i);
+    }
+  } else if (state.kind === 'COMPLETING') {
+    serverStep = state.completedStepIndex;
+    serverCompleted = Array.from({ length: state.completedStepIndex }, (_, i) => i);
+  } else if (state.kind === 'SUBMITTING') {
+    const step = 'step' in state ? state.step : 0;
+    serverStep = step;
+    serverCompleted = Array.from({ length: step }, (_, i) => i);
   }
 
-  // Active step reflects only real server progress
-  const activeStep = isWorking ? serverStepIndex : 0;
-
-  // Completed steps calculation
-  const pollingCompletedSteps = state.kind === 'POLLING' ? state.completedSteps : [];
-  const completedIndices: number[] = isWorking
-    ? Array.from({ length: activeStep }, (_, i: number) => i)
-    : pollingCompletedSteps.map((s: string) => {
-        const norm = s.trim().toLowerCase();
-        return STEP_CODE_TO_INDEX[norm] ?? steps.findIndex(st => st.toLowerCase() === norm);
-      }).filter((i: number) => i >= 0);
+  const activeStep = serverStep;
+  const completedIndices = serverCompleted;
 
   const title = isWorking
     ? (isCropMode ? `${cropName} 생육 적합도 분석 중...` : '지역 종합 환경 분석 중...')
@@ -197,17 +219,16 @@ export const AnalyzingView: React.FC<AnalyzingViewProps> = ({
                       <path d="M8 12.3l2.6 2.6L16.3 9" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   ) : isCurrent ? (
-                    <motion.svg
-                      width="20"
-                      height="20"
-                      viewBox="0 0 24 24"
-                      fill="none"
+                    <motion.div
+                      style={{ width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                       animate={{ rotate: 360 }}
                       transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
                     >
-                      <circle cx="12" cy="12" r="9.25" stroke="#D7ECDD" strokeWidth="2.2" />
-                      <path d="M21.25 12A9.25 9.25 0 0 0 12 2.75" stroke="#2FA35A" strokeWidth="2.2" strokeLinecap="round" />
-                    </motion.svg>
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                        <circle cx="12" cy="12" r="9.25" stroke="#D7ECDD" strokeWidth="2.2" />
+                        <path d="M21.25 12A9.25 9.25 0 0 0 12 2.75" stroke="#2FA35A" strokeWidth="2.2" strokeLinecap="round" />
+                      </svg>
+                    </motion.div>
                   ) : (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                       <circle cx="12" cy="12" r="9.25" stroke="#D7DEDA" strokeWidth="1.6" />

@@ -2,6 +2,7 @@ package com.example.aiworkspace.controller;
 
 import com.example.aiworkspace.dto.field.CreateFieldRequestDto;
 import com.example.aiworkspace.dto.field.FieldProfileResponseDto;
+import com.example.aiworkspace.dto.field.FieldSuitabilityPreviewDto;
 import com.example.aiworkspace.security.UserPrincipal;
 import com.example.aiworkspace.service.farm.FieldService;
 import lombok.RequiredArgsConstructor;
@@ -38,7 +39,7 @@ public class FieldApiController {
     }
 
     @PostMapping("/preview")
-    public ResponseEntity<FieldProfileResponseDto> previewField(@AuthenticationPrincipal UserPrincipal userPrincipal,
+    public ResponseEntity<FieldSuitabilityPreviewDto> previewField(@AuthenticationPrincipal UserPrincipal userPrincipal,
                                                                   @RequestBody CreateFieldRequestDto request) {
         return ResponseEntity.ok(fieldService.preview(ownerEmail(userPrincipal), request));
     }

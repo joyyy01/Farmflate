@@ -322,7 +322,7 @@ public class RegionAnalysisService {
             // observable here, rather than surfacing as a late HTTP 500 at the
             // outer transaction commit.
             analysisRepository.saveAndFlush(entity);
-            return completedStatus(scopedReport.getAnalysisId(), scopedReport.getStatus(), false, analysisScope);
+            return completedStatus(entity.getId(), scopedReport.getStatus(), false, analysisScope);
         } catch (DataIntegrityViolationException exception) {
             Optional<RegionAnalysisEntity> winner = hasText(idempotencyKey)
                     ? findByScopedIdempotency(ownerEmail, analysisScope, scopeSubject, idempotencyKey)
@@ -487,7 +487,11 @@ public class RegionAnalysisService {
             throw RegionAnalysisException.reportPayloadUnavailable("저장된 분석 스냅샷이 없습니다.");
         }
         try {
-            return objectMapper.readValue(entity.getPayloadJson(), RegionReportResponseDto.class);
+            RegionReportResponseDto report = objectMapper.readValue(entity.getPayloadJson(), RegionReportResponseDto.class);
+            // The stored payload carries a random analysisId generated at build time;
+            // replace it with the real entity id so downstream lookups (field preview,
+            // report re-fetch) resolve against the persisted row.
+            return report.toBuilder().analysisId(analysisId.toString()).build();
         } catch (Exception exception) {
             log.warn("Unable to deserialize region report {}", analysisId, exception);
             throw RegionAnalysisException.reportPayloadUnavailable("저장된 분석 스냅샷을 읽을 수 없습니다.");

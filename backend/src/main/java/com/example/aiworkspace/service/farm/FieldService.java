@@ -9,6 +9,7 @@ import com.example.aiworkspace.domain.region.RegionAnalysisRepository;
 import com.example.aiworkspace.dto.field.CreateFieldRequestDto;
 import com.example.aiworkspace.dto.field.FieldDailyReportDto;
 import com.example.aiworkspace.dto.field.FieldProfileResponseDto;
+import com.example.aiworkspace.dto.field.FieldSuitabilityPreviewDto;
 import com.example.aiworkspace.dto.field.FieldSuitabilityReportDto;
 import com.example.aiworkspace.dto.region.RegionReportResponseDto;
 import com.example.aiworkspace.service.analysis.LocationResolution;
@@ -107,7 +108,7 @@ public class FieldService {
     }
 
     @Transactional(readOnly = true)
-    public FieldProfileResponseDto preview(String ownerEmail, CreateFieldRequestDto request) {
+    public FieldSuitabilityPreviewDto preview(String ownerEmail, CreateFieldRequestDto request) {
         validate(request);
         RegionAnalysisEntity analysis = regionAnalysisRepository
                 .findByIdAndUserEmail(request.getRegionAnalysisId(), ownerEmail)
@@ -115,26 +116,21 @@ public class FieldService {
         RegionReportResponseDto regionReport = readRegionReport(analysis);
         CropResolution crop = resolveCrop(request, regionReport);
         FieldSuitabilityReportDto suitability = buildSuitability(regionReport, crop.cropCode(), crop.cropName(), request);
-        LocationResolution location = regionReport.getLocation();
 
-        FarmEntity transientField = FarmEntity.builder()
-                .userEmail(ownerEmail)
+        log.info("[preview] owner={} regionAnalysisId={} crop={}/{} score={}",
+                maskEmail(ownerEmail), request.getRegionAnalysisId(),
+                crop.cropCode(), crop.cropName(), suitability.getSuitabilityScore());
+
+        return FieldSuitabilityPreviewDto.builder()
                 .fieldName(request.getFieldName().trim())
                 .cropCode(crop.cropCode())
                 .cropName(crop.cropName())
-                .regionAnalysisId(request.getRegionAnalysisId())
-                .locationJson(write(location))
                 .cultivationMethod(request.getCultivationMethod().trim())
-                .cultivationStartDate(request.getCultivationStartDate())
+                .cultivationStartDate(request.getCultivationStartDate() == null ? null : request.getCultivationStartDate().toString())
                 .stage(normalizeStage(request.getStage()))
-                .active(true)
-                .daysPlanted(daysPlanted(request.getCultivationStartDate()))
-                .statusBadge("PREVIEW")
-                .statusBadgeColor("blue")
-                .todayTask(firstOr(suitability.getCurrentManagementPoints(), "분석 기준을 확인하세요."))
-                .reportTime("분석 기준 " + suitability.getAnalysisBasisDate())
+                .regionAnalysisId(request.getRegionAnalysisId())
+                .suitabilityReport(suitability)
                 .build();
-        return toProfile(transientField, location, suitability, null);
     }
 
     @Transactional(readOnly = true)
@@ -316,8 +312,11 @@ public class FieldService {
 
     private RegionReportResponseDto readRegionReport(RegionAnalysisEntity analysis) {
         if (!hasText(analysis.getPayloadJson())) throw FieldException.analysisPayloadUnavailable();
-        return read(analysis.getPayloadJson(), RegionReportResponseDto.class)
+        RegionReportResponseDto report = read(analysis.getPayloadJson(), RegionReportResponseDto.class)
                 .orElseThrow(FieldException::analysisPayloadUnavailable);
+        // The stored payload carries a random analysisId from build time;
+        // replace with the real entity id so suitability references are correct.
+        return report.toBuilder().analysisId(analysis.getId()).build();
     }
 
     private CropResolution resolveCrop(CreateFieldRequestDto request, RegionReportResponseDto report) {
@@ -489,6 +488,15 @@ public class FieldService {
 
     private boolean hasText(String value) {
         return value != null && !value.isBlank();
+    }
+
+    private String maskEmail(String email) {
+        if (email == null || !email.contains("@")) return "***";
+        int at = email.indexOf('@');
+        String local = email.substring(0, at);
+        String domain = email.substring(at);
+        if (local.length() <= 2) return local.charAt(0) + "***" + domain;
+        return local.substring(0, 2) + "***" + domain;
     }
 
     private record CropResolution(String cropCode, String cropName) {

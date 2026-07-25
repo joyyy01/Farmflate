@@ -32,12 +32,19 @@ import static org.mockito.Mockito.when;
 
 class ExternalAdaptersContractTest {
 
-    private final ShortForecastAdapter forecast = new ShortForecastAdapter(new RestTemplate(), "fixture-key", 30, 1, "LIVE");
-    private final AsosAdapter asos = new AsosAdapter(new RestTemplate(), "fixture-key", 24, 1, "LIVE");
-    private final LegalDistrictAdapter legalDistrict = new LegalDistrictAdapter(new RestTemplate(), "fixture-key", 30, 1, "LIVE");
+    private static ExternalApiCacheService noOpDbCache() {
+        ExternalApiCacheService cache = mock(ExternalApiCacheService.class);
+        when(cache.tryReadCache(any(), any())).thenReturn(java.util.Optional.empty());
+        when(cache.tryReadStale(any(), any())).thenReturn(java.util.Optional.empty());
+        return cache;
+    }
+
+    private final ShortForecastAdapter forecast = new ShortForecastAdapter(new RestTemplate(), "fixture-key", 30, 1, noOpDbCache());
+    private final AsosAdapter asos = new AsosAdapter(new RestTemplate(), "fixture-key", 24, 1, noOpDbCache());
+    private final LegalDistrictAdapter legalDistrict = new LegalDistrictAdapter(new RestTemplate(), "fixture-key", 30, 1, noOpDbCache());
     private final SoilChemistryAdapter soil = new SoilChemistryAdapter(
-            new RestTemplate(), "fixture-key", legalDistrict, 30, 1, "LIVE");
-    private final CropCodeAdapter cropCodes = new CropCodeAdapter(90, "LIVE");
+            new RestTemplate(), "fixture-key", legalDistrict, 30, 1, noOpDbCache());
+    private final CropCodeAdapter cropCodes = new CropCodeAdapter(90);
 
     @Test
     void fixture_normalizers_always_return_non_null_typed_results() {
@@ -105,16 +112,15 @@ class ExternalAdaptersContractTest {
     @Test
     void provider_soil_fit_catalog_uses_verified_soil_fit_codes_not_crop_info_numeric_codes() {
         ExternalResult<Map<String, CropCodeAdapter.CropCodeMapping>> result =
-                new CropCodeAdapter(90, "LIVE").getCropCodeMappings();
+                new CropCodeAdapter(90).getCropCodeMappings();
 
         assertThat(result.status()).isEqualTo(ExternalResult.Status.SUCCESS);
         assertThat(result.value().get("APPLE").apiCropCode).isEqualTo("CR005");
         assertThat(result.value().get("PEAR").apiCropCode).isEqualTo("CR006");
         assertThat(result.value().get("CUCUMBER").apiCropCode).isEqualTo("CR017");
         assertThat(result.value().get("POTATO").apiCropCode).isEqualTo("CR032");
-        assertThat(result.value().get("LETTUCE").resolved).isFalse();
-        assertThat(result.metrics()).anySatisfy(metric ->
-                assertThat(metric.validationFlags()).contains("UNSUPPORTED_BY_SOIL_FIT_CATALOG"));
+        assertThat(result.value().get("LETTUCE").apiCropCode).isEqualTo("CR044");
+        assertThat(result.value().get("LETTUCE").resolved).isTrue();
     }
 
     @ParameterizedTest(name = "{0} {1}")
@@ -137,7 +143,7 @@ class ExternalAdaptersContractTest {
                 .thenReturn(legalDistrictJson(sidoName, sigunguName, regionCode));
 
         ExternalResult<List<LegalDistrictAdapter.LegalDistrict>> result =
-                new LegalDistrictAdapter(restTemplate, "fixture-key", 30, 0, "LIVE")
+                new LegalDistrictAdapter(restTemplate, "fixture-key", 30, 0, noOpDbCache())
                         .getDistrictCodes(sidoName, sigunguName);
 
         assertThat(result.status()).isEqualTo(ExternalResult.Status.SUCCESS);
@@ -155,7 +161,7 @@ class ExternalAdaptersContractTest {
                 "text/html;charset=UTF-8");
 
         assertThat(result.status()).isEqualTo(ExternalResult.Status.SUCCESS);
-        assertThat(result.value()).extracting(district -> district.regionCd).containsExactly("5115035000");
+        assertThat(result.value()).extracting(district -> district.regionCd).containsExactly("5115035000", "5115034030");
     }
 
     @Test
@@ -176,7 +182,7 @@ class ExternalAdaptersContractTest {
         when(restTemplate.getForObject(any(URI.class), eq(String.class))).thenReturn(soilExamPayload("6.2"));
 
         ExternalResult<SoilChemistryAdapter.SoilChemistryResult> result =
-                new SoilChemistryAdapter(restTemplate, "fixture-key", legalDistrict, 30, 0, "LIVE")
+                new SoilChemistryAdapter(restTemplate, "fixture-key", legalDistrict, 30, 0, noOpDbCache())
                         .getSoilChemistry("41110", "경기도", "수원시");
 
         assertThat(result.status()).isEqualTo(ExternalResult.Status.SUCCESS);
@@ -197,7 +203,7 @@ class ExternalAdaptersContractTest {
                 .thenReturn(soilExamNoDataXml(), soilExamPayload("5.6"));
 
         SoilChemistryAdapter adapter =
-                new SoilChemistryAdapter(restTemplate, "fixture-key", legalDistrict, 30, 0, "LIVE");
+                new SoilChemistryAdapter(restTemplate, "fixture-key", legalDistrict, 30, 0, noOpDbCache());
         ReflectionTestUtils.setField(adapter, "legalDongSampleSize", 2);
         ExternalResult<SoilChemistryAdapter.SoilChemistryResult> result =
                 adapter.getSoilChemistry("42150", "강원특별자치도", "강릉시");
@@ -218,7 +224,7 @@ class ExternalAdaptersContractTest {
         when(restTemplate.getForObject(any(URI.class), eq(String.class))).thenReturn(soilExamPayload("5.9"));
 
         ExternalResult<SoilChemistryAdapter.SoilChemistryResult> result =
-                new SoilChemistryAdapter(restTemplate, "fixture-key", legalDistrict, 30, 0, "LIVE")
+                new SoilChemistryAdapter(restTemplate, "fixture-key", legalDistrict, 30, 0, noOpDbCache())
                         .getSoilChemistry("41110", "경기도", "수원시");
 
         assertThat(result.status()).isEqualTo(ExternalResult.Status.SUCCESS);
@@ -243,7 +249,7 @@ class ExternalAdaptersContractTest {
         when(restTemplate.getForObject(any(URI.class), eq(String.class))).thenReturn(soilFitNoDataXml());
 
         ExternalResult<Map<String, SoilSuitabilityAdapter.SoilSuitabilityResult>> result =
-                new SoilSuitabilityAdapter(restTemplate, "fixture-key", legalDistrict, cropCodeAdapter, 90, 0, "LIVE")
+                new SoilSuitabilityAdapter(restTemplate, "fixture-key", legalDistrict, cropCodeAdapter, 90, 0, noOpDbCache())
                         .getSoilSuitability("41110", "경기도", "수원시");
 
         assertThat(result.status()).isEqualTo(ExternalResult.Status.EMPTY);
@@ -264,7 +270,7 @@ class ExternalAdaptersContractTest {
         when(restTemplate.getForObject(any(URI.class), eq(String.class))).thenReturn(soilFitAreaBandsXml("감자"));
 
         ExternalResult<Map<String, SoilSuitabilityAdapter.SoilSuitabilityResult>> result =
-                new SoilSuitabilityAdapter(restTemplate, "fixture-key", legalDistrict, cropCodeAdapter, 90, 0, "LIVE")
+                new SoilSuitabilityAdapter(restTemplate, "fixture-key", legalDistrict, cropCodeAdapter, 90, 0, noOpDbCache())
                         .getSoilSuitability("41110", "경기도", "수원시");
 
         SoilSuitabilityAdapter.SoilSuitabilityResult potato = result.value().get("POTATO");
@@ -281,7 +287,7 @@ class ExternalAdaptersContractTest {
     void soil_fit_v2_area_band_fields_are_normalized_into_scored_canonical_grades() {
         CropCodeAdapter cropCodeAdapter = mock(CropCodeAdapter.class);
         SoilSuitabilityAdapter adapter = new SoilSuitabilityAdapter(
-                new RestTemplate(), "fixture-key", mock(LegalDistrictAdapter.class), cropCodeAdapter, 90, 0, "LIVE");
+                new RestTemplate(), "fixture-key", mock(LegalDistrictAdapter.class), cropCodeAdapter, 90, 0, noOpDbCache());
 
         ExternalResult<Map<String, Double>> result = adapter.parse(soilFitAreaBandsXml(), "application/xml");
 
@@ -303,7 +309,7 @@ class ExternalAdaptersContractTest {
         when(restTemplate.getForObject(any(URI.class), eq(String.class))).thenReturn(soilFitAreaBandsXml("복숭아"));
 
         ExternalResult<Map<String, SoilSuitabilityAdapter.SoilSuitabilityResult>> result =
-                new SoilSuitabilityAdapter(restTemplate, "fixture-key", mock(LegalDistrictAdapter.class), cropCodeAdapter, 90, 0, "LIVE")
+                new SoilSuitabilityAdapter(restTemplate, "fixture-key", mock(LegalDistrictAdapter.class), cropCodeAdapter, 90, 0, noOpDbCache())
                         .getSoilSuitability("5115035000", "강원특별자치도", "강릉시");
 
         assertThat(result.status()).isEqualTo(ExternalResult.Status.FAILURE);
@@ -321,7 +327,7 @@ class ExternalAdaptersContractTest {
         when(restTemplate.getForObject(any(URI.class), eq(String.class))).thenReturn(soilFitAreaBandsXml("감자"));
 
         ExternalResult<Map<String, SoilSuitabilityAdapter.SoilSuitabilityResult>> result =
-                new SoilSuitabilityAdapter(restTemplate, "fixture-key", mock(LegalDistrictAdapter.class), cropCodeAdapter, 90, 0, "LIVE")
+                new SoilSuitabilityAdapter(restTemplate, "fixture-key", mock(LegalDistrictAdapter.class), cropCodeAdapter, 90, 0, noOpDbCache())
                         .getSoilSuitability("5115035000", "강원특별자치도", "강릉시");
 
         assertThat(result.status()).isEqualTo(ExternalResult.Status.SUCCESS);
@@ -336,14 +342,14 @@ class ExternalAdaptersContractTest {
         when(legalDistrict.getDistrictCodes("경기도", "수원시")).thenReturn(ExternalResult.empty());
 
         ExternalResult<SoilChemistryAdapter.SoilChemistryResult> chemistry =
-                new SoilChemistryAdapter(restTemplate, "fixture-key", legalDistrict, 30, 0, "LIVE")
+                new SoilChemistryAdapter(restTemplate, "fixture-key", legalDistrict, 30, 0, noOpDbCache())
                         .getSoilChemistry("41110", "경기도", "수원시");
 
         CropCodeAdapter cropCodeAdapter = mock(CropCodeAdapter.class);
         when(cropCodeAdapter.getCropCodeMappings()).thenReturn(ExternalResult.success(
                 Map.of("POTATO", cropMapping("POTATO", "00017", "감자(남부,봄재배)"))));
         ExternalResult<Map<String, SoilSuitabilityAdapter.SoilSuitabilityResult>> suitability =
-                new SoilSuitabilityAdapter(restTemplate, "fixture-key", legalDistrict, cropCodeAdapter, 90, 0, "LIVE")
+                new SoilSuitabilityAdapter(restTemplate, "fixture-key", legalDistrict, cropCodeAdapter, 90, 0, noOpDbCache())
                         .getSoilSuitability("41110", "경기도", "수원시");
 
         assertThat(chemistry.status()).isEqualTo(ExternalResult.Status.FAILURE);
@@ -421,7 +427,7 @@ class ExternalAdaptersContractTest {
         when(legalDistrict.getDistrictCodes("전북특별자치도", "고창군"))
                 .thenReturn(ExternalResult.success(List.of(legalDistrict("5279031000"), legalDistrict("5279032000"))));
         SoilChemistryAdapter adapter =
-                new SoilChemistryAdapter(restTemplate, "fixture-key", legalDistrict, 30, 0, "LIVE");
+                new SoilChemistryAdapter(restTemplate, "fixture-key", legalDistrict, 30, 0, noOpDbCache());
         ReflectionTestUtils.setField(adapter, "legalDongSampleSize", 2);
         return adapter.getSoilChemistry("52180", "전북특별자치도", "고창군");
     }
@@ -445,7 +451,7 @@ class ExternalAdaptersContractTest {
         LegalDistrictAdapter legalDistrict = mock(LegalDistrictAdapter.class);
         when(legalDistrict.getDistrictCodes("전북특별자치도", "고창군"))
                 .thenReturn(ExternalResult.success(List.of(legalDistrict("5279031000"))));
-        return new SoilSuitabilityAdapter(restTemplate, "fixture-key", legalDistrict, cropCodeAdapter, 90, 0, "LIVE")
+        return new SoilSuitabilityAdapter(restTemplate, "fixture-key", legalDistrict, cropCodeAdapter, 90, 0, noOpDbCache())
                 .getSoilSuitability("52180", "전북특별자치도", "고창군");
     }
 

@@ -3,6 +3,7 @@ import { normalizeRegionReport } from './reportLifecycle.ts';
 import type {
   CreateFieldRequest,
   FieldProfile,
+  FieldSuitabilityPreview,
   RegionAnalysisRequest,
   RegionAnalysisStatus,
   RegionReport
@@ -14,6 +15,7 @@ const SPRING_BACKEND_URL = (viteEnv.VITE_API_BASE_URL ?? 'http://localhost:8080/
 export type {
   CreateFieldRequest,
   FieldProfile,
+  FieldSuitabilityPreview,
   RegionAnalysisRequest,
   RegionAnalysisStatus,
   RegionReport
@@ -154,6 +156,8 @@ const normalizeStatus = (input: unknown): RegionAnalysisStatus => {
     reused: typeof input.reused === 'boolean' ? input.reused : undefined,
     currentStep: isString(input.currentStep) ? input.currentStep : null,
     completedSteps: Array.isArray(input.completedSteps) ? input.completedSteps.filter((item): item is string => typeof item === 'string') : [],
+    currentStepCode: isString(input.currentStepCode) ? input.currentStepCode : null,
+    completedStepCodes: stringArray(input.completedStepCodes),
     retryable: typeof input.retryable === 'boolean' ? input.retryable : undefined,
     errorCode: isString(input.errorCode) ? input.errorCode : null,
     errorMessage: isString(input.errorMessage) ? input.errorMessage : null
@@ -210,6 +214,33 @@ const normalizeField = (input: unknown): FieldProfile => {
       prioritizedActions: stringArray(latestReport.prioritizedActions),
       keyRisks: Array.isArray(latestReport.keyRisks) ? latestReport.keyRisks.map(normalizeFieldRisk) : [],
       conditions: Array.isArray(latestReport.conditions) ? latestReport.conditions.map(normalizeFieldCondition) : []
+    } : null
+  };
+};
+
+const normalizeFieldPreview = (input: unknown): FieldSuitabilityPreview => {
+  if (!isRecord(input) || !isString(input.fieldName)) {
+    throw new ApiError(200, 'MALFORMED_FIELD_PREVIEW', '밭 적합도 Preview 응답이 올바르지 않습니다.', input, false);
+  }
+  const suitability = isRecord(input.suitabilityReport) ? input.suitabilityReport : null;
+  return {
+    fieldName: input.fieldName,
+    cropCode: isString(input.cropCode) ? input.cropCode : null,
+    cropName: isString(input.cropName) ? input.cropName : null,
+    cultivationMethod: isString(input.cultivationMethod) ? input.cultivationMethod : null,
+    cultivationStartDate: isString(input.cultivationStartDate) ? input.cultivationStartDate : null,
+    stage: isString(input.stage) ? input.stage : null,
+    regionAnalysisId: isString(input.regionAnalysisId) ? input.regionAnalysisId : null,
+    suitabilityReport: suitability ? {
+      suitabilityScore: isNumber(suitability.suitabilityScore) ? suitability.suitabilityScore : null,
+      grade: isString(suitability.grade) ? suitability.grade : null,
+      summary: isString(suitability.summary) ? suitability.summary : null,
+      analysisBasisDate: isString(suitability.analysisBasisDate) ? suitability.analysisBasisDate : null,
+      regionAnalysisId: isString(suitability.regionAnalysisId) ? suitability.regionAnalysisId : null,
+      conditions: Array.isArray(suitability.conditions) ? suitability.conditions.map(normalizeFieldCondition) : [],
+      keyRisks: Array.isArray(suitability.keyRisks) ? suitability.keyRisks.map(normalizeFieldRisk) : [],
+      prePlantChecklist: stringArray(suitability.prePlantChecklist),
+      currentManagementPoints: stringArray(suitability.currentManagementPoints)
     } : null
   };
 };
@@ -283,13 +314,13 @@ export const ApiService = {
     }
   },
 
-  async previewField(payload: CreateFieldRequest): Promise<FieldProfile> {
+  async previewField(payload: CreateFieldRequest): Promise<FieldSuitabilityPreview> {
     const response = await requestJson<unknown>('/fields/preview', {
       method: 'POST',
       headers: jsonHeaders(),
       body: JSON.stringify(payload)
     });
-    return normalizeField(response);
+    return normalizeFieldPreview(response);
   },
 
   async createField(payload: CreateFieldRequest): Promise<FieldProfile> {

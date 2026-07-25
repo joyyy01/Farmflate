@@ -1,5 +1,6 @@
 import type {
   AnalysisStatus,
+  CropDecision,
   DataConfidence,
   LocationResolution,
   PrioritizedAction,
@@ -19,8 +20,8 @@ export type AnalysisState =
   | { kind: 'POLLING'; analysisId: string; currentStep?: string | null; completedSteps: string[]; currentStepCode?: string | null; completedStepCodes: string[] }
   | { kind: 'COMPLETED'; report: RegionReport }
   | { kind: 'PARTIAL'; report: RegionReport }
-  | { kind: 'ERROR'; message: string; code?: string | null; retryable: boolean; pendingAction?: 'ANALYSIS' | 'FIELD' }
-  | { kind: 'UNAUTHORIZED'; message: string; pendingAction: 'ANALYSIS' | 'FIELD' };
+  | { kind: 'ERROR'; message: string; code?: string | null; retryable: boolean; pendingAction?: 'REGION_ANALYSIS' | 'FIELD_PREVIEW' | 'FIELD_CREATE' }
+  | { kind: 'UNAUTHORIZED'; message: string; pendingAction: 'REGION_ANALYSIS' | 'FIELD_PREVIEW' | 'FIELD_CREATE' };
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -86,6 +87,19 @@ const normalizeCrop = (input: UnknownRecord): RecommendedCrop => ({
   cautionReason: asString(input.cautionReason),
   category: asString(input.category),
   iconUrl: asString(input.iconUrl)
+});
+
+const normalizeCropDecision = (input: UnknownRecord): CropDecision => ({
+  cropCode: asString(input.cropCode),
+  cropName: asString(input.cropName),
+  score: asNumber(input.score),
+  calculable: asBoolean(input.calculable),
+  notCalculableReason: asString(input.notCalculableReason),
+  soilSuitabilityScore: asNumber(input.soilSuitabilityScore),
+  soilPhScore: asNumber(input.soilPhScore),
+  seasonalTemperatureScore: asNumber(input.seasonalTemperatureScore),
+  positiveReasons: asStringArray(input.positiveReasons),
+  cautionReason: asString(input.cautionReason)
 });
 
 const normalizeRisk = (input: UnknownRecord): RiskEvent => {
@@ -174,7 +188,8 @@ export const normalizeRegionReport = (input: unknown, knownStatus?: AnalysisStat
     summary: asString(input.summary),
     components: normalizeComponents(input.components),
     environmentFeatures: asStringArray(input.environmentFeatures),
-    recommendedCrops: asRecordArray(input.recommendedCrops ?? input.cropResults).map(normalizeCrop),
+    recommendedCrops: asRecordArray(input.recommendedCrops).map(normalizeCrop),
+    cropResults: asRecordArray(input.cropResults).map(normalizeCropDecision),
     topRisks: asRecordArray(input.topRisks ?? input.riskEvents).map(normalizeRisk),
     safeWorkWindows: asRecordArray(input.safeWorkWindows).map(normalizeSafeWindow),
     prioritizedActions: asRecordArray(input.prioritizedActions).map(normalizeAction),
@@ -202,9 +217,17 @@ export const stateFromAnalysisStatus = (status: RegionAnalysisStatus, report?: R
     analysisId: status.analysisId,
     currentStep: status.currentStep,
     completedSteps: status.completedSteps ?? [],
-    currentStepCode: (status as unknown as UnknownRecord).currentStepCode as string | null ?? null,
-    completedStepCodes: asStringArray((status as unknown as UnknownRecord).completedStepCodes)
+    currentStepCode: status.currentStepCode ?? null,
+    completedStepCodes: status.completedStepCodes ?? []
   };
 };
 
 export const canOpenReport = (state: AnalysisState): boolean => state.kind === 'COMPLETED' || state.kind === 'PARTIAL';
+
+export type FieldPreviewState =
+  | { kind: 'IDLE' }
+  | { kind: 'SUBMITTING'; step: number }
+  | { kind: 'COMPLETING'; completedStepIndex: number }
+  | { kind: 'COMPLETED' }
+  | { kind: 'ERROR'; message: string; code?: string; retryable: boolean }
+  | { kind: 'UNAUTHORIZED'; message: string };

@@ -55,6 +55,19 @@ export interface RecommendedCrop {
   iconUrl?: string | null;
 }
 
+export interface CropDecision {
+  cropCode?: string | null;
+  cropName?: string | null;
+  score?: number | null;
+  calculable?: boolean | null;
+  notCalculableReason?: string | null;
+  soilSuitabilityScore?: number | null;
+  soilPhScore?: number | null;
+  seasonalTemperatureScore?: number | null;
+  positiveReasons: string[];
+  cautionReason?: string | null;
+}
+
 export interface RiskEvent {
   rank?: number | null;
   riskCode?: string | null;
@@ -112,7 +125,7 @@ export interface RegionReport {
   } | null;
   environmentFeatures: string[];
   recommendedCrops: RecommendedCrop[];
-  cropResults?: RecommendedCrop[];
+  cropResults: CropDecision[];
   topRisks: RiskEvent[];
   safeWorkWindows: SafeWorkWindow[];
   prioritizedActions: PrioritizedAction[];
@@ -132,6 +145,8 @@ export interface RegionAnalysisStatus {
   reused?: boolean;
   currentStep?: string | null;
   completedSteps?: string[];
+  currentStepCode?: string | null;
+  completedStepCodes?: string[];
   retryable?: boolean;
   errorCode?: string | null;
   errorMessage?: string | null;
@@ -203,4 +218,15 @@ export interface CreateFieldRequest {
   cultivationStartDate: string;
   stage?: string;
   regionAnalysisId: string;
+}
+
+export interface FieldSuitabilityPreview {
+  fieldName: string;
+  cropCode?: string | null;
+  cropName?: string | null;
+  cultivationMethod?: string | null;
+  cultivationStartDate?: string | null;
+  stage?: string | null;
+  regionAnalysisId?: string | null;
+  suitabilityReport?: FieldSuitabilityReport | null;
 }

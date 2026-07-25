@@ -1,136 +1,104 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Share2, CheckCircle, AlertTriangle } from 'lucide-react';
-import type { RegionReport } from '../../services/api';
-import type { FieldProfile } from '../../types/report';
+import type { FieldSuitabilityPreview } from '../../types/report';
 
 interface CropSuitabilityReportViewProps {
   fieldName?: string;
   cropName?: string;
-  score?: number | null;
-  report?: RegionReport | null;
-  fieldPreview?: FieldProfile | null;
+  fieldPreview?: FieldSuitabilityPreview | null;
   onBack: () => void;
   onRegisterCrop: () => void;
   onOpenTips: () => void;
 }
 
+const gradeLabels: Record<string, string> = {
+  EXCELLENT: '최적',
+  VERY_GOOD: '양호',
+  GOOD: '양호',
+  MODERATE: '보통',
+  CAUTION: '주의',
+  HIGH: '위험',
+  WARNING: '경고',
+  UNAVAILABLE: '자료 부족'
+};
+
+const translateGrade = (grade?: string | null): string => {
+  if (grade && gradeLabels[grade.toUpperCase()]) return gradeLabels[grade.toUpperCase()];
+  return '자료 부족';
+};
+
+const statusLabels: Record<string, string> = {
+  GOOD: '양호',
+  CAUTION: '주의',
+  RISK: '위험',
+  UNAVAILABLE: '자료 부족',
+  INPUT_RECORDED: '입력 기준'
+};
+
+const translateStatus = (status?: string | null): string => {
+  if (status && statusLabels[status.toUpperCase()]) return statusLabels[status.toUpperCase()];
+  return '자료 부족';
+};
+
 export const CropSuitabilityReportView: React.FC<CropSuitabilityReportViewProps> = ({
   fieldName = '우리집 텃밭',
   cropName = '상추',
-  score,
-  report,
   fieldPreview,
   onBack,
   onRegisterCrop,
   onOpenTips
 }) => {
-  // Prefer server preview data when available
-  const previewSuitability = fieldPreview?.suitabilityReport;
+  const suitability = fieldPreview?.suitabilityReport;
   const targetCropName = (cropName || '상추').trim();
-  const crop = report?.recommendedCrops?.find(item => {
-    const name = item?.cropName ?? '';
-    return name === targetCropName || name.includes(targetCropName) || targetCropName.includes(name);
-  }) ?? report?.cropResults?.find(item => {
-    const name = item?.cropName ?? '';
-    return name === targetCropName || name.includes(targetCropName) || targetCropName.includes(name);
-  }) ?? report?.recommendedCrops?.[0];
 
-  const numericScore = previewSuitability?.suitabilityScore ?? score ?? crop?.score ?? report?.regionScore ?? null;
+  const numericScore = suitability?.suitabilityScore ?? null;
+  const grade = suitability?.grade ?? null;
 
-  // 2. Grade & Status Translation Maps
-  const gradeLabels: Record<string, string> = {
-    EXCELLENT: '최적',
-    GOOD: '양호',
-    MODERATE: '보통',
-    CAUTION: '주의',
-    HIGH: '위험',
-    WARNING: '경고'
-  };
+  // Environment cards from suitabilityReport.conditions
+  const conditionByKey = (key: string) =>
+    suitability?.conditions?.find(c => c.key?.toUpperCase() === key) ?? null;
 
-  const translateGrade = (grade?: string | null, defaultScore?: number | null) => {
-    if (grade && gradeLabels[grade.toUpperCase()]) {
-      return gradeLabels[grade.toUpperCase()];
-    }
-    if (typeof defaultScore === 'number') {
-      if (defaultScore >= 80) return '양호';
-      if (defaultScore >= 60) return '보통';
-      return '주의';
-    }
-    return '보통';
-  };
+  const climateCondition = conditionByKey('CLIMATE');
+  const soilCondition = conditionByKey('SOIL');
+  const cultivationCondition = conditionByKey('CULTIVATION');
+  const hazardCondition = conditionByKey('NATURAL_HAZARD');
 
   const environmentCards = [
-    { icon: '/svg-assets/report/category/climate.svg', label: '기후 적합도', value: translateGrade(report?.components?.climate?.grade, report?.components?.climate?.score) },
-    { icon: '/svg-assets/report/category/soil.svg', label: '토양 적합도', value: translateGrade(report?.components?.soil?.grade, report?.components?.soil?.score) },
-    { icon: '/svg-assets/report/category/greenhouse.svg', label: '재배 환경', value: translateGrade(report?.components?.cultivation?.grade, report?.components?.cultivation?.score) },
-    { icon: '/svg-assets/report/category/warning.svg', label: '위험도 평가', value: translateGrade(report?.components?.hazard?.grade, report?.components?.hazard?.safetyScore), caution: true }
+    { icon: '/svg-assets/report/category/climate.svg', label: '기후 적합도', value: climateCondition ? translateStatus(climateCondition.status) : '자료 부족' },
+    { icon: '/svg-assets/report/category/soil.svg', label: '토양 적합도', value: soilCondition ? translateStatus(soilCondition.status) : '자료 부족' },
+    { icon: '/svg-assets/report/category/greenhouse.svg', label: '재배 환경', value: cultivationCondition ? translateStatus(cultivationCondition.status) : '자료 부족' },
+    { icon: '/svg-assets/report/category/warning.svg', label: '위험도 평가', value: hazardCondition ? translateStatus(hazardCondition.status) : '자료 부족', caution: true }
   ];
 
-  // 3. Explanation & Reason Wording strictly from DB report
-  const explanation = crop?.positiveReasons?.[0]
-    ?? crop?.cautionReason
-    ?? report?.summary
-    ?? report?.environmentFeatures?.[0]
-    ?? `${report?.region?.sidoName || ''} ${report?.region?.sigunguName || ''}의 토양 데이터와 기상청 실시간 관측 데이터를 기반으로 산출된 ${targetCropName} 생육 환경 적합도 결과입니다.`;
+  // Explanation from suitabilityReport.summary
+  const explanation = suitability?.summary ?? '자료 부족';
 
-  // 4. Dynamic English Term Translation for DB Risks
-  const rawRisks = (report?.topRisks ?? []).slice(0, 3);
-
-  const translateRiskTitle = (title?: string | null): string => {
-    if (!title) return `${targetCropName} 생육 환경 주의사항`;
-    const norm = title.toUpperCase();
-    if (norm.includes('LETTUCE_HEAT_HUMIDITY') || (norm.includes('LETTUCE') && norm.includes('HEAT'))) return `${targetCropName} 고온·고습 생육 장애 위험`;
-    if (norm.includes('HEAVY_RAIN') || norm.includes('RAIN')) return '집중호우 및 토양 과습 위험';
-    if (norm.includes('HEAT') || norm.includes('HIGH_TEMP')) return '폭염 및 고온 생육 지연 위험';
-    if (norm.includes('COLD') || norm.includes('FROST')) return '저온 및 늦서리 피해 위험';
-    if (norm.includes('DRY') || norm.includes('DROUGHT')) return '가뭄 및 수분 부족 주의';
-    if (norm.includes('HIGH_HUMIDITY') || norm.includes('HUMIDITY') || title.includes('고습')) return '고습 환경 곰팡이·병해충 주의';
-    if (norm.includes('SOIL') || norm.includes('ACID')) return '토양 pH 산도 불균형 주의';
-    return title;
-  };
-
-  const translateRiskDescription = (desc?: string | null): string => {
-    if (!desc) return '해당 시기의 기상청 단기예보 및 토양 특성에 맞춰 적절한 수세 관리가 필요합니다.';
-    return desc
-      .replace(/lettuce heat exposure/gi, '상추 고온 노출')
-      .replace(/high humidity/gi, '높은 습도')
-      .replace(/combined heat-humidity stress/gi, '복합 고온·다습 생육 장애 발생 가능성')
-      .replace(/high relative humidity/gi, '상대습도 과다')
-      .replace(/reduced evaporation and disease-pressure exposure/gi, '증산작용 저해 및 병해충 위험 상승')
-      .replace(/high temperature/gi, '고온 지속')
-      .replace(/heavy rain/gi, '집중호우');
-  };
-
-  const displayRisks = rawRisks.map(r => ({
-    title: translateRiskTitle(r.title),
-    description: translateRiskDescription(r.description || (r.causalChain ? r.causalChain.join(' → ') : null))
+  // Risks from suitabilityReport.keyRisks
+  const displayRisks = (suitability?.keyRisks ?? []).slice(0, 3).map(r => ({
+    title: r.title ?? `${targetCropName} 생육 환경 주의사항`,
+    description: r.description ?? (r.actions && r.actions.length > 0 ? r.actions.join(', ') : '해당 시기의 기상 조건에 맞춰 적절한 관리가 필요합니다.')
   }));
 
-  // 5. Action Guidelines strictly from DB report's prioritizedActions & positiveReasons
-  const prePlantActions = (report?.prioritizedActions ?? []).filter(action => Boolean(action.stage && /(PRE|전|준비)/i.test(action.stage)));
-  const growingActions = (report?.prioritizedActions ?? []).filter(action => Boolean(action.stage && /(CULT|재배|생육)/i.test(action.stage)));
+  // Pre-plant checklist from suitabilityReport.prePlantChecklist
+  const displayPrePlant: string[] = (suitability?.prePlantChecklist ?? []).filter(
+    (t): t is string => typeof t === 'string' && t.trim().length > 0
+  );
+  if (displayPrePlant.length === 0) {
+    displayPrePlant.push('자료 부족 — 재배 시작 전 필지 상태를 현장에서 확인하세요.');
+  }
 
-  const rawPrePlant = prePlantActions.length > 0
-    ? prePlantActions.map(a => a.title)
-    : (crop?.positiveReasons ?? [
-        `${targetCropName} 입식 전 토양 산도 및 유기물 함량 사전 점검`,
-        `배수성이 양호한 높은 두둑 형성 및 정식 일자 기상청 예보 확인`
-      ]);
+  // Current management points from suitabilityReport.currentManagementPoints
+  const managementPoints = suitability?.currentManagementPoints ?? [];
+  const displayGrowingTitle = managementPoints.length > 0 ? managementPoints[0] : '자료 부족';
+  const displayGrowingReason = managementPoints.length > 1
+    ? managementPoints.slice(1).join(', ')
+    : (managementPoints.length === 1 ? '' : '추가 관리 포인트 자료가 없습니다.');
 
-  const displayPrePlant: string[] = rawPrePlant.filter((t): t is string => typeof t === 'string' && t.trim().length > 0);
-
-  const displayGrowingTitle = growingActions.length > 0
-    ? growingActions[0].title
-    : (crop?.cautionReason || `${targetCropName} 생육기 온도 및 수분 관리`);
-
-  const displayGrowingReason = growingActions.length > 0
-    ? (growingActions[0].reason || '기상 조건 및 토양 습도 변화에 따른 수세 관리가 필요합니다.')
-    : '한낮 고온 시 차광막을 활용하고 수분 공급으로 수세를 보호하세요.';
-
-  const analysisDate = report?.analyzedAt
-    ? new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' }).format(new Date(report.analyzedAt))
-    : new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' }).format(new Date());
+  // Analysis basis date from suitabilityReport
+  const analysisDate = suitability?.analysisBasisDate
+    ? new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' }).format(new Date(suitability.analysisBasisDate))
+    : '자료 부족';
 
   // Crop mascot icon lookup (best-effort visual only; falls back to a generic sprout)
   const cropIconMap: Record<string, string> = {
@@ -205,7 +173,7 @@ export const CropSuitabilityReportView: React.FC<CropSuitabilityReportViewProps>
               justifyContent: 'center'
             }}>
               <span style={{ fontSize: '3.2rem', fontWeight: 900, color: '#145b39', lineHeight: 1 }}>
-                {numericScore !== null ? numericScore : '분석중'}
+                {numericScore !== null ? numericScore : '—'}
               </span>
               {numericScore !== null && (
                 <small style={{ color: '#848985', fontSize: '0.86rem', fontWeight: 500, marginTop: 2 }}>/100</small>
@@ -232,9 +200,15 @@ export const CropSuitabilityReportView: React.FC<CropSuitabilityReportViewProps>
               ? (numericScore >= 80
                   ? `✨ 지금 ${targetCropName} 재배를 시작하기 좋은 환경이에요`
                   : `${targetCropName} 생육 조건을 만족하나 일부 기상 환경에 주의가 필요해요`)
-              : '서버 DB 데이터를 기반으로 적합도를 분석하고 있어요'
+              : '적합도 점수 자료가 없습니다'
             }
           </div>
+
+          {grade && (
+            <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#25804b', marginTop: 4 }}>
+              등급: {translateGrade(grade)}
+            </div>
+          )}
         </div>
 
         {/* 4 Environment Status Cards */}

@@ -17,12 +17,30 @@ import { CommunityListView } from './components/farmflate/CommunityListView';
 import { CommunityCreatePostView } from './components/farmflate/CommunityCreatePostView';
 import { MyPageView } from './components/farmflate/MyPageView';
 import { ApiError, ApiService } from './services/api';
-import type { FieldProfile, HomeData, RegionAnalysisRequest, RegionReport } from './services/api';
-import { canOpenReport, stateFromAnalysisStatus, type AnalysisState } from './services/reportLifecycle';
+import type { FieldProfile, FieldSuitabilityPreview, HomeData, RegionAnalysisRequest, RegionReport } from './services/api';
+import { canOpenReport, stateFromAnalysisStatus, type AnalysisState, type FieldPreviewState } from './services/reportLifecycle';
 import { AIChatModal } from './components/farmflate/AIChatModal';
 import { useDailyRefresh } from './hooks/useDailyRefresh';
 
 type ExtendedViewStep = ViewStep | 'splash';
+
+const STEP_CODE_TO_UI_INDEX: Record<string, number> = {
+  REGION: 0,
+  RECENT_WEATHER: 1,
+  FORECAST: 1,
+  SOIL: 2,
+  CROP: 3,
+  REPORT: 4
+};
+
+const maxUiStepFromCodes = (codes: string[]): number => {
+  let max = -1;
+  for (const code of codes) {
+    const idx = STEP_CODE_TO_UI_INDEX[code.toUpperCase()];
+    if (idx !== undefined && idx > max) max = idx;
+  }
+  return max;
+};
 
 const normalizeCommunityPosts = (data: unknown): CommunityPost[] => {
   if (!Array.isArray(data)) throw new ApiError(200, 'MALFORMED_COMMUNITY_POSTS', '게시글 목록 응답이 올바르지 않습니다.', data, false);
@@ -101,8 +119,8 @@ export function App() {
   const [lastAnalysisRequest, setLastAnalysisRequest] = useState<RegionAnalysisRequest | null>(null);
   const [pendingCropRegistration, setPendingCropRegistration] = useState<CropRegistrationInput | null>(null);
   const [isFieldRegistrationFlow, setIsFieldRegistrationFlow] = useState(false);
-  const [fieldPreview, setFieldPreview] = useState<FieldProfile | null>(null);
-  const [, setFieldPreviewLoading] = useState(false);
+  const [fieldPreview, setFieldPreview] = useState<FieldSuitabilityPreview | null>(null);
+  const [fieldPreviewState, setFieldPreviewState] = useState<FieldPreviewState>({ kind: 'IDLE' });
   const [homeData, setHomeData] = useState<HomeData | null>(null);
   const [myFields, setMyFields] = useState<FieldProfile[]>([]);
   const [selectedField, setSelectedField] = useState<FieldProfile | null>(null);
@@ -114,6 +132,9 @@ export function App() {
   const pollTimerRef = useRef<number | null>(null);
   const previewModeRef = useRef(false);
   const isAddingFieldRef = useRef(false);
+  const lastDisplayedStepRef = useRef(0);
+  const cropStepTimerRef = useRef<number | null>(null);
+  const cropStepRef = useRef(0);
 
   /* Full 100% Reliable Logout Reset Handler */
   const handleLogout = () => {
@@ -359,13 +380,24 @@ export function App() {
     setDailyKey(new Date().toDateString());
   }, 6);
 
-  const setAnalysisFailure = (error: unknown, pendingAction: 'ANALYSIS' | 'FIELD' = 'ANALYSIS') => {
+  const setAnalysisFailure = (error: unknown, pendingAction: 'REGION_ANALYSIS' | 'FIELD_PREVIEW' | 'FIELD_CREATE' = 'REGION_ANALYSIS') => {
     if (error instanceof ApiError && error.status === 401) {
       setAnalysisState({ kind: 'UNAUTHORIZED', message: error.message, pendingAction });
     } else if (error instanceof ApiError) {
       setAnalysisState({ kind: 'ERROR', message: error.message, code: error.code, retryable: error.retryable, pendingAction });
     } else {
       setAnalysisState({ kind: 'ERROR', message: '분석 결과를 확인하지 못했습니다.', retryable: true, pendingAction });
+    }
+    setViewStep('analyzing');
+  };
+
+  const setFieldPreviewFailure = (error: unknown) => {
+    if (error instanceof ApiError && error.status === 401) {
+      setFieldPreviewState({ kind: 'UNAUTHORIZED', message: error.message });
+    } else if (error instanceof ApiError) {
+      setFieldPreviewState({ kind: 'ERROR', message: error.message, code: error.code, retryable: error.retryable });
+    } else {
+      setFieldPreviewState({ kind: 'ERROR', message: '적합도 분석 결과를 확인하지 못했습니다.', retryable: true });
     }
     setViewStep('analyzing');
   };
@@ -406,10 +438,32 @@ export function App() {
     }
   };
 
-  const completeAnalysis = async (analysisId: string, status: 'COMPLETED' | 'PARTIAL') => {
+  const completeAnalysis = async (analysisId: string, status: 'COMPLETED' | 'PARTIAL', terminalStepCodes?: string[]) => {
     const report = await ApiService.getRegionReport(analysisId, status);
     const nextState = stateFromAnalysisStatus({ analysisId, status }, report);
     if (!canOpenReport(nextState)) throw new ApiError(200, 'MALFORMED_REPORT', '검증 가능한 리포트를 받지 못했습니다.');
+
+    // Terminal catch-up: animate missing UI steps before navigating
+    const terminalMax = terminalStepCodes ? maxUiStepFromCodes(terminalStepCodes) : 4;
+    const lastShown = lastDisplayedStepRef.current;
+    if (terminalMax > lastShown) {
+      for (let step = lastShown + 1; step <= terminalMax; step++) {
+        setAnalysisState({
+          kind: 'POLLING',
+          analysisId,
+          currentStep: null,
+          completedSteps: [],
+          currentStepCode: null,
+          completedStepCodes: Object.entries(STEP_CODE_TO_UI_INDEX)
+            .filter(([, idx]) => idx < step)
+            .map(([code]) => code)
+        });
+        lastDisplayedStepRef.current = step;
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+
     setApiReport(report);
     setAnalysisState(nextState);
     setSelectedProvince(report.region.sidoName);
@@ -435,7 +489,7 @@ export function App() {
       const status = await ApiService.getAnalysisStatus(analysisId);
       const normalized = status.status.toUpperCase();
       if (normalized === 'COMPLETED' || normalized === 'PARTIAL') {
-        await completeAnalysis(analysisId, normalized);
+        await completeAnalysis(analysisId, normalized, status.completedStepCodes);
         return;
       }
       if (normalized === 'FAILED') {
@@ -448,7 +502,18 @@ export function App() {
         setViewStep('analyzing');
         return;
       }
-      setAnalysisState(stateFromAnalysisStatus(status));
+      const pollingState = stateFromAnalysisStatus(status);
+      setAnalysisState(pollingState);
+      // Track the highest UI step shown so far for terminal catch-up
+      if (pollingState.kind === 'POLLING') {
+        const codes = pollingState.completedStepCodes ?? [];
+        const currentCode = pollingState.currentStepCode;
+        const allCodes = currentCode ? [...codes, currentCode] : codes;
+        const maxStep = maxUiStepFromCodes(allCodes);
+        if (maxStep > lastDisplayedStepRef.current) {
+          lastDisplayedStepRef.current = maxStep;
+        }
+      }
       pollTimerRef.current = window.setTimeout(() => { void pollAnalysis(analysisId, attempt + 1); }, 900);
     } catch (error) {
       setAnalysisFailure(error);
@@ -468,13 +533,14 @@ export function App() {
     setApiReport(null);
     setPendingCropRegistration(null);
     setIsFieldRegistrationFlow(false);
+    lastDisplayedStepRef.current = 0;
     setAnalysisState({ kind: 'SUBMITTING' });
     setViewStep('analyzing');
     try {
       const status = await ApiService.createRegionAnalysis(request);
       const normalized = status.status.toUpperCase();
       if (normalized === 'COMPLETED' || normalized === 'PARTIAL') {
-        await completeAnalysis(status.analysisId, normalized);
+        await completeAnalysis(status.analysisId, normalized, status.completedStepCodes);
         return;
       }
       if (normalized === 'FAILED') {
@@ -497,6 +563,13 @@ export function App() {
   };
 
   /* Crop registration requires a verified server report. */
+  const stopCropStepAdvance = () => {
+    if (cropStepTimerRef.current !== null) {
+      window.clearInterval(cropStepTimerRef.current);
+      cropStepTimerRef.current = null;
+    }
+  };
+
   const handleStartCropConditionAnalysis = async (input: CropRegistrationInput) => {
     if (!isFieldRegistrationFlow || !apiReport || !canOpenReport(analysisState)) {
       returnToMyField();
@@ -505,27 +578,63 @@ export function App() {
     setSelectedCropName(input.cropName);
     setPendingCropRegistration(input);
     setFieldPreview(null);
-    setFieldPreviewLoading(true);
+
+    // Start auto-advancing the displayed step while the request is in flight
+    stopCropStepAdvance();
+    cropStepRef.current = 0;
+    setFieldPreviewState({ kind: 'SUBMITTING', step: 0 });
     setViewStep('analyzing');
+    cropStepTimerRef.current = window.setInterval(() => {
+      if (cropStepRef.current < 3) {
+        cropStepRef.current += 1;
+        setFieldPreviewState({ kind: 'SUBMITTING', step: cropStepRef.current });
+      }
+    }, 1400);
+
     try {
-      const crop = (apiReport.cropResults ?? apiReport.recommendedCrops ?? []).find(
-        item => item.cropName === input.cropName
-      );
+      const crop = apiReport.cropResults.find(item => item.cropName === input.cropName);
+      if (!crop || !crop.cropCode) {
+        stopCropStepAdvance();
+        setFieldPreviewState({
+          kind: 'ERROR',
+          message: `선택한 작물(${input.cropName})의 분석 코드를 찾을 수 없습니다. 지역 분석 결과에서 계산 가능한 작물만 등록할 수 있습니다.`,
+          retryable: false
+        });
+        return;
+      }
+      if (crop.calculable === false) {
+        stopCropStepAdvance();
+        setFieldPreviewState({
+          kind: 'ERROR',
+          message: crop.notCalculableReason ?? `선택한 작물(${input.cropName})은(는) 현재 지역 분석에서 적합도 계산이 불가능합니다.`,
+          retryable: false
+        });
+        return;
+      }
       const preview = await ApiService.previewField({
         fieldName: input.fieldName,
-        cropCode: crop?.cropCode ?? undefined,
+        cropCode: crop.cropCode,
         cropName: input.cropName,
         cultivationMethod: input.farmType,
         cultivationStartDate: input.startDate,
         stage: input.stage,
         regionAnalysisId: apiReport.analysisId
       });
+      stopCropStepAdvance();
       setFieldPreview(preview);
+
+      // Continue animating from the currently displayed step through the final
+      // step so every row shows the spinner before navigating to the report.
+      const startStep = cropStepRef.current;
+      for (let step = startStep; step <= 4; step++) {
+        setFieldPreviewState({ kind: 'COMPLETING', completedStepIndex: step });
+        await new Promise(resolve => setTimeout(resolve, 250));
+      }
+      setFieldPreviewState({ kind: 'COMPLETED' });
       setViewStep('crop_suitability_report');
     } catch (error) {
-      setAnalysisFailure(error, 'FIELD');
-    } finally {
-      setFieldPreviewLoading(false);
+      stopCropStepAdvance();
+      setFieldPreviewFailure(error);
     }
   };
 
@@ -542,10 +651,15 @@ export function App() {
     if (isAddingFieldRef.current) return;
     isAddingFieldRef.current = true;
     try {
-      const crop = (apiReport.cropResults ?? apiReport.recommendedCrops ?? []).find(item => item.cropName === pendingCropRegistration.cropName);
+      const crop = apiReport.cropResults.find(item => item.cropName === pendingCropRegistration.cropName);
+      if (!crop || !crop.cropCode) {
+        setAnalysisState({ kind: 'ERROR', message: `작물(${pendingCropRegistration.cropName}) 코드를 찾을 수 없습니다.`, retryable: false, pendingAction: 'FIELD_CREATE' });
+        setViewStep('analyzing');
+        return;
+      }
       const field = await ApiService.createField({
         fieldName: pendingCropRegistration.fieldName,
-        cropCode: crop?.cropCode ?? undefined,
+        cropCode: crop.cropCode,
         cropName: pendingCropRegistration.cropName,
         cultivationMethod: pendingCropRegistration.farmType,
         cultivationStartDate: pendingCropRegistration.startDate,
@@ -558,7 +672,7 @@ export function App() {
       setActiveTab('myfield');
       setViewStep('myfield');
     } catch (error) {
-      setAnalysisFailure(error, 'FIELD');
+      setAnalysisFailure(error, 'FIELD_CREATE');
     } finally {
       isAddingFieldRef.current = false;
     }
@@ -667,17 +781,28 @@ export function App() {
           cropName={selectedCropName}
           analysisType={isFieldRegistrationFlow || pendingCropRegistration ? 'crop' : 'region'}
           fieldLabel={pendingCropRegistration?.fieldName}
-          state={analysisState}
+          state={isFieldRegistrationFlow || pendingCropRegistration ? fieldPreviewState : analysisState}
           onRetry={() => {
-            if ((analysisState.kind === 'ERROR' || analysisState.kind === 'UNAUTHORIZED') && analysisState.pendingAction === 'FIELD') {
+            if (fieldPreviewState.kind === 'ERROR' || fieldPreviewState.kind === 'UNAUTHORIZED') {
+              if (pendingCropRegistration) {
+                void handleStartCropConditionAnalysis(pendingCropRegistration);
+              }
+              return;
+            }
+            if ((analysisState.kind === 'ERROR' || analysisState.kind === 'UNAUTHORIZED') && analysisState.pendingAction === 'FIELD_CREATE') {
               void handleAddField();
               return;
             }
             retryAnalysis();
           }}
           onBack={() => {
+            if (fieldPreviewState.kind === 'ERROR' || fieldPreviewState.kind === 'UNAUTHORIZED') {
+              setFieldPreviewState({ kind: 'IDLE' });
+              returnToCropCondition();
+              return;
+            }
             setAnalysisState({ kind: 'IDLE' });
-            if ((analysisState.kind === 'ERROR' || analysisState.kind === 'UNAUTHORIZED') && analysisState.pendingAction === 'FIELD') {
+            if ((analysisState.kind === 'ERROR' || analysisState.kind === 'UNAUTHORIZED') && analysisState.pendingAction === 'FIELD_CREATE') {
               returnToMyField();
             } else {
               safeSetViewStep('explore');
@@ -744,7 +869,6 @@ export function App() {
         <CropSuitabilityReportView
           fieldName={pendingCropRegistration?.fieldName}
           cropName={selectedCropName}
-          report={apiReport}
           fieldPreview={fieldPreview}
           onBack={returnToCropCondition}
           onRegisterCrop={isFieldRegistrationFlow && pendingCropRegistration ? handleAddField : returnToMyField}
