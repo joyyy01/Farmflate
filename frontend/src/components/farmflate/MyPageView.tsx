@@ -176,9 +176,9 @@ export const MyPageView: React.FC<MyPageViewProps> = ({
               overflow: 'hidden'
             }}>
               <img
-                src="/svg-assets/brand/mascot/hello.svg"
+                src="/assets/mypage-profile-mascot.png"
                 alt="사용자 프로필"
-                style={{ width: 42, height: 42, objectFit: 'contain' }}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               />
             </div>
             <div>
