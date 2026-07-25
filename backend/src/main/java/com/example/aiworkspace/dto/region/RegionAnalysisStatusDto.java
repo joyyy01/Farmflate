@@ -17,6 +17,9 @@ public class RegionAnalysisStatusDto {
     private String analysisScope;
     private List<String> completedSteps;
     private String currentStep;
+    /** Stable step codes (REGION, RECENT_WEATHER, FORECAST, SOIL, CROP, REPORT). */
+    private List<String> completedStepCodes;
+    private String currentStepCode;
     private Boolean retryable;
     private Boolean reused;
     private String errorCode;

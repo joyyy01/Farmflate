@@ -162,11 +162,12 @@ public class RegionAnalysisService {
      */
     private RegionReportResponseDto executeLiveAnalysis(Region region, LocationResolution location,
                                                           ExecutionProgress progress) {
+        progress.begin("RECENT_WEATHER");
+        ExternalResult<AsosAdapter.Asos30DaySummary> asosResult =
+                asosAdapter.get30DaySummary(location.asosStationId());
         progress.begin("FORECAST");
         ExternalResult<List<ShortForecastAdapter.DailyForecast>> forecastResult =
                 shortForecastAdapter.getForecast3Days(location.kmaNx(), location.kmaNy());
-        ExternalResult<AsosAdapter.Asos30DaySummary> asosResult =
-                asosAdapter.get30DaySummary(location.asosStationId());
         progress.begin("SOIL");
         ExternalResult<SoilChemistryAdapter.SoilChemistryResult> soilChemistryResult =
                 soilChemistryAdapter.getSoilChemistry(region.getSigunguCode(), region.getSidoName(), region.getSigunguName());
@@ -440,6 +441,8 @@ public class RegionAnalysisService {
                     .analysisScope(entity.getAnalysisScope())
                     .completedSteps(completedStepCodes(entity))
                     .currentStep(translateStep(entity.getCurrentStep()))
+                    .completedStepCodes(rawCompletedStepCodes(entity))
+                    .currentStepCode(entity.getCurrentStep())
                     .retryable(Boolean.TRUE.equals(entity.getRetryable()))
                     .reused(false)
                     .errorCode(entity.getErrorCode())
@@ -452,6 +455,8 @@ public class RegionAnalysisService {
                 .analysisScope(entity.getAnalysisScope())
                 .completedSteps(completedStepCodes(entity))
                 .currentStep(translateStep(entity.getCurrentStep()))
+                .completedStepCodes(rawCompletedStepCodes(entity))
+                .currentStepCode(entity.getCurrentStep())
                 .retryable(false)
                 .reused(reused)
                 .build();
@@ -648,6 +653,16 @@ public class RegionAnalysisService {
         }
         return Arrays.stream(entity.getCompletedSteps().split(","))
                 .map(code -> STEP_LABELS.getOrDefault(code.trim(), code.trim()))
+                .distinct()
+                .toList();
+    }
+
+    private List<String> rawCompletedStepCodes(RegionAnalysisEntity entity) {
+        if (entity == null || !hasText(entity.getCompletedSteps())) {
+            return List.of();
+        }
+        return Arrays.stream(entity.getCompletedSteps().split(","))
+                .map(String::trim)
                 .distinct()
                 .toList();
     }

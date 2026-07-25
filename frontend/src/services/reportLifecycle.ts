@@ -16,7 +16,7 @@ import type {
 export type AnalysisState =
   | { kind: 'IDLE' }
   | { kind: 'SUBMITTING' }
-  | { kind: 'POLLING'; analysisId: string; currentStep?: string | null; completedSteps: string[] }
+  | { kind: 'POLLING'; analysisId: string; currentStep?: string | null; completedSteps: string[]; currentStepCode?: string | null; completedStepCodes: string[] }
   | { kind: 'COMPLETED'; report: RegionReport }
   | { kind: 'PARTIAL'; report: RegionReport }
   | { kind: 'ERROR'; message: string; code?: string | null; retryable: boolean; pendingAction?: 'ANALYSIS' | 'FIELD' }
@@ -201,7 +201,9 @@ export const stateFromAnalysisStatus = (status: RegionAnalysisStatus, report?: R
     kind: 'POLLING',
     analysisId: status.analysisId,
     currentStep: status.currentStep,
-    completedSteps: status.completedSteps ?? []
+    completedSteps: status.completedSteps ?? [],
+    currentStepCode: (status as unknown as UnknownRecord).currentStepCode as string | null ?? null,
+    completedStepCodes: asStringArray((status as unknown as UnknownRecord).completedStepCodes)
   };
 };
 
