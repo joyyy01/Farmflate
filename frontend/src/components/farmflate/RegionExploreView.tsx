@@ -31,7 +31,9 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
     try {
       const next = await ApiService.getSidos();
       setProvinces(next);
-      setSelectedProvinceCode(previous => previous || next[0]?.sidoCode || '');
+      if (mode === 'change') {
+        setSelectedProvinceCode(previous => previous || next[0]?.sidoCode || '');
+      }
     } catch (error) {
       setLoadError(error instanceof ApiError ? error.message : '지역 목록을 불러오지 못했습니다.');
     } finally {
@@ -53,7 +55,9 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
       .then(next => {
         if (!isCurrent) return;
         setDistricts(next);
-        setSelectedDistrictCode(next[0]?.sigunguCode || '');
+        if (mode === 'change') {
+          setSelectedDistrictCode(next[0]?.sigunguCode || '');
+        }
       })
       .catch(error => { if (isCurrent) setLoadError(error instanceof ApiError ? error.message : '시/군/구 목록을 불러오지 못했습니다.'); });
     return () => { isCurrent = false; };

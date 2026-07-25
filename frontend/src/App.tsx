@@ -297,13 +297,17 @@ export function App() {
           .then(data => { if (isCurrent && !previewModeRef.current) { setMyFields(data); setFieldLoadError(null); } })
           .catch(error => { if (isCurrent && !previewModeRef.current) setFieldLoadError(error instanceof Error ? error.message : '밭 정보를 불러오지 못했습니다.'); });
       } catch (error) {
-        if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+        if (error instanceof ApiError && error.status === 401) {
           clearInvalidSession(error);
           return;
         }
         if (isCurrent && !previewModeRef.current) {
-          setHomeLoadError(error instanceof Error ? error.message : '계정 정보를 확인하지 못했습니다.');
-          setViewStep('landing');
+          if (error instanceof ApiError && error.status === 403) {
+            setHomeLoadError('접근 권한이 없습니다.');
+          } else {
+            setHomeLoadError(error instanceof Error ? error.message : '홈 정보를 불러오지 못했습니다. 다시 시도해 주세요.');
+          }
+          setViewStep('dashboard');
         }
       }
     };
@@ -356,7 +360,7 @@ export function App() {
   }, 6);
 
   const setAnalysisFailure = (error: unknown, pendingAction: 'ANALYSIS' | 'FIELD' = 'ANALYSIS') => {
-    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+    if (error instanceof ApiError && error.status === 401) {
       setAnalysisState({ kind: 'UNAUTHORIZED', message: error.message, pendingAction });
     } else if (error instanceof ApiError) {
       setAnalysisState({ kind: 'ERROR', message: error.message, code: error.code, retryable: error.retryable, pendingAction });
