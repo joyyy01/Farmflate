@@ -160,13 +160,10 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
                 <div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', marginBottom: 16 }}>
                     <img
-                      src="/svg-assets/brand/mascot/guide.svg"
+                      src="/assets/ai-chat-mascot.png"
                       alt="Farmflate AI 캐릭터"
-                      style={{ width: 135, height: 110, objectFit: 'contain', marginBottom: 6 }}
+                      style={{ width: 150, height: 100, objectFit: 'contain', marginBottom: 6 }}
                     />
-                    <div style={{ color: '#177043', fontSize: '1.2rem', fontWeight: 900, marginBottom: 2 }}>
-                      Farmflate AI
-                    </div>
                     <h1 style={{ fontSize: '1.45rem', fontWeight: 900, color: '#191F28', margin: '0 0 4px 0', lineHeight: 1.2 }}>
                       무엇을 도와드릴까요?
                     </h1>
