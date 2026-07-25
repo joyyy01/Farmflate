@@ -2,6 +2,8 @@ package com.example.aiworkspace.service.external;
 
 import com.example.aiworkspace.domain.cache.ExternalApiCacheEntity;
 import com.example.aiworkspace.domain.cache.ExternalApiCacheRepository;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -18,6 +20,7 @@ import java.util.Optional;
 public class ExternalApiCacheService {
 
     private final ExternalApiCacheRepository cacheRepository;
+    private final ObjectMapper objectMapper;
 
     private static final Map<String, Duration> STALE_MAX_AGE = Map.of(
             "KMA_SHORT_FORECAST", Duration.ofHours(6),
@@ -86,5 +89,42 @@ public class ExternalApiCacheService {
                         .updatedAt(now)
                         .build());
         cacheRepository.save(entity);
+    }
+
+    public <T> Optional<T> tryReadCache(String cacheKey, TypeReference<T> typeRef) {
+        return findFresh(cacheKey, Instant.now())
+                .filter(e -> e.getNormalizedJson() != null && !e.getNormalizedJson().isBlank())
+                .flatMap(e -> {
+                    try {
+                        return Optional.of(objectMapper.readValue(e.getNormalizedJson(), typeRef));
+                    } catch (Exception ex) {
+                        log.debug("DB cache deserialize failed for {}: {}", cacheKey, ex.getMessage());
+                        return Optional.empty();
+                    }
+                });
+    }
+
+    public <T> Optional<T> tryReadStale(String cacheKey, TypeReference<T> typeRef) {
+        return findLatestSuccessful(cacheKey)
+                .filter(e -> isStaleUsable(cacheKey, e))
+                .filter(e -> e.getNormalizedJson() != null && !e.getNormalizedJson().isBlank())
+                .flatMap(e -> {
+                    try {
+                        return Optional.of(objectMapper.readValue(e.getNormalizedJson(), typeRef));
+                    } catch (Exception ex) {
+                        log.debug("Stale DB cache deserialize failed for {}: {}", cacheKey, ex.getMessage());
+                        return Optional.empty();
+                    }
+                });
+    }
+
+    public <T> void writeCache(String cacheKey, String provider, String serviceName,
+                               String regionCode, T data, Duration ttl) {
+        try {
+            String json = objectMapper.writeValueAsString(data);
+            saveSuccess(cacheKey, provider, serviceName, regionCode, cacheKey, "", json, null, ttl);
+        } catch (Exception e) {
+            log.debug("DB cache write failed for {}: {}", cacheKey, e.getMessage());
+        }
     }
 }

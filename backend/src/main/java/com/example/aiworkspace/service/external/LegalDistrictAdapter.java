@@ -31,7 +31,6 @@ public class LegalDistrictAdapter {
     private final String serviceKey;
     private final int cacheDays;
     private final int retryCount;
-    private final boolean replay;
     private final Map<String, CachedDistrict> cache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, CompletableFuture<ExternalResult<List<LegalDistrict>>>> inFlight = new ConcurrentHashMap<>();
 
@@ -39,13 +38,11 @@ public class LegalDistrictAdapter {
             @Qualifier("externalApiRestTemplate") RestTemplate restTemplate,
             @Value("${app.external.data-go-kr.service-key}") String serviceKey,
             @Value("${app.cache.legal-district-days:30}") int cacheDays,
-            @Value("${app.external-api.retry-count:1}") int retryCount,
-            @Value("${app.data-mode:LIVE}") String dataMode) {
+            @Value("${app.external-api.retry-count:1}") int retryCount) {
         this.restTemplate = restTemplate;
         this.serviceKey = serviceKey;
         this.cacheDays = cacheDays;
         this.retryCount = retryCount;
-        this.replay = "REPLAY".equalsIgnoreCase(dataMode);
     }
 
     public static class LegalDistrict {
@@ -207,10 +204,10 @@ public class LegalDistrictAdapter {
     private List<NormalizedMetric> metricsFor(List<LegalDistrict> districts, String requestedRegion) {
         List<NormalizedMetric> metrics = new ArrayList<>();
         metrics.add(ExternalAdapterSupport.metric("legal_district.count", (double) districts.size(), null, "count",
-                PROVIDER, SERVICE, "SIGUNGU", requestedRegion, null, false, replay, "GOOD", List.of()));
+                PROVIDER, SERVICE, "SIGUNGU", requestedRegion, null, false, false, "GOOD", List.of()));
         for (LegalDistrict district : districts) {
             metrics.add(ExternalAdapterSupport.metric("legal_district.code", null, district.regionCd, null,
-                    PROVIDER, SERVICE, "LEGAL_DONG", district.regionCd, null, false, replay, "GOOD", List.of()));
+                    PROVIDER, SERVICE, "LEGAL_DONG", district.regionCd, null, false, false, "GOOD", List.of()));
         }
         return metrics;
     }

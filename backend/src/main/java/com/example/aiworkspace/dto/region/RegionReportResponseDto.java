@@ -48,18 +48,12 @@ public class RegionReportResponseDto {
     /** All supported crops, retained so direct field registration can score a non-TOP3 crop truthfully. */
     private List<CropDecisionDto> cropResults;
     private List<RiskDto> topRisks;
-    private List<SafeWorkWindowDto> safeWorkWindows;
-    private List<PrioritizedActionDto> prioritizedActions;
     private List<TipDto> tips;
     private List<SourceDto> sources;
     private List<String> missingMetrics;
 
     private String analyzedAt;
-    /** LIVE, AUTO, or explicit REPLAY. */
-    private String dataMode;
     private Boolean isCached;
-    private Boolean isReplay;
-    private String replayScenarioId;
 
     @Getter
     @NoArgsConstructor
@@ -201,34 +195,6 @@ public class RegionReportResponseDto {
     public static class PeriodDto {
         private String start;
         private String end;
-    }
-
-    @Getter
-    @NoArgsConstructor
-    @AllArgsConstructor
-    @Builder
-    @JsonInclude(JsonInclude.Include.NON_NULL)
-    public static class SafeWorkWindowDto {
-        private String start;
-        private String end;
-        private String label;
-        private String reason;
-        private Integer confidence;
-        private List<SourceDto> sourceRefs;
-    }
-
-    @Getter
-    @NoArgsConstructor
-    @AllArgsConstructor
-    @Builder
-    @JsonInclude(JsonInclude.Include.NON_NULL)
-    public static class PrioritizedActionDto {
-        private Integer rank;
-        private String title;
-        private String reason;
-        private String leadTime;
-        private String stage;
-        private List<SourceDto> sourceRefs;
     }
 
     @Getter

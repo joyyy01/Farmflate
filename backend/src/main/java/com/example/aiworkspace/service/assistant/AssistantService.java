@@ -52,11 +52,49 @@ public class AssistantService {
         Map<String, Object> factPackage = buildFactPackage(email, request, payload);
 
         try {
-            return callPythonAgent(factPackage);
+            Map<String, Object> pythonResponse = callPythonAgent(factPackage);
+            return validateAndReshape(pythonResponse, factPackage);
         } catch (Exception e) {
             log.warn("Python AI call failed, returning fallback", e);
             return buildFallbackResponse(factPackage);
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> validateAndReshape(Map<String, Object> response, Map<String, Object> factPackage) {
+        if (response == null || !response.containsKey("answer")) {
+            return buildFallbackResponse(factPackage);
+        }
+        Object answerObj = response.get("answer");
+        if (answerObj instanceof String) {
+            Map<String, Object> reshaped = new LinkedHashMap<>(response);
+            Map<String, Object> structured = new LinkedHashMap<>();
+            structured.put("answer", answerObj);
+            structured.put("basisType", "CURRENT_REPORT");
+            structured.put("usedFactIds", List.of());
+            structured.put("usedSourceIds", List.of());
+            structured.put("mentionedNumbers", List.of());
+            structured.put("mentionedCrops", List.of());
+            structured.put("mentionedRisks", List.of());
+            structured.put("safetyNotice", null);
+            reshaped.put("answer", structured);
+            reshaped.putIfAbsent("requestId", factPackage.get("requestId"));
+            reshaped.putIfAbsent("sources", factPackage.getOrDefault("sources", List.of()));
+            return reshaped;
+        }
+        if (answerObj instanceof Map) {
+            Map<String, Object> answer = (Map<String, Object>) answerObj;
+            if (!answer.containsKey("answer") || answer.get("answer") == null) {
+                return buildFallbackResponse(factPackage);
+            }
+            response.putIfAbsent("requestId", factPackage.get("requestId"));
+            response.putIfAbsent("sources", factPackage.getOrDefault("sources", List.of()));
+            if (!"completed".equals(response.get("status"))) {
+                response.put("status", "completed");
+            }
+            return response;
+        }
+        return buildFallbackResponse(factPackage);
     }
 
     private Map<String, Object> buildFactPackage(String email, AssistantRequestDto request, Map<String, Object> payload) {
@@ -105,10 +143,14 @@ public class AssistantService {
                 if (src instanceof Map) {
                     Map<String, Object> srcMap = (Map<String, Object>) src;
                     Map<String, Object> source = new LinkedHashMap<>();
-                    source.put("sourceId", "source." + srcMap.getOrDefault("provider", "unknown"));
-                    source.put("provider", srcMap.getOrDefault("provider", ""));
-                    source.put("service", srcMap.getOrDefault("service", ""));
-                    source.put("dataDate", srcMap.getOrDefault("dataDate", ""));
+                    String provider = String.valueOf(srcMap.getOrDefault("provider", ""));
+                    String service = String.valueOf(srcMap.getOrDefault("service", ""));
+                    source.put("sourceId", "source." + provider);
+                    source.put("title", provider + " " + service);
+                    source.put("detail", service);
+                    source.put("provider", provider);
+                    source.put("service", service);
+                    source.put("observedAt", srcMap.getOrDefault("dataDate", ""));
                     source.put("sourceUrl", srcMap.getOrDefault("sourceUrl", ""));
                     sources.add(source);
                 }
@@ -209,7 +251,13 @@ public class AssistantService {
         answer.put("answer", sb.toString().trim());
         answer.put("basisType", "CURRENT_REPORT");
         answer.put("usedFactIds", usedFacts);
-        answer.put("usedSourceIds", List.of());
+        List<Map<String, Object>> pkgSources = (List<Map<String, Object>>) factPackage.getOrDefault("sources", List.of());
+        List<String> sourceIds = pkgSources.stream()
+                .map(s -> String.valueOf(s.getOrDefault("sourceId", "")))
+                .filter(id -> !id.isEmpty())
+                .toList();
+
+        answer.put("usedSourceIds", sourceIds);
         answer.put("mentionedNumbers", List.of());
         answer.put("mentionedCrops", List.of());
         answer.put("mentionedRisks", riskTitle != null ? List.of(riskTitle) : List.of());
@@ -217,9 +265,9 @@ public class AssistantService {
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("requestId", factPackage.get("requestId"));
-        result.put("status", "fallback");
+        result.put("status", "completed");
         result.put("answer", answer);
-        result.put("sources", factPackage.getOrDefault("sources", List.of()));
+        result.put("sources", pkgSources);
         return result;
     }
 

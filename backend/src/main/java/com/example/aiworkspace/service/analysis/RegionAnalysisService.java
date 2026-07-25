@@ -254,15 +254,11 @@ public class RegionAnalysisService {
                 .recommendedCrops(recommended)
                 .cropResults(cropResults)
                 .topRisks(risks)
-                .safeWorkWindows(toSafeWorkWindows(output.decisionOutput.safeWorkWindows))
-                .prioritizedActions(toPrioritizedActions(output.decisionOutput.prioritizedActions))
                 .tips(buildOfficialTips(missingMetrics))
                 .sources(sources)
                 .missingMetrics(missingMetrics)
                 .analyzedAt(LocalDateTime.now().format(DateTimeFormatter.ISO_DATE_TIME))
-                .dataMode("LIVE")
                 .isCached(false)
-                .isReplay(false)
                 .build();
     }
 
@@ -735,26 +731,6 @@ public class RegionAnalysisService {
                     .evidenceRefs(evidence).source(evidence.isEmpty() ? null : evidence.get(0)).build());
         }
         return values;
-    }
-
-    private List<RegionReportResponseDto.SafeWorkWindowDto> toSafeWorkWindows(
-            List<CropScoringEngine.SafeWorkWindow> windows) {
-        if (windows == null) return List.of();
-        return windows.stream().map(window -> RegionReportResponseDto.SafeWorkWindowDto.builder()
-                .start(window.startDate).end(window.endDate)
-                .label(window.durationDays + "일 작업 가능")
-                .reason(window.rationale).confidence(80)
-                .sourceRefs(sourceRefs(window.evidenceRefs)).build()).toList();
-    }
-
-    private List<RegionReportResponseDto.PrioritizedActionDto> toPrioritizedActions(
-            List<CropScoringEngine.PrioritizedAction> actions) {
-        if (actions == null) return List.of();
-        return actions.stream().map(action -> RegionReportResponseDto.PrioritizedActionDto.builder()
-                .rank(action.rank).title(action.title)
-                .reason("기상 예보 기반 " + action.relatedRiskCode + " 대응 작업")
-                .leadTime(action.leadTimeDays == 0 ? "즉시" : "D-" + action.leadTimeDays)
-                .sourceRefs(sourceRefs(action.evidenceRefs)).build()).toList();
     }
 
     private RegionReportResponseDto.ConfidenceDto toDataConfidence(CropScoringEngine.DataConfidence confidence) {

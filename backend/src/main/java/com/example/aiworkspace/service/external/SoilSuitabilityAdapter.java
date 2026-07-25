@@ -37,7 +37,6 @@ public class SoilSuitabilityAdapter {
     private final CropCodeAdapter cropCodeAdapter;
     private final int cacheDays;
     private final int retryCount;
-    private final boolean replay;
     private final Map<String, CachedSuitability> cache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, CompletableFuture<ExternalResult<Map<String, SoilSuitabilityResult>>>> inFlight = new ConcurrentHashMap<>();
 
@@ -53,15 +52,13 @@ public class SoilSuitabilityAdapter {
             LegalDistrictAdapter legalDistrictAdapter,
             CropCodeAdapter cropCodeAdapter,
             @Value("${app.cache.soil-suitability-days:90}") int cacheDays,
-            @Value("${app.external-api.retry-count:1}") int retryCount,
-            @Value("${app.data-mode:LIVE}") String dataMode) {
+            @Value("${app.external-api.retry-count:1}") int retryCount) {
         this.restTemplate = restTemplate;
         this.serviceKey = serviceKey;
         this.legalDistrictAdapter = legalDistrictAdapter;
         this.cropCodeAdapter = cropCodeAdapter;
         this.cacheDays = cacheDays;
         this.retryCount = retryCount;
-        this.replay = "REPLAY".equalsIgnoreCase(dataMode);
     }
 
     public static class SoilSuitabilityResult {
@@ -439,20 +436,20 @@ public class SoilSuitabilityAdapter {
             }
             metrics.add(ExternalAdapterSupport.metric("soil.suitability.score", result.hasData ? result.score : null,
                     result.cropCode, "score", PROVIDER, SERVICE, result.spatialLevel, regionCode, null,
-                    result.spatialLevel.startsWith("LEGAL_DONG"), replay,
+                    result.spatialLevel.startsWith("LEGAL_DONG"), false,
                     flags.isEmpty() ? "GOOD" : "PARTIAL", flags));
             if (result.totalDongs > 0 || result.sampledDongs > 0 || result.coveredDongs > 0) {
                 metrics.add(ExternalAdapterSupport.metric("soil.suitability.eligible_legal_dongs",
                         (double) result.totalDongs, result.cropCode, "count", PROVIDER, SERVICE,
-                        result.spatialLevel, regionCode, null, result.spatialLevel.startsWith("LEGAL_DONG"), replay,
+                        result.spatialLevel, regionCode, null, result.spatialLevel.startsWith("LEGAL_DONG"), false,
                         flags.isEmpty() ? "GOOD" : "PARTIAL", flags));
                 metrics.add(ExternalAdapterSupport.metric("soil.suitability.sampled_legal_dongs",
                         (double) result.sampledDongs, result.cropCode, "count", PROVIDER, SERVICE,
-                        result.spatialLevel, regionCode, null, result.spatialLevel.startsWith("LEGAL_DONG"), replay,
+                        result.spatialLevel, regionCode, null, result.spatialLevel.startsWith("LEGAL_DONG"), false,
                         flags.isEmpty() ? "GOOD" : "PARTIAL", flags));
                 metrics.add(ExternalAdapterSupport.metric("soil.suitability.data_backed_legal_dongs",
                         (double) result.coveredDongs, result.cropCode, "count", PROVIDER, SERVICE,
-                        result.spatialLevel, regionCode, null, result.spatialLevel.startsWith("LEGAL_DONG"), replay,
+                        result.spatialLevel, regionCode, null, result.spatialLevel.startsWith("LEGAL_DONG"), false,
                         flags.isEmpty() ? "GOOD" : "PARTIAL", flags));
             }
         }

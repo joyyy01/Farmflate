@@ -1,5 +1,6 @@
 package com.example.aiworkspace.service.external;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,6 +20,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -42,21 +44,22 @@ public class ShortForecastAdapter {
     private final String serviceKey;
     private final int cacheDurationMinutes;
     private final int retryCount;
-    private final boolean replay;
+    private final ExternalApiCacheService dbCache;
     private final Map<String, CachedForecast> cache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, CompletableFuture<ExternalResult<List<DailyForecast>>>> inFlight = new ConcurrentHashMap<>();
+    private static final TypeReference<List<DailyForecast>> FORECAST_TYPE = new TypeReference<>() {};
 
     public ShortForecastAdapter(
             @Qualifier("externalApiRestTemplate") RestTemplate restTemplate,
             @Value("${app.external.data-go-kr.service-key}") String serviceKey,
             @Value("${app.cache.short-forecast-minutes:30}") int cacheDurationMinutes,
             @Value("${app.external-api.retry-count:1}") int retryCount,
-            @Value("${app.data-mode:LIVE}") String dataMode) {
+            ExternalApiCacheService dbCache) {
         this.restTemplate = restTemplate;
         this.serviceKey = serviceKey;
         this.cacheDurationMinutes = cacheDurationMinutes;
         this.retryCount = retryCount;
-        this.replay = "REPLAY".equalsIgnoreCase(dataMode);
+        this.dbCache = dbCache;
     }
 
     public static class DailyForecast {
@@ -134,6 +137,16 @@ public class ShortForecastAdapter {
             return cached.result().asCached();
         }
 
+        String dbKey = "KMA_SHORT_FORECAST:" + nx + ":" + ny + ":" + baseDate + ":" + baseTime;
+        Optional<List<DailyForecast>> dbHit = dbCache.tryReadCache(dbKey, FORECAST_TYPE);
+        if (dbHit.isPresent()) {
+            log.debug("Short forecast DB cache hit: {}", dbKey);
+            ExternalResult<List<DailyForecast>> result = ExternalResult.success(
+                    dbHit.get(), metricsFor(dbHit.get(), nx + "," + ny, false));
+            cache.put(cacheKey, new CachedForecast(result, Instant.now()));
+            return result.asCached();
+        }
+
         ExternalResult<List<Map<String, Object>>> fetched = fetchAllItems(nx, ny, baseDate, baseTime);
         boolean fallback = false;
         for (int attempt = 0; attempt < 3 && fetched.isEmpty(); attempt++) {
@@ -145,6 +158,11 @@ public class ShortForecastAdapter {
             fetched = fetchAllItems(nx, ny, baseDate, baseTime);
         }
         if (fetched.isFailure()) {
+            Optional<List<DailyForecast>> stale = dbCache.tryReadStale(dbKey, FORECAST_TYPE);
+            if (stale.isPresent()) {
+                log.info("Short forecast using stale DB cache: {}", dbKey);
+                return ExternalResult.success(stale.get(), metricsFor(stale.get(), nx + "," + ny, false)).asCached();
+            }
             return ExternalResult.failure(fetched.errorCode(), fetched.metrics());
         }
         if (fetched.isEmpty()) {
@@ -158,6 +176,7 @@ public class ShortForecastAdapter {
         ExternalResult<List<DailyForecast>> result = ExternalResult.success(
                 forecasts, metricsFor(forecasts, nx + "," + ny, fallback));
         cache.put(cacheKey, new CachedForecast(result, Instant.now()));
+        dbCache.writeCache(dbKey, PROVIDER, SERVICE, null, forecasts, Duration.ofMinutes(cacheDurationMinutes));
         return result;
     }
 
@@ -320,7 +339,7 @@ public class ShortForecastAdapter {
                            String regionCode, String date, boolean fallback) {
         if (value != null) {
             target.add(ExternalAdapterSupport.metric(name, value, null, unit, PROVIDER, SERVICE, "GRID",
-                    regionCode, date, fallback, replay, "GOOD", List.of()));
+                    regionCode, date, fallback, false, "GOOD", List.of()));
         }
     }
 
