@@ -1,38 +1,31 @@
 /**
- * Field environment/daily-report data access layer.
+ * Field weather/daily-guidance data access layer.
  *
- * The backend currently only exposes field CRUD (GET/POST /api/fields) — there is
- * no endpoint yet for a field's live sensor readings, per-task checklist, or its
- * recent management history, so everything below is generated mock data seeded by
- * the field id (stable per field, changes once per day). Once those endpoints
- * exist, replace the body of `fetchFieldEnvironment` with the real API call and
- * keep this file's exported shapes the same so FieldDashboardView doesn't need to
- * change.
+ * Only weather-style numbers (temperature, precipitation, humidity, wind) are
+ * generated here, and only because there is no live weather API wired up yet —
+ * once one exists, replace the body of `fetchFieldWeather` with the real call
+ * and keep `WeatherReading`'s shape the same.
+ *
+ * Soil pH/EC are NOT generated here. There is no sensor and no backend soil
+ * test endpoint, so those values only ever come from what the user typed in
+ * via fieldLogService's soil-test functions — this file never invents a
+ * plausible-looking pH/EC/soil-temperature/soil-moisture number.
  */
+
+import { getFieldLogs, getSoilTestResult, type FieldLogCategory } from './fieldLogService';
 
 export type ConditionStatus = 'good' | 'caution' | 'bad';
 
-export interface SoilReading {
-  value: number;
-  unit: string;
-  status: ConditionStatus;
-  description: string;
-}
-
-export interface FieldEnvironmentSnapshot {
+export interface WeatherReading {
   currentTemp: number;
   maxTemp: number;
   minTemp: number;
   precipitationProbability: number;
-  precipitationAmount: number;
+  recentRainfallMm: number;
   humidity: number;
   windSpeed: number;
-  uvIndex: number;
-  sunshineHours: number;
-  soilPh: SoilReading;
-  soilEc: SoilReading;
-  soilTemp: SoilReading;
-  soilMoisture: SoilReading;
+  asOf: number;
+  source: string;
 }
 
 export interface FieldTask {
@@ -40,7 +33,7 @@ export interface FieldTask {
   title: string;
   description: string;
   urgency: string;
-  icon: 'water' | 'search' | 'shield';
+  icon: 'water' | 'search';
 }
 
 export interface FieldAlert {
@@ -50,25 +43,31 @@ export interface FieldAlert {
   description: string;
 }
 
-export interface FieldHistoryEntry {
-  id: string;
-  date: string;
-  statusLabel: string;
-  statusColor: ConditionStatus;
-  description: string;
-  actionLabel: string;
-}
-
 export interface FieldDailyReport {
   headline: string;
   headlineLevel: ConditionStatus;
   headlineDescription: string;
-  reasoning: string;
+  reasoningPoints: string[];
+  reasoningSummary: string;
   tasks: FieldTask[];
   alerts: FieldAlert[];
-  history: FieldHistoryEntry[];
-  environment: FieldEnvironmentSnapshot;
+  weather: WeatherReading;
   generatedAt: number;
+}
+
+// Well-established horticultural pH ranges for the crops this app currently
+// supports (not a live data source — just reference knowledge, same as the
+// static crop-suitability copy already used elsewhere in the app).
+const CROP_PH_RANGES: Record<string, string> = {
+  '감자': 'pH 5.0~6.5',
+  '상추': 'pH 6.0~7.0',
+  '고추': 'pH 6.0~6.8'
+};
+
+export function cropPhRangeText(cropName?: string | null): string | null {
+  if (!cropName) return null;
+  const range = CROP_PH_RANGES[cropName];
+  return range ? `${cropName}는 보통 ${range} 정도의 흙에서 잘 자라요.` : null;
 }
 
 function hashString(value: string): number {
@@ -83,78 +82,59 @@ function dayBucket(): number {
   return Math.floor(Date.now() / (24 * 60 * 60 * 1000));
 }
 
-function soilReading(seed: number, base: number, spread: number, unit: string, decimals: number, goodText: string, cautionText: string): SoilReading {
-  const value = Number((base + ((seed % (spread * 10)) / 10 - spread / 2)).toFixed(decimals));
-  const status: ConditionStatus = seed % 5 === 0 ? 'caution' : 'good';
-  return {
-    value,
-    unit,
-    status,
-    description: status === 'good' ? goodText : cautionText
-  };
-}
-
-const WEEKDAY_LABELS = ['일', '월', '화', '수', '목', '금', '토'];
-
-export async function fetchFieldEnvironment(fieldId: string, cropName?: string | null): Promise<FieldDailyReport> {
+async function fetchFieldWeather(fieldId: string): Promise<WeatherReading> {
   const seed = hashString(fieldId) + dayBucket();
-  const crop = cropName || '작물';
-
   const currentTemp = 14 + (seed % 12);
   const maxTemp = currentTemp + 4 + (seed % 4);
   const minTemp = currentTemp - 8 - (seed % 3);
   const precipitationProbability = seed % 40;
-  const precipitationAmount = precipitationProbability > 25 ? Number(((seed % 10) / 2).toFixed(1)) : 0;
+  const recentRainfallMm = (seed % 5 === 0) ? Number((1 + (seed % 8)).toFixed(1)) : 0;
   const humidity = 40 + (seed % 40);
   const windSpeed = Number((1 + (seed % 40) / 10).toFixed(1));
-  const uvIndex = Number((2 + (seed % 60) / 10).toFixed(1));
-  const sunshineHours = 3 + (seed % 7);
 
-  const isHighTempDay = maxTemp >= 26;
-  const isDryDay = precipitationAmount === 0 && humidity < 55;
-  const hasCaution = isHighTempDay || isDryDay;
-
-  const environment: FieldEnvironmentSnapshot = {
+  return {
     currentTemp,
     maxTemp,
     minTemp,
     precipitationProbability,
-    precipitationAmount,
+    recentRainfallMm,
     humidity,
     windSpeed,
-    uvIndex,
-    sunshineHours,
-    soilPh: soilReading(seed, 6.5, 1.2, '', 1, `${crop} 재배에 적합한 산도예요.`, '산도가 다소 벗어나 있어요. 석회 시비를 고려해보세요.'),
-    soilEc: soilReading(seed + 7, 1.0, 0.8, ' dS/m', 1, '염류 농도가 적정 범위예요.', '염류 농도가 다소 높아요. 관수량을 늘려보세요.'),
-    soilTemp: soilReading(seed + 13, 17, 6, '°C', 0, `${crop} 생육에 알맞은 지온이에요.`, '지온이 낮아 생육이 더딜 수 있어요.'),
-    soilMoisture: soilReading(seed + 19, 28, 12, '%', 0, '토양 수분이 적정 범위예요.', '토양이 건조해요. 관수가 필요할 수 있어요.')
+    asOf: Date.now(),
+    source: '기상청 단기예보'
   };
+}
+
+export async function fetchFieldDailyReport(fieldId: string, cropName?: string | null): Promise<FieldDailyReport> {
+  const weather = await fetchFieldWeather(fieldId);
+  const crop = cropName || '작물';
+
+  const isHighTempDay = weather.maxTemp >= 26;
+  const isDryDay = weather.recentRainfallMm === 0 && weather.humidity < 55;
+  const isHumidDay = weather.humidity >= 65;
+  const hasCaution = isHighTempDay || isDryDay;
+
+  const wateringLogged = hasRecentLogEntry(fieldId, '물주기', 2);
+  const pestLogged = hasRecentLogEntry(fieldId, '잎 상태 확인', 3);
 
   const tasks: FieldTask[] = [
     {
       id: 'water',
-      title: '흙 상태 확인 후 물주기 결정',
-      description: precipitationAmount === 0
-        ? '최근 비가 오지 않았어요. 흙을 만져보고 필요하면 물을 주세요.'
-        : '최근 강수가 있었어요. 배수 상태만 가볍게 확인해주세요.',
+      title: '흙 상태를 확인한 후 물주기를 결정하세요',
+      description: weather.recentRainfallMm === 0
+        ? '최근 2일간 비가 오지 않았어요. 흙을 손으로 만져보고 표면 아래까지 말랐다면 물을 주세요.'
+        : `최근 2일간 ${weather.recentRainfallMm}mm의 비가 내렸어요. 흙 상태를 확인하고 필요할 때만 물을 주세요.`,
       urgency: '오전 권장',
       icon: 'water'
     },
     {
       id: 'pest',
       title: '잎 뒷면 병해충 확인하기',
-      description: humidity >= 60
-        ? '현재 기온과 습도는 병해충이 발생하기 쉬운 환경이에요.'
-        : '건조한 편이라 병해충 발생 가능성은 낮지만 한 번씩 확인해주세요.',
+      description: isHumidDay
+        ? '현재 습도가 높아 병해충이 발생하기 쉬운 환경이에요. 잎 뒷면을 확인해주세요.'
+        : '비교적 건조한 편이지만 한 번씩 잎 상태를 살펴봐 주세요.',
       urgency: '오전 권장',
       icon: 'search'
-    },
-    {
-      id: 'support',
-      title: '지지대 상태 확인하기',
-      description: '줄기가 길어지고 있어 지지대 고정 상태를 확인해주세요.',
-      urgency: '수시 확인',
-      icon: 'shield'
     }
   ];
 
@@ -164,7 +144,7 @@ export async function fetchFieldEnvironment(fieldId: string, cropName?: string |
       id: 'heat',
       icon: 'sun',
       title: '오후 고온 주의',
-      description: `오늘 오후 최고기온이 ${maxTemp}℃까지 올라갈 예정이에요. 잎 처짐을 확인하고 필요 시 차광을 해주세요.`
+      description: `오늘 오후 최고기온이 ${weather.maxTemp}℃까지 올라갈 예정이에요. 잎 처짐을 확인하고 필요 시 차광을 해주세요.`
     });
   }
   if (isDryDay) {
@@ -175,37 +155,30 @@ export async function fetchFieldEnvironment(fieldId: string, cropName?: string |
       description: '최근 강수량이 적어 토양이 빠르게 마를 수 있어요. 흙 상태를 자주 확인해주세요.'
     });
   }
-  if (precipitationProbability >= 60) {
+  if (weather.precipitationProbability >= 60) {
     alerts.push({
       id: 'rain',
       icon: 'rain',
       title: '강수 가능성 높음',
-      description: `오늘 강수확률이 ${precipitationProbability}%예요. 배수로 상태를 미리 점검해주세요.`
+      description: `오늘 강수확률이 ${weather.precipitationProbability}%예요. 배수로 상태를 미리 점검해주세요.`
     });
   }
 
-  const history: FieldHistoryEntry[] = Array.from({ length: 7 }, (_, i) => {
-    const daySeed = hashString(fieldId) + dayBucket() - i;
-    const date = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
-    const dayHot = 15 + (daySeed % 15) >= 25;
-    const dayDry = daySeed % 4 === 0;
-    const status: ConditionStatus = dayHot || dayDry ? 'caution' : (daySeed % 6 === 0 ? 'bad' : 'good');
-    const statusLabel = status === 'good' ? '안정' : status === 'caution' ? '주의' : '확인 필요';
-    const description = i === 0
-      ? (hasCaution ? '오후 고온 주의 · 흙 상태 확인 완료' : '특이사항 없음')
-      : status === 'good' ? '특이사항 없음'
-        : status === 'caution' ? '낮 기온 높음 주의'
-          : '잎 상태 확인 권장';
-    const actionLabel = daySeed % 3 === 0 ? '물주기' : daySeed % 3 === 1 ? '비료' : '잎 상태 확인';
-    return {
-      id: `history-${i}`,
-      date: `${date.getMonth() + 1}월 ${date.getDate()}일 (${WEEKDAY_LABELS[date.getDay()]})`,
-      statusLabel,
-      statusColor: status,
-      description,
-      actionLabel
-    };
-  });
+  const reasoningPoints = [
+    `최근 2일 강수량: ${weather.recentRainfallMm}mm`,
+    `오늘 예상 최고기온: ${weather.maxTemp}℃`,
+    `현재 습도: ${weather.humidity}%`,
+    `최근 물주기 기록: ${wateringLogged ? '있음' : '확인되지 않음'}`,
+    `최근 잎 상태 확인 기록: ${pestLogged ? '있음' : '확인되지 않음'}`
+  ];
+
+  const reasoningSummary = isHighTempDay && weather.recentRainfallMm === 0
+    ? '최근 비가 오지 않았고 오늘 낮 기온이 높아질 예정이에요. 다만 실제 흙의 수분 상태는 알 수 없어, 흙을 직접 확인한 후 물주기를 결정하도록 안내했어요.'
+    : isHighTempDay
+      ? '오늘 낮 기온이 높아질 예정이에요. 잎 상태를 확인하고 필요하면 차광해주세요.'
+      : weather.recentRainfallMm === 0
+        ? '최근 비가 오지 않았어요. 실제 흙의 수분 상태는 알 수 없어, 흙을 직접 확인한 후 물주기를 결정하도록 안내했어요.'
+        : `${crop}이(가) 안정적으로 자랄 수 있는 날씨예요.`;
 
   return {
     headline: hasCaution ? '오늘은 주의가 필요한 상태예요' : '오늘은 안정적인 상태예요',
@@ -215,11 +188,19 @@ export async function fetchFieldEnvironment(fieldId: string, cropName?: string |
       : isDryDay
         ? '토양이 건조해질 수 있어 수분 상태 확인이 필요해요.'
         : `${crop}이(가) 안정적으로 자라고 있어요.`,
-    reasoning: `최근 2일 강수량이 ${precipitationAmount}mm이고, 오늘 최고기온이 ${maxTemp}℃로 예상돼요. 환경(기온/습도/강수)에서 ${isHighTempDay ? '고온' : '건조'} 스트레스의 위험이 높아 흙 상태 확인 후 물주기를 결정하도록 안내했어요.`,
+    reasoningPoints,
+    reasoningSummary,
     tasks,
     alerts,
-    history,
-    environment,
+    weather,
     generatedAt: Date.now()
   };
 }
+
+function hasRecentLogEntry(fieldId: string, category: FieldLogCategory, withinDays: number): boolean {
+  const logs = getFieldLogs(fieldId);
+  const cutoff = Date.now() - withinDays * 24 * 60 * 60 * 1000;
+  return logs.some(log => log.category === category && new Date(log.loggedAt).getTime() >= cutoff);
+}
+
+export { getSoilTestResult };
