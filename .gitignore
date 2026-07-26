@@ -48,3 +48,7 @@ brain/
 /docs/superpowers/plans/
 /docs/superpowers/specs/
 
+# Keep local Windows launchers and notes out of the repository.
+*.bat
+*.md
+
