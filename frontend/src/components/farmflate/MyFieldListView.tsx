@@ -116,7 +116,7 @@ export const MyFieldListView: React.FC<MyFieldListViewProps> = ({
                       </p>
                     </div>
                   </div>
-                  <span className={`farm-status-chip farm-status-chip--${statusTone}`}>
+                  <span className={`farm-status-chip farm-status-chip--${statusTone}`} title={actionBadge}>
                     {actionBadge}
                   </span>
                 </div>
