@@ -42,6 +42,7 @@ from app.services.tools import (
 class AgentState(TypedDict, total=False):
     fact_package: FactPackage
     intent: str
+    conversation_focus: str
     selected_tools: list[str]
     tool_results: dict[str, Any]
     structured_answer: StructuredAnswer
@@ -59,7 +60,7 @@ class AIService:
     _TERM_WORDS = ("뜻", "의미", "뭐", "무엇", "용어", "EC", "pH", "유기물", "질소", "인산", "칼륨", "칼슘", "마그네슘", "배수", "적산온도", "생육적온", "도장", "엽소", "습해", "연작")
     _GUIDANCE_WORDS = ("농사로", "공식", "가이드", "관리법", "안내", "지침", "요령", "방법")
     _UNSUPPORTED_WORDS = ("바꿔", "변경", "수정", "조정해", "높여", "낮춰", "삭제", "취소")
-    _WATER_WORDS = ("물주기", "물줘", "물 줘", "급수", "관수", "물주", "물 주")
+    _WATER_WORDS = ("물주기", "물줘", "물 줘", "급수", "관수", "물주", "물 주", "물은", "물을")
     _SEASON_WORDS = ("계절", "시기", "달", "월", "언제", "파종", "정식", "수확", "전정", "가지치기", "심는", "거두", "심어야", "심어")
     _COMPARE_WORDS = ("비교", "차이", "vs", "어느", "골라", "선택", "낫")
     _SOIL_WORDS = ("토양", "흙", "산도", "비료", "퇴비", "석회", "양분", "거름")
@@ -229,15 +230,47 @@ class AIService:
         return {"trace": ["요청을 검증했습니다."]}
 
     def _classify_intent(self, state: AgentState) -> dict[str, Any]:
-        question = state["fact_package"].question
+        fp = state["fact_package"]
+        question = fp.question
         intent = self._classify(question)
-        return {"intent": intent, "trace": [*state["trace"], f"의도 분류: {intent}"]}
+        focus = self._conversation_focus(fp)
+        trace = f"의도 분류: {intent}"
+        if focus:
+            trace += " (직전 대화 맥락 반영)"
+        return {
+            "intent": intent,
+            "conversation_focus": focus,
+            "trace": [*state["trace"], trace],
+        }
+
+    def _conversation_focus(self, fp: FactPackage) -> str:
+        """Keep a compact, fact-backed bridge for Korean follow-up questions.
+
+        The full history is still passed to the LLM, but the deterministic path
+        needs a small explicit anchor for questions such as “그 위험은?” or
+        “그러면 물은요?”.  Only persisted field/report facts are used here.
+        """
+        question = fp.question.replace(" ", "")
+        follow_up_tokens = ("그위험", "이위험", "그상태", "이상태", "그작물", "이작물", "그러면", "그럼", "그것", "이것")
+        if not any(token in question for token in follow_up_tokens):
+            return ""
+
+        anchors: list[str] = []
+        crop = fp.facts.get("field.crop.name") or fp.facts.get("crop.1.name")
+        risk = fp.facts.get("field.alert.1.title") or fp.facts.get("risk.1.title")
+        if crop:
+            anchors.append(f"현재 작물: {crop}")
+        if risk:
+            anchors.append(f"현재 위험: {risk}")
+        return "; ".join(anchors)
 
     def _classify(self, message: str) -> str:
         lowered = message.replace(" ", "")
         if any(w in lowered for w in self._UNSUPPORTED_WORDS):
             return "UNSUPPORTED_ACTION"
-        if any(w in lowered for w in self._TERM_WORDS):
+        # A concrete glossary term (for example pH or EC) is more specific
+        # than the broad topic words such as “토양”, so explain it directly.
+        if self._contains_known_term(message):
             return "TERM_EXPLANATION"
         # Evidence questions must win over the crop-name keyword.  Otherwise
         # "상추 점수는 왜 낮아요?" was incorrectly treated as a generic crop
@@ -258,7 +291,18 @@ class AIService:
             return "RISK_EXPLANATION"
         if any(w in lowered for w in self._CROP_WORDS):
             return "CROP_RECOMMENDATION"
+        # Generic interrogatives such as “무엇” are also listed with the
+        # glossary cues.  Evaluate them only after the actionable intents so
+        # “오늘 무엇을 조심해야 하나요?” remains a risk question.
+        if any(w in lowered for w in self._TERM_WORDS):
+            return "TERM_EXPLANATION"
         return "GENERAL_INFORMATION"
+
+    @staticmethod
+    def _contains_known_term(message: str) -> bool:
+        from app.services.tools import AGRICULTURAL_GLOSSARY
+        normalized = message.lower()
+        return any(term.lower() in normalized for term in AGRICULTURAL_GLOSSARY)
 
     def _select_tools(self, state: AgentState) -> dict[str, Any]:
         intent = state["intent"]
@@ -299,10 +343,10 @@ class AIService:
             elif tool_name == "search_official_guidance":
                 results["official_guidance"] = search_official_guidance(fp.facts, fp.sources)
             elif tool_name == "get_crop_profile":
-                crop = self._extract_crop_name(fp.question, fp.facts)
+                crop = self._extract_crop_name(fp.question, fp.facts, fp.history)
                 results["crop_profile"] = get_crop_profile(crop) if crop else None
             elif tool_name == "get_seasonal_advice":
-                crop = self._extract_crop_name(fp.question, fp.facts)
+                crop = self._extract_crop_name(fp.question, fp.facts, fp.history)
                 results["seasonal_advice"] = get_seasonal_advice(crop) if crop else None
             elif tool_name == "get_risk_guide":
                 risk_code = fp.facts.get("risk.1.code", "")
@@ -311,12 +355,41 @@ class AIService:
                 results["crop_comparison"] = compare_crops(fp.facts)
         return {"tool_results": results, "trace": [*state["trace"], f"도구 실행: {list(results.keys())}"]}
 
-    def _extract_crop_name(self, question: str, facts: dict[str, Any]) -> str | None:
-        for code, profile in CROP_PROFILES.items():
-            if profile["name"] in question:
-                return profile["name"]
+    def _extract_crop_name(
+        self, question: str, facts: dict[str, Any], history: list[dict[str, Any]] | None = None
+    ) -> str | None:
+        explicit_crop = self._crop_name_in_text(question)
+        if explicit_crop:
+            return explicit_crop
+        # Follow-up questions often omit the crop name. Prefer the user's most
+        # recent explicit crop mention over a report's default recommendation.
+        for message in reversed(history or []):
+            if not isinstance(message, dict) or message.get("role") != "user":
+                continue
+            content = message.get("content")
+            if not isinstance(content, str):
+                continue
+            history_crop = self._crop_name_in_text(content)
+            if history_crop:
+                return history_crop
+        field_crop = facts.get("field.crop.name")
+        if field_crop:
+            return str(field_crop)
         top_crop = facts.get("crop.1.name")
         return str(top_crop) if top_crop else None
+
+    @staticmethod
+    def _crop_name_in_text(text: str) -> str | None:
+        for profile in CROP_PROFILES.values():
+            crop_name = profile["name"]
+            # “배” is a valid crop but also a syllable in common words such as
+            # “재배”. Treat it as a Korean token, rather than a raw substring.
+            if crop_name == "배":
+                if re.search(r"(?<![가-힣])배(?=$|[\s,./!?]|[은는이가을를와과도만])", text):
+                    return crop_name
+            elif crop_name in text:
+                return crop_name
+        return None
 
     def _extract_term(self, question: str) -> str:
         from app.services.tools import AGRICULTURAL_GLOSSARY
@@ -349,11 +422,12 @@ class AIService:
         region_analysis = tool_results.get("region_analysis", {})
         field_report = tool_results.get("field_report", {})
         if not region_analysis and not field_report:
-            answer = StructuredAnswer(
-                answer="완료된 분석 리포트를 아직 확인하지 못했습니다. 지역 환경 분석이 완료된 뒤 다시 질문해 주시면 리포트의 점수·위험 요소·추천 작물 근거를 바탕으로 안내할게요.",
-                basisType="CURRENT_REPORT",
-            )
-            return {"structured_answer": answer, "trace": [*state["trace"], "리포트 없음 응답 생성"]}
+            answer = self._build_context_free_answer(fp, intent, tool_results)
+            return {
+                "structured_answer": answer,
+                "deterministic_answer": answer,
+                "trace": [*state["trace"], "분석 전 기본 안내 응답 생성"],
+            }
 
         # Always compute the fact-only, intent-specific answer first. It is
         # never shown if the LLM succeeds and passes grounding validation,
@@ -365,13 +439,23 @@ class AIService:
         # region analysis attached; otherwise a temporary LLM outage can turn
         # “what should I do in my field today?” into a generic regional answer.
         deterministic_answer = (
-            self._build_field_deterministic_answer(fp, field_report)
+            self._build_field_deterministic_answer(fp, field_report, intent)
             if field_report
             else self._build_deterministic_answer(fp, intent, region_analysis, tool_results)
         )
 
+        # A field watering answer must keep the sensor limitation and the
+        # direct soil-check action intact.  A prose model can otherwise turn
+        # a generic crop profile into an unsafe “water now” instruction.
+        if field_report and intent == "WATERING_GUIDANCE":
+            return {
+                "structured_answer": deterministic_answer,
+                "deterministic_answer": deterministic_answer,
+                "trace": [*state["trace"], "현장 관수 안전 안내를 규칙 기반으로 고정"],
+            }
+
         if settings.OPENAI_API_KEY and settings.LLM_PROVIDER.lower() == "openai":
-            llm_answer = await self._call_openai(fp, intent, tool_results)
+            llm_answer = await self._call_openai(fp, intent, tool_results, state.get("conversation_focus", ""))
             if llm_answer is not None:
                 return {
                     "structured_answer": llm_answer,
@@ -386,7 +470,7 @@ class AIService:
         }
 
     async def _call_openai(
-        self, fp: FactPackage, intent: str, tool_results: dict[str, Any]
+        self, fp: FactPackage, intent: str, tool_results: dict[str, Any], conversation_focus: str = ""
     ) -> StructuredAnswer | None:
         facts_text = "\n".join(f"{k}: {v}" for k, v in fp.facts.items() if v is not None)
         sources_text = "\n".join(
@@ -407,7 +491,8 @@ class AIService:
             "safetyNotice는 토양수분 센서 부재 등 불확실성이 있을 때만 작성하세요."
         )
         user_content = (
-            f"질문: {fp.question}\n\nFact:\n{facts_text}\n\n"
+            f"질문: {fp.question}\n"
+            f"대화 연결 단서: {conversation_focus or '없음'}\n\nFact:\n{facts_text}\n\n"
             f"검증된 도구 컨텍스트:\n{tool_context}\n\n출처:\n{sources_text or '없음'}"
         )
         messages = [
@@ -452,12 +537,55 @@ class AIService:
         serialized = json.dumps(value, ensure_ascii=False, default=str, separators=(",", ":"))
         return serialized[:6000] + ("…" if len(serialized) > 6000 else "")
 
-    def _build_field_deterministic_answer(self, fp: FactPackage, field_report: dict[str, Any]) -> StructuredAnswer:
+    def _build_context_free_answer(
+        self, fp: FactPackage, intent: str, tool_results: dict[str, Any]
+    ) -> StructuredAnswer:
+        """Answer the starter cards without pretending a personal report exists."""
+        crop_profile = tool_results.get("crop_profile")
+        if intent == "CROP_RECOMMENDATION" and isinstance(crop_profile, dict):
+            crop_name = str(crop_profile.get("name", "작물"))
+            parts = [
+                f"{crop_profile.get('emoji', '')} {crop_name}의 기본 재배 조건입니다.",
+                f"생육에 알맞은 기온은 {crop_profile.get('temp_optimal', '작물별 기준')}이고, 토양 pH는 {crop_profile.get('ph_optimal', '작물별 기준')}를 참고하세요.",
+            ]
+            if crop_profile.get("soil_note"):
+                parts.append(f"토양: {crop_profile['soil_note']}")
+            if crop_profile.get("watering"):
+                parts.append(f"물 관리: {crop_profile['watering']}")
+            return StructuredAnswer(
+                answer="\n".join(parts),
+                basisType="GENERAL_INFORMATION",
+                mentionedCrops=[crop_name] if crop_name in {profile["name"] for profile in CROP_PROFILES.values()} else [],
+            )
+
+        if intent == "TERM_EXPLANATION":
+            return StructuredAnswer(
+                answer="궁금한 용어를 함께 적어 주세요. 예를 들어 ‘토양 pH는 무슨 뜻인가요?’ 또는 ‘EC가 높다는 것은 무엇인가요?’처럼 물어보면 쉬운 말로 설명해 드릴게요.",
+                basisType="TERM_DEFINITION",
+            )
+
+        normalized_question = fp.question.replace(" ", "")
+        if "지역분석" in normalized_question or "분석에서" in normalized_question:
+            return StructuredAnswer(
+                answer="지역 분석에서는 최근 기온·강수·습도 추이와 예보, 토양 pH·EC 같은 환경 정보를 작물별 기준과 비교합니다. 범위를 벗어난 정도와 며칠간 이어지는 위험 신호를 함께 반영해 점수와 우선 확인 항목을 안내해요.",
+                basisType="GENERAL_INFORMATION",
+            )
+
+        return StructuredAnswer(
+            answer="아직 내 지역 또는 밭 분석 결과가 없어 개인화된 판단은 할 수 없습니다. 다만 작물의 기본 재배 조건, 토양 pH·EC 같은 용어 설명, 지역 분석 방식은 바로 안내해 드릴 수 있어요.",
+            basisType="GENERAL_INFORMATION",
+        )
+
+    def _build_field_deterministic_answer(
+        self, fp: FactPackage, field_report: dict[str, Any], intent: str
+    ) -> StructuredAnswer:
         facts = fp.facts
         used_fact_ids = [key for key in (
             "field.name", "field.crop.name", "field.score", "field.headline",
             "field.headlineDescription", "field.alert.1.title", "field.alert.1.description",
-            "field.task.1.title", "field.task.1.description",
+            "field.task.1.title", "field.task.1.description", "field.reasoning.1",
+            "field.weather.minTemperature", "field.weather.maxTemperature", "field.weather.humidity",
+            "field.weather.rainfall",
         ) if facts.get(key) not in (None, "")]
         field_name = facts.get("field.name", "내 밭")
         crop_name = facts.get("field.crop.name", "작물")
@@ -465,19 +593,68 @@ class AIService:
         description = facts.get("field.headlineDescription") or facts.get("field.alert.1.description")
         task = facts.get("field.task.1.title")
         task_description = facts.get("field.task.1.description")
-        parts = [f"{field_name}의 {crop_name} 일일 분석 기준입니다."]
-        if headline:
-            parts.append(str(headline))
-        if description:
-            parts.append(str(description))
-        if task:
-            parts.append(f"우선 할 일: {task}" + (f" — {task_description}" if task_description else ""))
+        alert_title = facts.get("field.alert.1.title")
+        alert_description = facts.get("field.alert.1.description")
+        reasoning = facts.get("field.reasoning.1")
+        weather_parts = []
+        if facts.get("field.weather.minTemperature") not in (None, ""):
+            weather_parts.append(f"최저 {facts['field.weather.minTemperature']}℃")
+        if facts.get("field.weather.maxTemperature") not in (None, ""):
+            weather_parts.append(f"최고 {facts['field.weather.maxTemperature']}℃")
+        if facts.get("field.weather.humidity") not in (None, ""):
+            weather_parts.append(f"습도 {facts['field.weather.humidity']}%")
+        if facts.get("field.weather.rainfall") not in (None, ""):
+            weather_parts.append(f"강수 {facts['field.weather.rainfall']}mm")
+
+        parts = [f"{field_name}의 {crop_name} 오늘 분석 기준입니다."]
+        safety_notice: str | None = None
+        mentioned_risks = [str(alert_title)] if alert_title else []
+
+        if intent == "WATERING_GUIDANCE":
+            parts.append("실제 토양수분 센서값이 없어서 지금 바로 물을 줘야 한다고 단정할 수는 없습니다.")
+            if weather_parts:
+                parts.append("오늘 확인된 환경은 " + ", ".join(weather_parts) + "입니다.")
+            parts.append("물을 주기 전에는 뿌리 주변 3~5cm 흙을 직접 만져 수분을 확인하고, 배수 상태와 잎 처짐을 함께 살펴보세요.")
+            if task:
+                parts.append(f"오늘의 관리 우선순위: {task}" + (f" — {task_description}" if task_description else ""))
+            safety_notice = "실제 토양수분 센서값이 없어 물주기 필요 여부를 확정할 수 없습니다."
+        elif intent == "REPORT_REASON":
+            if headline:
+                parts.append(f"현재 안내는 ‘{headline}’ 때문입니다.")
+            if description:
+                parts.append(str(description))
+            if reasoning:
+                parts.append(f"분석 근거: {reasoning}")
+            if weather_parts:
+                parts.append("함께 반영된 오늘 환경은 " + ", ".join(weather_parts) + "입니다.")
+            if task:
+                parts.append(f"그래서 먼저 할 일은 {task}" + (f"입니다. {task_description}" if task_description else "입니다."))
+        elif intent == "RISK_EXPLANATION":
+            if alert_title:
+                parts.append(f"오늘 가장 먼저 살필 위험은 ‘{alert_title}’입니다.")
+            if alert_description:
+                parts.append(str(alert_description))
+            elif description:
+                parts.append(str(description))
+            if weather_parts:
+                parts.append("관련 환경은 " + ", ".join(weather_parts) + "입니다.")
+            if task:
+                parts.append(f"대응은 {task}" + (f" — {task_description}" if task_description else "부터 해주세요."))
+        else:
+            if headline:
+                parts.append(str(headline))
+            if description:
+                parts.append(str(description))
+            if task:
+                parts.append(f"우선 할 일: {task}" + (f" — {task_description}" if task_description else ""))
         if not headline and not task:
             parts.append("오늘 저장된 현장 안내를 찾지 못했습니다. 최신 대시보드를 새로고침한 뒤 다시 확인해 주세요.")
         return StructuredAnswer(
             answer="\n".join(parts), basisType="CURRENT_REPORT", usedFactIds=used_fact_ids,
             usedSourceIds=[s.get("sourceId", "") for s in fp.sources if isinstance(s, dict) and s.get("sourceId")],
             mentionedCrops=[str(crop_name)] if crop_name in {profile["name"] for profile in CROP_PROFILES.values()} else [],
+            mentionedRisks=mentioned_risks,
+            safetyNotice=safety_notice,
         )
 
     def _build_deterministic_answer(

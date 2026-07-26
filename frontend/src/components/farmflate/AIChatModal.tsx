@@ -4,24 +4,13 @@ import type { PanInfo } from 'framer-motion';
 import { ArrowUp, ChevronRight, X, Sparkles } from 'lucide-react';
 import { ApiError, ApiService } from '../../services/api';
 import type { Message, AIChatContext } from '../../types/chat';
+import { getChatSuggestions } from '../../services/chatSuggestions';
 
 interface AIChatModalProps {
   isOpen: boolean;
   onClose: () => void;
   context: AIChatContext;
 }
-
-const GENERIC_QUESTIONS = [
-  { title: '지역 분석 결과를 쉽게 설명해 주세요', desc: '내 지역 분석 결과를 쉬운 말로 풀어드려요.', img: '/svg-assets/ai/faq-icons/season-question.svg' },
-  { title: '추천 작물은 어떤 기준으로 정했나요?', desc: '추천 작물이 정해진 근거를 알려드려요.', img: '/svg-assets/ai/faq-icons/crop-question.svg' },
-  { title: '농사 용어가 어려워요', desc: '쉬운 설명으로 이해를 도와드려요.', img: '/svg-assets/ai/faq-icons/term-question.svg' }
-];
-
-const FIELD_QUESTIONS = [
-  { title: '이 상태가 왜 그런가요?', desc: '오늘 이 밭의 상태나 원인을 알려드려요.', img: '/svg-assets/ai/faq-icons/state-question.svg' },
-  { title: '오늘 물을 줘야 하나요?', desc: '최근 날씨를 설명하고, 직접 확인할 토양 상태를 알려드려요.', img: '/svg-assets/ai/faq-icons/season-question.svg' },
-  { title: '오늘 무엇을 조심해야 하나요?', desc: '오늘 주의할 점과 관리 팁을 알려드려요.', img: '/svg-assets/ai/faq-icons/crop-question.svg' }
-];
 
 export const AIChatModal: React.FC<AIChatModalProps> = ({
   isOpen,
@@ -34,11 +23,12 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
   const [hasStartedChat, setHasStartedChat] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [lastFailedPrompt, setLastFailedPrompt] = useState<string | null>(null);
+  const [lastFailedMessageId, setLastFailedMessageId] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const sessionIdRef = useRef(0);
 
-  const detailedQuestions = context.fieldId ? FIELD_QUESTIONS : GENERIC_QUESTIONS;
+  const detailedQuestions = getChatSuggestions(context);
 
   const resetConversation = () => {
     abortControllerRef.current?.abort();
@@ -49,6 +39,7 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
     setHasStartedChat(false);
     setErrorMessage(null);
     setLastFailedPrompt(null);
+    setLastFailedMessageId(null);
   };
 
   /* Reopening (or switching screens while open) must never show the previous conversation. */
@@ -70,20 +61,26 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
     }
   }, [messages]);
 
-  const handleSendPrompt = async (promptText: string) => {
+  const handleSendPrompt = async (promptText: string, retryMessageId?: string) => {
     if (!promptText.trim() || loading) return;
     setHasStartedChat(true);
     setErrorMessage(null);
     setLastFailedPrompt(null);
-    const userMsg: Message = {
-      id: crypto.randomUUID(),
-      sender: 'user',
-      content: promptText,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-    setMessages(prev => [...prev, userMsg]);
+    setLastFailedMessageId(null);
+    const userMsg: Message | undefined = retryMessageId
+      ? messages.find(message => message.id === retryMessageId && message.sender === 'user')
+      : {
+          id: crypto.randomUUID(),
+          sender: 'user',
+          content: promptText,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+    if (!retryMessageId && userMsg) setMessages(prev => [...prev, userMsg]);
     setInput('');
     setLoading(true);
+    const history = (retryMessageId ? messages.filter(message => message.id !== retryMessageId) : messages)
+      .slice(-8)
+      .map(message => ({ role: message.sender, content: message.content }));
 
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
@@ -92,10 +89,7 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
     try {
       const response = await ApiService.sendChatMessage({
         message: promptText,
-        history: messages.slice(-12).map(message => ({
-          role: message.sender,
-          content: message.content
-        })),
+        history,
         context: {
           regionAnalysisId: context.regionAnalysisId,
           fieldId: context.fieldId,
@@ -118,13 +112,14 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
       if (requestSessionId !== sessionIdRef.current) return;
       setErrorMessage(err instanceof ApiError ? err.message : 'AI 답변을 불러오지 못했습니다. 다시 시도해 주세요.');
       setLastFailedPrompt(promptText);
+      setLastFailedMessageId(userMsg?.id ?? null);
     } finally {
       if (requestSessionId === sessionIdRef.current) setLoading(false);
     }
   };
 
   const handleRetry = () => {
-    if (lastFailedPrompt) void handleSendPrompt(lastFailedPrompt);
+    if (lastFailedPrompt) void handleSendPrompt(lastFailedPrompt, lastFailedMessageId ?? undefined);
   };
 
   const handleReset = () => {
