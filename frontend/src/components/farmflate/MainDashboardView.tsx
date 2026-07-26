@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { AlertTriangle, MoveRight, Bot } from 'lucide-react';
+import { AlertTriangle, MoveRight, Bot, BarChart3, ChevronRight } from 'lucide-react';
 import type { TabState } from '../../types/farmflate';
 import type { FieldProfile } from '../../types/report';
 import { BottomNavigation } from '../common/BottomNavigation';
@@ -21,11 +21,6 @@ interface MainDashboardViewProps {
   onTabChange: (tab: TabState) => void;
   isNewUser?: boolean;
 }
-
-const topicParticle = (value: string) => {
-  const lastCode = value.trim().charCodeAt(value.trim().length - 1);
-  return lastCode >= 0xAC00 && lastCode <= 0xD7A3 && (lastCode - 0xAC00) % 28 !== 0 ? '은' : '는';
-};
 
 export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
   userName = '사용자님',
@@ -60,12 +55,6 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
   const attentionFields = fields.filter(field => field.dailyStatus === 'CAUTION' || field.dailyStatus === 'DANGER');
   const attentionFieldCount = attentionFields.length;
   const visibleAttentionFields = attentionFields.slice(0, 2);
-  const hiddenAttentionFieldCount = attentionFieldCount - visibleAttentionFields.length;
-  const attentionSummary = attentionFieldCount === 0
-    ? '오늘은 주의해야 할 밭이 없어요.'
-    : hiddenAttentionFieldCount > 0
-      ? `${visibleAttentionFields.map(field => `${field.fieldName}(${field.dailyStatus === 'DANGER' ? '위험' : '주의'})`).join(', ')} 외 ${hiddenAttentionFieldCount}개 밭을 확인해 주세요.`
-      : `${visibleAttentionFields.map(field => `${field.fieldName}${topicParticle(field.fieldName)} ${field.dailyStatus === 'DANGER' ? '위험' : '주의'}`).join(', ')} 상태예요.`;
 
   // Latest Region Analysis: TOP 1-3 recommended crops
   const recommendedCrops = homeData?.latestRegionAnalysis?.recommendedCrops ?? [];
@@ -225,22 +214,79 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
             </div>
           </motion.div>
         ) : (
-          <div style={{ position: 'relative', width: '100%', minHeight: 154, border: '1px solid #FFE0A8', borderRadius: 20, backgroundColor: '#FFF8E8', padding: '20px', marginBottom: 20, boxSizing: 'border-box', overflow: 'hidden' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#FF7F2B', fontSize: '0.86rem', fontWeight: 850, marginBottom: 8 }}>
-              <AlertTriangle size={18} color="#FF7F2B" /> {attentionFieldCount > 0 ? `오늘 주의해야 할 밭이 ${attentionFieldCount}개 있어요` : '오늘 주의해야 할 밭이 없어요'}
-            </div>
-            <div style={{ position: 'relative', zIndex: 1, fontSize: '0.85rem', lineHeight: 1.5, color: '#626A65', marginBottom: 14 }}>
-              {attentionSummary}
-            </div>
-            <button onClick={handleReportViewClick} style={{ position: 'relative', zIndex: 1, height: 34, padding: '0 16px', border: '1px solid #FFCFB1', borderRadius: 18, backgroundColor: '#FFFFFF', color: '#FF7D31', fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer' }}>
-              지역 리포트 보기 ›
+          <>
+            {/* 지역 리포트 바로가기: reopen the region report the user already received */}
+            <button
+              onClick={handleReportViewClick}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                gap: 12, padding: '16px 18px', marginBottom: 20, boxSizing: 'border-box',
+                backgroundColor: '#FFFFFF', border: '1px solid #E5E8EB', borderRadius: 18,
+                cursor: 'pointer'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{
+                  width: 34, height: 34, borderRadius: '50%', backgroundColor: '#E9F9EF',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                }}>
+                  <BarChart3 size={18} color="#2FA86A" />
+                </div>
+                <span style={{ fontSize: '0.92rem', fontWeight: 800, color: '#191F28' }}>
+                  지역 리포트 바로가기
+                </span>
+              </div>
+              <ChevronRight size={20} color="#CBD5E1" />
             </button>
-            <img
-              src="/svg-assets/weather/water-drop-alert.svg"
-              alt=""
-              style={{ position: 'absolute', right: 16, bottom: 14, width: 68, height: 68, objectFit: 'contain', pointerEvents: 'none' }}
-            />
-          </div>
+
+            {/* 주의 구역 현황 */}
+            <div style={{ marginBottom: 16 }}>
+              <h2 style={{ fontSize: '1.05rem', fontWeight: 900, color: '#191F28', marginBottom: 12, letterSpacing: '-0.02em' }}>
+                주의 구역 현황
+              </h2>
+              <div style={{ position: 'relative', width: '100%', minHeight: 154, border: '1px solid #FFE0A8', borderRadius: 20, backgroundColor: '#FFF8E8', padding: '20px', boxSizing: 'border-box', overflow: 'hidden' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#FF7F2B', fontSize: '0.86rem', fontWeight: 850, marginBottom: 12 }}>
+                  <AlertTriangle size={18} color="#FF7F2B" /> {attentionFieldCount > 0 ? `오늘 주의해야 할 밭이 ${attentionFieldCount}개 있어요` : '오늘 주의해야 할 밭이 없어요'}
+                </div>
+
+                {attentionFieldCount > 0 ? (
+                  <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14, maxWidth: '68%' }}>
+                    {visibleAttentionFields.map(field => {
+                      const isDanger = field.dailyStatus === 'DANGER';
+                      return (
+                        <div key={field.id} style={{
+                          display: 'flex', alignItems: 'center', gap: 8,
+                          backgroundColor: '#FFFFFF', borderRadius: 12, padding: '10px 12px'
+                        }}>
+                          <AlertTriangle size={15} color={isDanger ? '#EF4444' : '#FF7F2B'} />
+                          <span style={{ fontSize: '0.78rem', fontWeight: 800, color: isDanger ? '#EF4444' : '#FF7F2B' }}>
+                            {isDanger ? '위험' : '주의'}
+                          </span>
+                          <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#374151' }}>
+                            {field.fieldName}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div style={{ position: 'relative', zIndex: 1, fontSize: '0.85rem', lineHeight: 1.5, color: '#626A65', marginBottom: 14, maxWidth: '68%' }}>
+                    현재 특별한 위험은 없어요.
+                  </div>
+                )}
+
+                <button onClick={() => onTabChange('myfield')} style={{ position: 'relative', zIndex: 1, height: 34, padding: '0 16px', border: '1px solid #FFCFB1', borderRadius: 18, backgroundColor: '#FFFFFF', color: '#FF7D31', fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer' }}>
+                  확인하기 →
+                </button>
+
+                <img
+                  src="/assets/field-alert-mascot.png"
+                  alt=""
+                  style={{ position: 'absolute', right: 14, bottom: 8, width: 96, height: 96, objectFit: 'contain', pointerEvents: 'none' }}
+                />
+              </div>
+            </div>
+          </>
         )}
 
         {/* Recommended Farming Advice Section */}
