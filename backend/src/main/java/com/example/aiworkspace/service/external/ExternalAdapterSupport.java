@@ -107,7 +107,12 @@ final class ExternalAdapterSupport {
     }
 
     static boolean isProviderNoDataCode(String code) {
-        return "301".equals(code);
+        // Public-data providers use both their legacy 301 code and the
+        // standard OpenAPI 03 code for an otherwise valid no-data response.
+        // Treating the latter as a provider failure prevents adapters from
+        // trying their documented fallback publication or reporting a clean
+        // missing-data state to the decision engine.
+        return "301".equals(code) || "03".equals(code);
     }
 
     /**

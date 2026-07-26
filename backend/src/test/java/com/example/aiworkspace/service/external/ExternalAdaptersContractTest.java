@@ -104,6 +104,17 @@ class ExternalAdaptersContractTest {
         assertThat(result.metrics()).isNotEmpty();
     }
 
+    @Test
+    void standard_provider_no_data_code_is_kept_distinct_from_an_adapter_failure() {
+        MidTermForecastAdapter adapter = new MidTermForecastAdapter(new RestTemplate(), "fixture-key", 0, 360, "");
+
+        ExternalResult<List<MidTermForecastAdapter.DailyForecast>> result = adapter.parse(
+                "{\"response\":{\"header\":{\"resultCode\":\"03\"}}}",
+                "application/json", "202607260600", "11F10201");
+
+        assertThat(result.status()).isEqualTo(ExternalResult.Status.EMPTY);
+    }
+
     @ParameterizedTest(name = "{0}")
     @MethodSource("mixedSiblingFailures")
     void mixed_sibling_provider_failures_are_failure_with_partial_value(

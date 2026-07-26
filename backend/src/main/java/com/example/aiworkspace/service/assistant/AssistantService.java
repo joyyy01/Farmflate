@@ -116,14 +116,18 @@ public class AssistantService {
             if (!answer.containsKey("answer") || answer.get("answer") == null) {
                 return buildFallbackResponse(factPackage);
             }
-            response.putIfAbsent("requestId", factPackage.get("requestId"));
-            response.putIfAbsent("sources", factPackage.getOrDefault("sources", List.of()));
+            // JSON clients currently return mutable maps, but keeping that as
+            // an implicit contract turns an otherwise valid agent response
+            // into a fallback when an immutable map is returned later.
+            Map<String, Object> reshaped = new LinkedHashMap<>(response);
+            reshaped.putIfAbsent("requestId", factPackage.get("requestId"));
+            reshaped.putIfAbsent("sources", factPackage.getOrDefault("sources", List.of()));
             // Pass the agent's real status through instead of forcing
             // "completed" -- "fallback" means the LLM answer failed grounding
             // validation and a rule-based answer was substituted; masking
             // that made a degraded response indistinguishable from a normal one.
-            response.putIfAbsent("status", "completed");
-            return response;
+            reshaped.putIfAbsent("status", "completed");
+            return reshaped;
         }
         return buildFallbackResponse(factPackage);
     }
@@ -215,14 +219,22 @@ public class AssistantService {
         return factPackage;
     }
 
-    @SuppressWarnings("unchecked")
     private void addReportComponentFacts(Map<String, Object> facts, Map<String, Object> payload) {
-        Object componentsValue = payload.get("components");
-        if (!(componentsValue instanceof Map<?, ?> components)) return;
-        addComponentFacts(facts, "component.climate", (Map<String, Object>) components.get("climate"));
-        addComponentFacts(facts, "component.soil", (Map<String, Object>) components.get("soil"));
-        addComponentFacts(facts, "component.hazard", (Map<String, Object>) components.get("hazard"));
-        addComponentFacts(facts, "component.cultivation", (Map<String, Object>) components.get("cultivation"));
+        Map<String, Object> components = objectMap(payload.get("components"));
+        if (components.isEmpty()) return;
+        addComponentFacts(facts, "component.climate", objectMap(components.get("climate")));
+        addComponentFacts(facts, "component.soil", objectMap(components.get("soil")));
+        addComponentFacts(facts, "component.hazard", objectMap(components.get("hazard")));
+        addComponentFacts(facts, "component.cultivation", objectMap(components.get("cultivation")));
+    }
+
+    private Map<String, Object> objectMap(Object value) {
+        if (!(value instanceof Map<?, ?> raw)) return Map.of();
+        Map<String, Object> normalized = new LinkedHashMap<>();
+        raw.forEach((key, entry) -> {
+            if (key instanceof String name) normalized.put(name, entry);
+        });
+        return normalized;
     }
 
     private void addComponentFacts(Map<String, Object> facts, String prefix, Map<String, Object> component) {
