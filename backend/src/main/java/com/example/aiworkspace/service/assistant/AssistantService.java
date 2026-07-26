@@ -28,6 +28,9 @@ import java.util.*;
 @Service
 @RequiredArgsConstructor
 public class AssistantService {
+    private static final Set<String> ALLOWED_HISTORY_ROLES = Set.of("user", "assistant");
+    private static final int MAX_HISTORY_MESSAGES = 8;
+    private static final int MAX_HISTORY_CONTENT_LENGTH = 1_200;
 
     private final RegionAnalysisRepository analysisRepository;
     private final FarmRepository farmRepository;
@@ -140,6 +143,9 @@ public class AssistantService {
         }
         if (payload.containsKey("regionScore")) facts.put("region.score", payload.get("regionScore"));
         if (payload.containsKey("grade")) facts.put("region.grade", payload.get("grade"));
+        putIfPresent(facts, "region.summary", payload.get("summary"));
+        addReportComponentFacts(facts, payload);
+        addDataConfidenceFacts(facts, payload);
 
         Object crops = payload.get("recommendedCrops");
         if (crops instanceof List) {
@@ -148,6 +154,10 @@ public class AssistantService {
                 Map<String, Object> crop = cropList.get(i);
                 facts.put("crop." + (i + 1) + ".name", crop.getOrDefault("cropName", ""));
                 facts.put("crop." + (i + 1) + ".score", crop.getOrDefault("score", null));
+                putIfPresent(facts, "crop." + (i + 1) + ".baseFitness", crop.get("baseFitness"));
+                putIfPresent(facts, "crop." + (i + 1) + ".seasonReadiness", crop.get("seasonReadiness"));
+                putIfPresent(facts, "crop." + (i + 1) + ".caution", crop.get("cautionReason"));
+                putFirstListValue(facts, "crop." + (i + 1) + ".reason.1", crop.get("positiveReasons"));
             }
         }
 
@@ -158,10 +168,11 @@ public class AssistantService {
                 Map<String, Object> risk = riskList.get(i);
                 facts.put("risk." + (i + 1) + ".code", risk.getOrDefault("riskCode", ""));
                 facts.put("risk." + (i + 1) + ".title", risk.getOrDefault("title", ""));
+                putIfPresent(facts, "risk." + (i + 1) + ".severity", risk.get("severity"));
+                putIfPresent(facts, "risk." + (i + 1) + ".description", risk.get("description"));
+                putFirstListValue(facts, "risk." + (i + 1) + ".cause.1", risk.get("causalChain"));
                 Object actions = risk.get("actions");
-                if (actions instanceof List && !((List<?>) actions).isEmpty()) {
-                    facts.put("risk." + (i + 1) + ".action.1", ((List<?>) actions).get(0));
-                }
+                putFirstListValue(facts, "risk." + (i + 1) + ".action.1", actions);
             }
         }
 
@@ -169,13 +180,14 @@ public class AssistantService {
 
         Object srcList = payload.get("sources");
         if (srcList instanceof List) {
+            int sourceIndex = 0;
             for (Object src : (List<?>) srcList) {
                 if (src instanceof Map) {
                     Map<String, Object> srcMap = (Map<String, Object>) src;
                     Map<String, Object> source = new LinkedHashMap<>();
                     String provider = String.valueOf(srcMap.getOrDefault("provider", ""));
                     String service = String.valueOf(srcMap.getOrDefault("service", ""));
-                    source.put("sourceId", "source." + provider);
+                    source.put("sourceId", "source." + (++sourceIndex));
                     source.put("title", provider + " " + service);
                     source.put("detail", service);
                     source.put("provider", provider);
@@ -191,7 +203,7 @@ public class AssistantService {
         factPackage.put("requestId", UUID.randomUUID().toString());
         factPackage.put("userScope", Map.of("userId", email));
         factPackage.put("question", request.getMessage());
-        factPackage.put("history", request.getHistory() != null ? request.getHistory() : List.of());
+        factPackage.put("history", sanitizeHistory(request.getHistory()));
         factPackage.put("context", Map.of(
                 "route", request.getContext() != null && request.getContext().getRoute() != null ? request.getContext().getRoute() : "ai_chat",
                 "regionAnalysisId", request.getContext() != null && request.getContext().getRegionAnalysisId() != null ? request.getContext().getRegionAnalysisId() : "",
@@ -201,6 +213,65 @@ public class AssistantService {
         factPackage.put("sources", sources);
 
         return factPackage;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void addReportComponentFacts(Map<String, Object> facts, Map<String, Object> payload) {
+        Object componentsValue = payload.get("components");
+        if (!(componentsValue instanceof Map<?, ?> components)) return;
+        addComponentFacts(facts, "component.climate", (Map<String, Object>) components.get("climate"));
+        addComponentFacts(facts, "component.soil", (Map<String, Object>) components.get("soil"));
+        addComponentFacts(facts, "component.hazard", (Map<String, Object>) components.get("hazard"));
+        addComponentFacts(facts, "component.cultivation", (Map<String, Object>) components.get("cultivation"));
+    }
+
+    private void addComponentFacts(Map<String, Object> facts, String prefix, Map<String, Object> component) {
+        if (component == null) return;
+        putIfPresent(facts, prefix + ".score", component.get("score"));
+        putIfPresent(facts, prefix + ".safetyScore", component.get("safetyScore"));
+        putIfPresent(facts, prefix + ".grade", component.get("grade"));
+        putIfPresent(facts, prefix + ".description", component.get("description"));
+        putIfPresent(facts, prefix + ".soilPh", component.get("soilPh"));
+        putIfPresent(facts, prefix + ".soilEc", component.get("soilEc"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private void addDataConfidenceFacts(Map<String, Object> facts, Map<String, Object> payload) {
+        Object confidenceValue = payload.get("dataConfidence");
+        if (confidenceValue instanceof Map<?, ?> confidence) {
+            putIfPresent(facts, "data.confidence.level", ((Map<String, Object>) confidence).get("level"));
+            putIfPresent(facts, "data.confidence.score", ((Map<String, Object>) confidence).get("score"));
+            putIfPresent(facts, "data.confidence.message", ((Map<String, Object>) confidence).get("message"));
+        }
+        Object missingValue = payload.get("missingMetrics");
+        if (missingValue instanceof List<?> missing && !missing.isEmpty()) {
+            facts.put("data.missing.1", String.valueOf(missing.get(0)));
+            facts.put("data.missing.count", missing.size());
+        }
+    }
+
+    private void putIfPresent(Map<String, Object> facts, String key, Object value) {
+        if (value != null && !(value instanceof String valueString && valueString.isBlank())) facts.put(key, value);
+    }
+
+    private void putFirstListValue(Map<String, Object> facts, String key, Object value) {
+        if (value instanceof List<?> list && !list.isEmpty()) putIfPresent(facts, key, list.get(0));
+    }
+
+    static List<Map<String, String>> sanitizeHistory(List<Map<String, String>> history) {
+        if (history == null || history.isEmpty()) return List.of();
+        List<Map<String, String>> sanitized = new ArrayList<>();
+        int start = Math.max(0, history.size() - MAX_HISTORY_MESSAGES);
+        for (Map<String, String> message : history.subList(start, history.size())) {
+            if (message == null) continue;
+            String role = message.get("role");
+            String content = message.get("content");
+            if (!ALLOWED_HISTORY_ROLES.contains(role) || content == null || content.isBlank()) continue;
+            String normalized = content.trim();
+            if (normalized.length() > MAX_HISTORY_CONTENT_LENGTH) normalized = normalized.substring(0, MAX_HISTORY_CONTENT_LENGTH);
+            sanitized.add(Map.of("role", role, "content", normalized));
+        }
+        return List.copyOf(sanitized);
     }
 
     /**
@@ -242,14 +313,27 @@ public class AssistantService {
                         facts.put("field.name", field.getFieldName());
                         facts.put("field.crop.name", field.getCropName());
                         facts.put("field.report.date", report.getReportDate());
+                        putIfPresent(facts, "field.status", report.getStatus());
+                        putIfPresent(facts, "field.score", report.getSuitabilityScore());
+                        putIfPresent(facts, "field.headline", report.getHeadline());
+                        putIfPresent(facts, "field.headlineDescription", report.getHeadlineDescription());
                         if (report.getWeather() != null) {
+                            facts.put("field.weather.minTemperature", report.getWeather().getMinTemperature());
                             facts.put("field.weather.maxTemperature", report.getWeather().getMaxTemperature());
                             facts.put("field.weather.humidity", report.getWeather().getHumidity());
+                            facts.put("field.weather.rainfall", report.getWeather().getRainfallMm());
                         }
                         List<FieldTaskDto> tasks = report.getTasks();
-                        if (tasks != null && !tasks.isEmpty()) facts.put("field.task.1.title", tasks.get(0).getTitle());
+                        if (tasks != null && !tasks.isEmpty()) {
+                            facts.put("field.task.1.title", tasks.get(0).getTitle());
+                            putIfPresent(facts, "field.task.1.description", tasks.get(0).getDescription());
+                        }
                         List<FieldAlertDto> alerts = report.getAlerts();
-                        if (alerts != null && !alerts.isEmpty()) facts.put("field.alert.1.title", alerts.get(0).getTitle());
+                        if (alerts != null && !alerts.isEmpty()) {
+                            facts.put("field.alert.1.title", alerts.get(0).getTitle());
+                            putIfPresent(facts, "field.alert.1.severity", alerts.get(0).getSeverity());
+                            putIfPresent(facts, "field.alert.1.description", alerts.get(0).getDescription());
+                        }
                         if (report.getReasoning() != null && report.getReasoning().getPoints() != null
                                 && !report.getReasoning().getPoints().isEmpty()) {
                             facts.put("field.reasoning.1", report.getReasoning().getPoints().get(0));

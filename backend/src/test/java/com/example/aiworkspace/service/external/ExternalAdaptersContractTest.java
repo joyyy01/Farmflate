@@ -85,6 +85,25 @@ class ExternalAdaptersContractTest {
         assertThat(forecast.parsePcp("알 수 없음")).isNull();
     }
 
+    @Test
+    void midterm_temperature_normalizer_keeps_valid_days_and_discards_outliers() {
+        MidTermForecastAdapter adapter = new MidTermForecastAdapter(new RestTemplate(), "fixture-key", 0, 360, "");
+        String payload = """
+                {"response":{"header":{"resultCode":"00"},"body":{"items":{"item":{
+                "taMin4":"12","taMax4":"23","taMin5":"13",
+                "taMin6":"-99","taMax6":"99","taMin7":"15","taMax7":"26"}}}}}
+                """;
+
+        ExternalResult<List<MidTermForecastAdapter.DailyForecast>> result =
+                adapter.parse(payload, "application/json", "202607260600", "11F10201");
+
+        assertThat(result.status()).isEqualTo(ExternalResult.Status.SUCCESS);
+        assertThat(result.value()).extracting(day -> day.date)
+                .containsExactly("2026-07-30", "2026-08-02");
+        assertThat(result.value()).allSatisfy(day -> assertThat(day.representativeArea).isTrue());
+        assertThat(result.metrics()).isNotEmpty();
+    }
+
     @ParameterizedTest(name = "{0}")
     @MethodSource("mixedSiblingFailures")
     void mixed_sibling_provider_failures_are_failure_with_partial_value(

@@ -8,7 +8,7 @@ import type { FieldProfile } from '../../types/report';
 import type { FieldActivityLog, FieldDashboardResponse, FieldLogCategory } from '../../types/report';
 import { ApiService, ApiError } from '../../services/api';
 import { displayStage, FIELD_STATUS_LABELS, LOG_CATEGORY_LABELS } from '../../constants/displayLabels';
-import { cropIllustrationForName, seasonalThemeFromReportDate } from './fieldDashboardTheme';
+import { seasonalThemeFromReportDate } from './fieldDashboardTheme';
 
 interface FieldDashboardViewProps {
   field: FieldProfile;
@@ -254,7 +254,6 @@ export const FieldDashboardView: React.FC<FieldDashboardViewProps> = ({ field, o
   const headlineStyle = STATUS_STYLE[dashboard.report.status] ?? STATUS_STYLE.NEEDS_CHECK;
   const allAcknowledged = dashboard.report.taskCountBeforeAcknowledgement > 0 && dashboard.tasks.length === 0;
   const seasonalTheme = seasonalThemeFromReportDate(dashboard.report.reportDate);
-  const cropIllustration = cropIllustrationForName(dashboard.field.cropName);
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
@@ -316,11 +315,6 @@ export const FieldDashboardView: React.FC<FieldDashboardViewProps> = ({ field, o
               backgroundColor: headlineStyle.bg, border: `1px solid ${headlineStyle.border}`, borderRadius: 18,
               padding: '18px 18px'
             }}>
-              <div className="field-status-hero__ambient" aria-hidden="true">
-                <span className="field-status-hero__ambient-orb field-status-hero__ambient-orb--primary" />
-                <span className="field-status-hero__ambient-orb field-status-hero__ambient-orb--secondary" />
-                <img className="field-status-hero__crop-illustration" src={cropIllustration} alt="" />
-              </div>
               <div className="field-status-hero__content">
                 <div className="field-status-hero__intro">
                   <div className="field-status-hero__headline">

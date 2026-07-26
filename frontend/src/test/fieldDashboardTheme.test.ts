@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cropIllustrationForName, seasonalThemeFromReportDate } from '../components/farmflate/fieldDashboardTheme';
+import { seasonalThemeFromReportDate } from '../components/farmflate/fieldDashboardTheme';
 
 describe('field dashboard seasonal background', () => {
   it('uses the report month for date-only and ISO datetime values', () => {
@@ -10,9 +10,7 @@ describe('field dashboard seasonal background', () => {
     expect(seasonalThemeFromReportDate('2026-01-02')).toBe('winter');
   });
 
-  it('falls back safely for malformed dates and unknown crop names', () => {
+  it('falls back safely for malformed dates', () => {
     expect(seasonalThemeFromReportDate('not-a-date', new Date(2026, 6, 1))).toBe('summer');
-    expect(cropIllustrationForName(null)).toBe('/svg-assets/crops/sprout.svg');
-    expect(cropIllustrationForName('상추')).toBe('/svg-assets/crops/lettuce.svg');
   });
 });

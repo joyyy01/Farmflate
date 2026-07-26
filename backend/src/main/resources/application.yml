@@ -65,9 +65,13 @@ app:
     rda-min-interval-ms: ${RDA_MIN_INTERVAL_MS:500}
     soil-chemistry-sample-dongs: ${SOIL_CHEMISTRY_SAMPLE_DONGS:1}
     soil-suitability-sample-dongs: ${SOIL_SUITABILITY_SAMPLE_DONGS:1}
+    # Optional precise override: "52790=21F10501,....". Without it, the
+    # analysis labels KMA's 4–10 day forecast as a representative-area signal.
+    midterm-region-overrides: ${MIDTERM_REGION_OVERRIDES:}
   cache:
     region-analysis-hours: ${REGION_ANALYSIS_CACHE_HOURS:6}
     short-forecast-minutes: ${SHORT_FORECAST_CACHE_MINUTES:30}
+    midterm-forecast-minutes: ${MIDTERM_FORECAST_CACHE_MINUTES:360}
     asos-hours: ${ASOS_CACHE_HOURS:24}
     soil-chemistry-days: ${SOIL_CHEMISTRY_CACHE_DAYS:30}
     soil-suitability-days: ${SOIL_SUITABILITY_CACHE_DAYS:90}

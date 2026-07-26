@@ -1,16 +1,5 @@
 export type SeasonalTheme = 'spring' | 'summer' | 'autumn' | 'winter';
 
-const CROP_ILLUSTRATION_BY_NAME: Record<string, string> = {
-  '상추': '/svg-assets/crops/lettuce.svg',
-  '오이': '/svg-assets/crops/cucumber.svg',
-  '감자': '/svg-assets/crops/potato.svg',
-  '고추': '/svg-assets/crops/pepper.svg',
-  '토마토': '/svg-assets/crops/tomato.svg',
-  '배추': '/svg-assets/crops/cabbage.svg',
-  '사과': '/svg-assets/crops/apple.svg',
-  '배': '/svg-assets/crops/pear.svg'
-};
-
 export const seasonalThemeFromReportDate = (
   reportDate: string | null | undefined,
   fallbackDate = new Date()
@@ -36,6 +25,3 @@ export const seasonalThemeFromReportDate = (
   if (month >= 9 && month <= 11) return 'autumn';
   return 'winter';
 };
-
-export const cropIllustrationForName = (cropName: string | null | undefined): string =>
-  CROP_ILLUSTRATION_BY_NAME[cropName ?? ''] ?? '/svg-assets/crops/sprout.svg';

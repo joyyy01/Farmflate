@@ -72,6 +72,22 @@ class FactPackage(BaseModel):
             raise ValueError("질문을 입력해 주세요.")
         return value
 
+    @field_validator("history")
+    @classmethod
+    def sanitize_history(cls, value: list[dict[str, Any]]) -> list[dict[str, str]]:
+        sanitized: list[dict[str, str]] = []
+        for message in value[-8:]:
+            if not isinstance(message, dict):
+                continue
+            role = message.get("role")
+            content = message.get("content")
+            if role not in ("user", "assistant") or not isinstance(content, str):
+                continue
+            content = content.strip()
+            if content:
+                sanitized.append({"role": role, "content": content[:1200]})
+        return sanitized
+
 
 class AgentRunRequest(BaseModel):
     fact_package: FactPackage

@@ -12,6 +12,7 @@ import com.example.aiworkspace.dto.region.RegionDto;
 import com.example.aiworkspace.dto.region.RegionReportResponseDto;
 import com.example.aiworkspace.service.external.AsosAdapter;
 import com.example.aiworkspace.service.external.ExternalResult;
+import com.example.aiworkspace.service.external.MidTermForecastAdapter;
 import com.example.aiworkspace.service.external.NormalizedMetric;
 import com.example.aiworkspace.service.external.ShortForecastAdapter;
 import com.example.aiworkspace.service.external.SoilChemistryAdapter;
@@ -72,6 +73,7 @@ public class RegionAnalysisService {
     private final CropScoringEngine cropScoringEngine;
     private final ObjectMapper objectMapper;
     private final ShortForecastAdapter shortForecastAdapter;
+    private final MidTermForecastAdapter midTermForecastAdapter;
     private final AsosAdapter asosAdapter;
     private final SoilChemistryAdapter soilChemistryAdapter;
     private final SoilSuitabilityAdapter soilSuitabilityAdapter;
@@ -175,24 +177,28 @@ public class RegionAnalysisService {
         progress.begin("FORECAST");
         ExternalResult<List<ShortForecastAdapter.DailyForecast>> forecastResult =
                 shortForecastAdapter.getForecast3Days(location.kmaNx(), location.kmaNy());
+        ExternalResult<List<MidTermForecastAdapter.DailyForecast>> midTermForecastResult =
+                midTermForecastAdapter.getForecast4To10Days(region.getSidoName(), region.getSigunguCode());
         progress.begin("SOIL");
         ExternalResult<SoilChemistryAdapter.SoilChemistryResult> soilChemistryResult =
                 soilChemistryAdapter.getSoilChemistry(region.getSigunguCode(), region.getSidoName(), region.getSigunguName());
         ExternalResult<Map<String, SoilSuitabilityAdapter.SoilSuitabilityResult>> soilSuitabilityResult =
                 soilSuitabilityAdapter.getSoilSuitability(region.getSigunguCode(), region.getSidoName(), region.getSigunguName());
 
-        List<ExternalResult<?>> results = List.of(forecastResult, asosResult, soilChemistryResult, soilSuitabilityResult);
+        List<ExternalResult<?>> results = List.of(forecastResult, midTermForecastResult, asosResult, soilChemistryResult, soilSuitabilityResult);
         if (results.stream().allMatch(ExternalResult::isFailure)) {
             throw RegionAnalysisException.externalDataUnavailable(providerFailureSummary(results));
         }
 
         List<String> missingMetrics = new ArrayList<>();
         appendProviderState(missingMetrics, "FORECAST", forecastResult);
+        appendProviderState(missingMetrics, "MIDTERM_FORECAST", midTermForecastResult);
         appendProviderState(missingMetrics, "ASOS", asosResult);
         appendProviderState(missingMetrics, "SOIL_CHEMISTRY", soilChemistryResult);
         appendProviderState(missingMetrics, "SOIL_SUITABILITY", soilSuitabilityResult);
 
         List<ShortForecastAdapter.DailyForecast> forecasts = forecastResult.valueOr(List.of());
+        List<MidTermForecastAdapter.DailyForecast> midTermForecasts = midTermForecastResult.valueOr(List.of());
         AsosAdapter.Asos30DaySummary asos = asosResult.valueOr(new AsosAdapter.Asos30DaySummary());
         SoilChemistryAdapter.SoilChemistryResult soilChemistry =
                 soilChemistryResult.valueOr(new SoilChemistryAdapter.SoilChemistryResult());
@@ -203,6 +209,7 @@ public class RegionAnalysisService {
         input.soilPh = soilChemistry.ph;
         input.soilEc = soilChemistry.ec;
         input.shortForecasts = new ArrayList<>(forecasts);
+        input.midTermForecasts = midTermForecasts.stream().map(this::toForecastDay).collect(Collectors.toCollection(ArrayList::new));
         input.forecastRiskSafetyScore = cropScoringEngine.calculateForecastRisks(forecasts).safetyScore;
         for (Map.Entry<String, SoilSuitabilityAdapter.SoilSuitabilityResult> entry : suitability.entrySet()) {
             SoilSuitabilityAdapter.SoilSuitabilityResult value = entry.getValue();
@@ -211,8 +218,14 @@ public class RegionAnalysisService {
             }
         }
         applyQuality(input, "forecast", forecastResult);
+        if (!forecastResult.isSuccess() && midTermForecastResult.isSuccess()) {
+            // Representative-area days 4–10 are informative but must not be
+            // presented with the same certainty as the exact-grid short forecast.
+            input.dataQualityScores.put("forecast", 70.0);
+        }
         applyQuality(input, "seasonalTemperature", asosResult);
         applyQuality(input, "soilPh", soilChemistryResult);
+        applyQuality(input, "soilEc", soilChemistryResult);
         applyQuality(input, "soilSuitability", soilSuitabilityResult);
 
         progress.begin("CROP");
@@ -231,6 +244,7 @@ public class RegionAnalysisService {
 
         List<RegionReportResponseDto.SourceDto> sources = List.of(
                 providerSource("기상청", "단기예보", "https://www.weather.go.kr", forecastResult),
+                providerSource("기상청", "중기기온예보 (대표 예보지점)", "https://apihub.kma.go.kr", midTermForecastResult),
                 providerSource("기상청", "ASOS 관측자료", "https://data.kma.go.kr", asosResult),
                 providerSource("농촌진흥청", "농경지화학성 상세조사", "https://soil.rda.go.kr", soilChemistryResult),
                 providerSource("농촌진흥청", "작물별 토양적성", "https://soil.rda.go.kr", soilSuitabilityResult));
@@ -272,6 +286,14 @@ public class RegionAnalysisService {
 
     private void applyQuality(CropScoringEngine.AnalysisInput input, String key, ExternalResult<?> result) {
         input.dataQualityScores.put(key, result.isSuccess() ? 100.0 : result.isEmpty() ? 35.0 : 0.0);
+    }
+
+    private CropScoringEngine.ForecastDay toForecastDay(MidTermForecastAdapter.DailyForecast source) {
+        CropScoringEngine.ForecastDay day = new CropScoringEngine.ForecastDay();
+        day.date = source.date;
+        day.minTemp = source.minTemp;
+        day.maxTemp = source.maxTemp;
+        return day;
     }
 
     private void appendProviderState(List<String> missingMetrics, String metric, ExternalResult<?> result) {
