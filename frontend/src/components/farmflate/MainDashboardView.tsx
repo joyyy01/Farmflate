@@ -66,24 +66,24 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
-      <div className="full-screen-view no-scrollbar" style={{ backgroundColor: '#FFFFFF', padding: '32px 20px 96px 20px', overflowY: 'auto' }}>
+      <div className="full-screen-view no-scrollbar home-dashboard__content">
 
         {/* Top Wordmark Logo */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+        <div className="home-dashboard__brand-row">
           <img
             src="/assets/brand-wordmark-new.png"
             alt="Farmflate"
-            style={{ height: 34, cursor: 'pointer', marginTop: -30 }}
+            className="home-dashboard__brand"
             onClick={() => onTabChange('home')}
           />
         </div>
 
         {/* Dynamic User Greeting */}
-        <div style={{ marginTop: 10, marginBottom: 22 }}>
-          <h1 style={{ fontSize: '1.38rem', fontWeight: 700, color: '#191F28', lineHeight: 1.2, margin: '0 0 5px 0', letterSpacing: '-0.03em' }}>
+        <div className="home-dashboard__greeting">
+          <h1>
             안녕하세요, {userName.endsWith('님') ? userName : `${userName}님`}
           </h1>
-          <p style={{ fontSize: '0.84rem', color: '#8B95A1', margin: 0, fontWeight: 500, letterSpacing: '-0.01em' }}>
+          <p>
             {isNewUser ? '오늘의 밭 상황을 확인해보세요' : '오늘도 즐거운 농사 되세요!'}
           </p>
         </div>

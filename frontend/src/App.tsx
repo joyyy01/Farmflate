@@ -255,6 +255,7 @@ export function App() {
   const previewModeRef = useRef(false);
   const isAddingFieldRef = useRef(false);
   const lastDisplayedStepRef = useRef(0);
+  const activeAnalysisRunRef = useRef(0);
   const cropStepTimerRef = useRef<number | null>(null);
   const cropStepRef = useRef(0);
 
@@ -276,6 +277,7 @@ export function App() {
     setPendingCropRegistration(null);
     setNavigationFlow({ kind: 'NONE' });
     if (pollTimerRef.current !== null) window.clearTimeout(pollTimerRef.current);
+    activeAnalysisRunRef.current += 1;
     setPosts([]);
     setMyFields([]);
     setHomeLoadError(null);
@@ -473,6 +475,7 @@ export function App() {
     return () => {
       isCurrent = false;
       if (pollTimerRef.current !== null) window.clearTimeout(pollTimerRef.current);
+      activeAnalysisRunRef.current += 1;
     };
   }, []);
 
@@ -573,8 +576,14 @@ export function App() {
     }
   };
 
-  const completeAnalysis = async (analysisId: string, status: 'COMPLETED' | 'PARTIAL', terminalStepCodes?: string[]) => {
+  const completeAnalysis = async (
+    analysisId: string,
+    status: 'COMPLETED' | 'PARTIAL',
+    terminalStepCodes?: string[],
+    runId = activeAnalysisRunRef.current
+  ) => {
     const report = await ApiService.getRegionReport(analysisId, status);
+    if (runId !== activeAnalysisRunRef.current) return;
     const nextState = stateFromAnalysisStatus({ analysisId, status }, report);
     if (!canOpenReport(nextState)) throw new ApiError(200, 'MALFORMED_REPORT', '검증 가능한 리포트를 받지 못했습니다.');
 
@@ -587,6 +596,7 @@ export function App() {
     const lastShown = lastDisplayedStepRef.current;
     if (terminalMax > lastShown) {
       for (let step = lastShown + 1; step <= terminalMax; step++) {
+        if (runId !== activeAnalysisRunRef.current) return;
         setAnalysisState({
           kind: 'POLLING',
           analysisId,
@@ -602,6 +612,7 @@ export function App() {
       }
       await new Promise(resolve => setTimeout(resolve, 200));
     }
+    if (runId !== activeAnalysisRunRef.current) return;
 
     setApiReport(report);
     setAnalysisState(nextState);
@@ -623,12 +634,14 @@ export function App() {
     setViewStep('report_summary');
   };
 
-  const pollAnalysis = async (analysisId: string, attempt = 0): Promise<void> => {
+  const pollAnalysis = async (analysisId: string, attempt = 0, runId = activeAnalysisRunRef.current): Promise<void> => {
+    if (runId !== activeAnalysisRunRef.current) return;
     try {
       const status = await ApiService.getAnalysisStatus(analysisId);
+      if (runId !== activeAnalysisRunRef.current) return;
       const normalized = status.status.toUpperCase();
       if (normalized === 'COMPLETED' || normalized === 'PARTIAL') {
-        await completeAnalysis(analysisId, normalized, status.completedStepCodes);
+        await completeAnalysis(analysisId, normalized, status.completedStepCodes, runId);
         return;
       }
       if (normalized === 'FAILED') {
@@ -653,15 +666,17 @@ export function App() {
           lastDisplayedStepRef.current = maxStep;
         }
       }
-      pollTimerRef.current = window.setTimeout(() => { void pollAnalysis(analysisId, attempt + 1); }, 900);
+      pollTimerRef.current = window.setTimeout(() => { void pollAnalysis(analysisId, attempt + 1, runId); }, 900);
     } catch (error) {
-      setAnalysisFailure(error);
+      if (runId === activeAnalysisRunRef.current) setAnalysisFailure(error);
     }
   };
 
   /* Region analysis completes only when the backend returns a validated terminal report. */
   const handleStartAnalysis = async (input: Omit<RegionAnalysisRequest, 'idempotencyKey'>) => {
     if (pollTimerRef.current !== null) window.clearTimeout(pollTimerRef.current);
+    const runId = activeAnalysisRunRef.current + 1;
+    activeAnalysisRunRef.current = runId;
     setReportFlowSource('onboarding');
     const request: RegionAnalysisRequest = { ...input, idempotencyKey: crypto.randomUUID(), purpose: 'PRIMARY' };
     setLastAnalysisRequest(request);
@@ -679,16 +694,16 @@ export function App() {
       const status = await ApiService.createRegionAnalysis(request);
       const normalized = status.status.toUpperCase();
       if (normalized === 'COMPLETED' || normalized === 'PARTIAL') {
-        await completeAnalysis(status.analysisId, normalized, status.completedStepCodes);
+        await completeAnalysis(status.analysisId, normalized, status.completedStepCodes, runId);
         return;
       }
       if (normalized === 'FAILED') {
         setAnalysisState(stateFromAnalysisStatus(status));
         return;
       }
-      await pollAnalysis(status.analysisId);
+      await pollAnalysis(status.analysisId, 0, runId);
     } catch (error) {
-      setAnalysisFailure(error);
+      if (runId === activeAnalysisRunRef.current) setAnalysisFailure(error);
     }
   };
 

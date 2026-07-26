@@ -125,20 +125,15 @@ export const MyPageView: React.FC<MyPageViewProps> = ({
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
-      <div className="full-screen-view no-scrollbar" style={{ padding: '32px 20px 96px 20px', overflowY: 'auto' }}>
+      <div className="full-screen-view no-scrollbar settings-view__content">
 
         {/* Top Header */}
-        <h2 style={{ fontSize: '1.45rem', fontWeight: 900, color: '#191F28', marginBottom: 20 }}>
+        <h2 className="settings-view__title">
           설정
         </h2>
 
         {/* Profile Card */}
-        <div style={{
-          backgroundColor: '#EDF7ED',
-          borderRadius: 20,
-          padding: '20px',
-          marginBottom: 24,
-          border: '1px solid #D4EDDA',
+        <div className="settings-view__profile-card" style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center'

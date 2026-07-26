@@ -1,4 +1,6 @@
 import React from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { CheckCircle2, Loader2 } from 'lucide-react';
 import type { AnalysisState, FieldPreviewState } from '../../services/reportLifecycle';
 
 interface AnalyzingViewProps {
@@ -41,6 +43,83 @@ const resolveStepIndex = (code: string | null | undefined, steps: string[]): num
   return idx !== -1 ? idx : 0;
 };
 
+const resolveCompletedStepIndex = (code: string | null | undefined, steps: string[]): number | null => {
+  if (!code) return null;
+  const upper = code.trim().toUpperCase();
+  if (STEP_CODE_TO_INDEX[upper] !== undefined) return STEP_CODE_TO_INDEX[upper];
+  const lower = code.trim().toLowerCase();
+  const koreanEntry = Object.entries(KOREAN_STEP_TO_INDEX).find(([key]) => key.toLowerCase() === lower);
+  if (koreanEntry) return koreanEntry[1];
+  const textIndex = steps.findIndex(step => step.toLowerCase() === lower);
+  return textIndex === -1 ? null : textIndex;
+};
+
+export interface AnalysisStepDisplay {
+  activeStepIndex: number | null;
+  completedStepIndexes: number[];
+}
+
+/**
+ * Keeps the loader a pure projection of lifecycle state. In particular, a
+ * terminal catch-up response may contain completed codes but no current code;
+ * the next incomplete row must become the active spinner instead of rewinding
+ * the indicator to the first row.
+ */
+export const deriveAnalysisStepDisplay = (
+  state: AnalysisState | FieldPreviewState,
+  steps: string[]
+): AnalysisStepDisplay => {
+  const stepCount = steps.length;
+  if (stepCount === 0) return { activeStepIndex: null, completedStepIndexes: [] };
+
+  const isWorking = state.kind === 'SUBMITTING' || state.kind === 'POLLING' || state.kind === 'COMPLETING';
+  if (!isWorking) {
+    const isComplete = state.kind === 'COMPLETED' || state.kind === 'PARTIAL';
+    return {
+      activeStepIndex: null,
+      completedStepIndexes: isComplete ? Array.from({ length: stepCount }, (_, index) => index) : []
+    };
+  }
+
+  let reportedActiveIndex = 0;
+  const completed = new Set<number>();
+
+  if (state.kind === 'POLLING') {
+    reportedActiveIndex = state.currentStepCode
+      ? resolveStepIndex(state.currentStepCode, steps)
+      : state.currentStep
+        ? resolveStepIndex(state.currentStep, steps)
+        : 0;
+
+    const reportedCompleted = state.completedStepCodes.length > 0
+      ? state.completedStepCodes.map(code => resolveCompletedStepIndex(code, steps))
+      : state.completedSteps.map(step => resolveCompletedStepIndex(step, steps));
+    reportedCompleted.forEach(index => {
+      if (index !== null && index >= 0 && index < stepCount) completed.add(index);
+    });
+  } else if (state.kind === 'COMPLETING') {
+    reportedActiveIndex = state.completedStepIndex;
+  } else if (state.kind === 'SUBMITTING') {
+    reportedActiveIndex = 'step' in state ? state.step : 0;
+  }
+
+  reportedActiveIndex = Math.min(Math.max(reportedActiveIndex, 0), stepCount - 1);
+  for (let index = 0; index < reportedActiveIndex; index += 1) completed.add(index);
+
+  let activeStepIndex = reportedActiveIndex;
+  if (completed.has(activeStepIndex)) {
+    const nextIncomplete = Array.from({ length: stepCount }, (_, index) => index)
+      .find(index => index > reportedActiveIndex && !completed.has(index));
+    activeStepIndex = nextIncomplete ?? Math.max(0, stepCount - 1);
+    completed.delete(activeStepIndex);
+  }
+
+  return {
+    activeStepIndex,
+    completedStepIndexes: Array.from(completed).sort((left, right) => left - right)
+  };
+};
+
 export const AnalyzingView: React.FC<AnalyzingViewProps> = ({
   regionName,
   cropName = '작물',
@@ -75,40 +154,8 @@ export const AnalyzingView: React.FC<AnalyzingViewProps> = ({
   const isWorking = state.kind === 'SUBMITTING' || state.kind === 'POLLING' || state.kind === 'COMPLETING';
   const isUnauthorized = state.kind === 'UNAUTHORIZED';
   const errorMessage = state.kind === 'ERROR' || state.kind === 'UNAUTHORIZED' ? state.message : null;
-
-  // Server-driven step (from POLLING or COMPLETING)
-  let serverStep = 0;
-  let serverCompleted: number[] = [];
-
-  if (state.kind === 'POLLING') {
-    const codeIndex = resolveStepIndex(state.currentStepCode, steps);
-    const labelIndex = resolveStepIndex(state.currentStep, steps);
-    serverStep = state.currentStepCode ? codeIndex : labelIndex;
-
-    const codes = state.completedStepCodes ?? [];
-    if (codes.length > 0) {
-      serverCompleted = codes
-        .map(c => STEP_CODE_TO_INDEX[c.toUpperCase()])
-        .filter((i): i is number => i !== undefined);
-    } else {
-      serverCompleted = (state.completedSteps ?? [])
-        .map(s => resolveStepIndex(s, steps))
-        .filter(i => i >= 0);
-    }
-    for (let i = 0; i < serverStep; i++) {
-      if (!serverCompleted.includes(i)) serverCompleted.push(i);
-    }
-  } else if (state.kind === 'COMPLETING') {
-    serverStep = state.completedStepIndex;
-    serverCompleted = Array.from({ length: state.completedStepIndex }, (_, i) => i);
-  } else if (state.kind === 'SUBMITTING') {
-    const step = 'step' in state ? state.step : 0;
-    serverStep = step;
-    serverCompleted = Array.from({ length: step }, (_, i) => i);
-  }
-
-  const activeStep = serverStep;
-  const completedIndices = serverCompleted;
+  const { activeStepIndex, completedStepIndexes } = deriveAnalysisStepDisplay(state, steps);
+  const completedSteps = new Set(completedStepIndexes);
 
   const title = isWorking
     ? (isCropMode ? `${cropName} 생육 적합도 분석 중...` : '지역 종합 환경 분석 중...')
@@ -203,48 +250,39 @@ export const AnalyzingView: React.FC<AnalyzingViewProps> = ({
         </p>
 
         {/* Animated Steps List */}
-        <div style={{ width: '100%', maxWidth: 280, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div className="analysis-step-list" aria-live="polite" aria-label="분석 진행 상태">
           {steps.map((text, idx) => {
-            const isCompleted = completedIndices.includes(idx) || (isWorking && idx < activeStep);
-            const isCurrent = isWorking && idx === activeStep;
+            const isCompleted = completedSteps.has(idx);
+            const isCurrent = activeStepIndex === idx;
 
             return (
-              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <motion.div
+                layout
+                key={idx}
+                className={`analysis-step${isCurrent ? ' analysis-step--active' : ''}${isCompleted ? ' analysis-step--complete' : ''}`}
+              >
                 {/* Status icon */}
-                <div style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  {isCompleted ? (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                      <circle cx="12" cy="12" r="9.25" fill="#2FA35A" />
-                      <path d="M8 12.3l2.6 2.6L16.3 9" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  ) : isCurrent ? (
-                    <div
-                      key={`spin-${idx}`}
-                      className="spinner-rotate"
-                      style={{ width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                    >
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                        <circle cx="12" cy="12" r="9.25" stroke="#D7ECDD" strokeWidth="2.2" />
-                        <path d="M21.25 12A9.25 9.25 0 0 0 12 2.75" stroke="#2FA35A" strokeWidth="2.2" strokeLinecap="round" />
-                      </svg>
-                    </div>
-                  ) : (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                      <circle cx="12" cy="12" r="9.25" stroke="#D7DEDA" strokeWidth="1.6" />
-                    </svg>
-                  )}
-                </div>
+                <span className="analysis-step__adornment">
+                  <AnimatePresence mode="wait" initial={false}>
+                    {isCompleted ? (
+                      <motion.span key="complete" initial={{ opacity: 0, scale: 0.65 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.65 }} transition={{ duration: 0.18 }}>
+                        <CheckCircle2 className="analysis-step__complete-icon" aria-label="완료" />
+                      </motion.span>
+                    ) : isCurrent ? (
+                      <motion.span key="active" initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 5 }} transition={{ duration: 0.16 }}>
+                        <Loader2 className="analysis-step__spinner" aria-label="분석 중" />
+                      </motion.span>
+                    ) : (
+                      <motion.span key="pending" className="analysis-step__pending" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />
+                    )}
+                  </AnimatePresence>
+                </span>
 
                 {/* Step label */}
-                <span style={{
-                  fontSize: '0.88rem',
-                  fontWeight: isCurrent ? 800 : isCompleted ? 700 : 500,
-                  color: isCurrent ? '#154F36' : isCompleted ? '#202A24' : '#9CA3AF',
-                  lineHeight: 1.4
-                }}>
+                <span className="analysis-step__label">
                   {text}
                 </span>
-              </div>
+              </motion.div>
             );
           })}
         </div>

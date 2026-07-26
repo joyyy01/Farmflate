@@ -26,8 +26,6 @@ const STATUS_STYLE: Record<FieldDashboardResponse['report']['status'], { bg: str
 
 const SEVERITY_COLOR: Record<string, string> = { HIGH: '#DC2626', MEDIUM: '#D97706', LOW: '#8d9590' };
 
-const ZONE_COLOR: Record<string, string> = { '적정': '#2FA86A', '주의': '#D97706', '위험': '#DC2626', '확인 필요': '#8d9590' };
-
 /** Task key → the log category it most naturally corresponds to, so "기록 남기기" can preselect it. */
 const TASK_LOG_CATEGORY: Record<string, FieldLogCategory> = {
   CHECK_SOIL_MOISTURE: 'WATERING',
@@ -47,40 +45,37 @@ const TASK_ICON: Record<string, React.FC<{ size?: number; color?: string }>> = {
 };
 
 const StatusGauge: React.FC<{ score: number | null; zone: string }> = ({ score, zone }) => {
-  const color = ZONE_COLOR[zone] ?? '#8d9590';
   const pct = score == null ? null : Math.max(0, Math.min(100, score));
+  const tooltipPosition = pct == null ? null : Math.max(7, Math.min(93, pct));
   return (
-    <div>
-      <div style={{
-        position: 'relative', height: 10, borderRadius: 6,
-        background: 'linear-gradient(to right, #2FA86A 0%, #2FA86A 30%, #D97706 30%, #D97706 65%, #DC2626 65%, #DC2626 100%)'
-      }}>
-        {pct != null && (
-          <>
-            {/* 말풍선 툴팁 */}
-            <div style={{
-              position: 'absolute', bottom: '100%', left: `calc(${pct}% - 16px)`, marginBottom: 6,
-              backgroundColor: '#191F28', color: '#FFFFFF', fontSize: '0.72rem', fontWeight: 900,
-              padding: '3px 8px', borderRadius: 8, whiteSpace: 'nowrap', textAlign: 'center', minWidth: 32
-            }}>
-              {score}
-              <div style={{
-                position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
-                width: 0, height: 0, borderLeft: '5px solid transparent', borderRight: '5px solid transparent',
-                borderTop: '5px solid #191F28'
-              }} />
-            </div>
-            <div style={{
-              position: 'absolute', top: -3, left: `calc(${pct}% - 8px)`, width: 16, height: 16,
-              borderRadius: '50%', background: '#FFFFFF', border: `3px solid ${color}`, boxShadow: '0 1px 3px rgba(0,0,0,0.25)'
-            }} />
-          </>
+    <section className="field-score-card" aria-label={`종합 상태 점수 ${score == null ? '데이터 없음' : `${score}점`}, ${zone}`}>
+      <div className="field-score-card__summary">
+        <p>종합 상태 점수</p>
+        {score == null ? (
+          <strong className="field-score-card__empty">데이터 없음</strong>
+        ) : (
+          <div className="field-score-card__value">
+            <strong>{score}</strong>
+            <span>/100</span>
+          </div>
         )}
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: '0.66rem', color: '#9CA3AF', fontWeight: 700 }}>
-        <span>적정</span><span>주의</span><span>위험</span>
+      <div className="field-score-gauge">
+        <div className="field-score-gauge__track" aria-hidden="true">
+          <span className="field-score-gauge__division field-score-gauge__division--first" />
+          <span className="field-score-gauge__division field-score-gauge__division--second" />
+        </div>
+        {pct != null && tooltipPosition != null && (
+          <>
+            <span className="field-score-gauge__tooltip" style={{ left: `${tooltipPosition}%` }}>{score}</span>
+            <span className="field-score-gauge__marker" style={{ left: `${pct}%` }} aria-hidden="true" />
+          </>
+        )}
+        <div className="field-score-gauge__labels" aria-hidden="true">
+          <span>0</span><span>적정</span><span>50</span><span>주의</span><span>위험</span><span>100</span>
+        </div>
       </div>
-    </div>
+    </section>
   );
 };
 
@@ -239,18 +234,18 @@ export const FieldDashboardView: React.FC<FieldDashboardViewProps> = ({ field, o
   };
 
   if (loading) {
-    return <div className="full-screen-view" style={{ padding: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8d9590' }}>불러오는 중...</div>;
+    return <div className="full-screen-view field-dashboard field-dashboard--loading">불러오는 중...</div>;
   }
   if (error || !dashboard) {
     return (
-      <div className="full-screen-view" style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignSelf: 'flex-start' }}>
+      <div className="full-screen-view field-dashboard field-dashboard--error">
+        <button onClick={onBack} className="field-dashboard__back-button">
           <ArrowLeft size={22} color="#191F28" />
         </button>
-        <div role="alert" style={{ backgroundColor: '#FFF4F2', border: '1px solid #F3CCC5', borderRadius: 14, padding: 20, color: '#A43A2F', fontSize: '0.86rem' }}>
+        <div role="alert" className="field-dashboard__error-card">
           {error || '표시할 밭 정보가 없습니다.'}
         </div>
-        <button onClick={reload} style={{ alignSelf: 'flex-start', border: 'none', background: 'none', color: '#2FA86A', fontWeight: 800, cursor: 'pointer' }}>다시 시도</button>
+        <button onClick={reload} className="field-dashboard__retry-button">다시 시도</button>
       </div>
     );
   }
@@ -260,56 +255,51 @@ export const FieldDashboardView: React.FC<FieldDashboardViewProps> = ({ field, o
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
-      <div className="full-screen-view no-scrollbar" style={{ padding: '20px 20px 40px 20px', overflowY: 'auto' }}>
+      <div className="full-screen-view no-scrollbar field-dashboard">
 
-        <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginBottom: 16, display: 'flex' }}>
+        <button onClick={onBack} className="field-dashboard__back-button">
           <ArrowLeft size={22} color="#191F28" />
         </button>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <h2 style={{ fontSize: '1.35rem', fontWeight: 900, color: '#191F28', margin: 0 }}>{dashboard.field.fieldName}</h2>
+        <header className="field-dashboard__header">
+          <div className="field-dashboard__title-wrap">
+            <h2>{dashboard.field.fieldName}</h2>
             <ChevronDown size={18} color="#8E9892" />
           </div>
           {!dashboard.report.historical && (
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: '0.68rem', color: '#9CA3AF', marginBottom: 2 }}>마지막 업데이트</div>
-              <button onClick={reload} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, padding: 0 }}>
-                <span style={{ fontSize: '0.76rem', color: '#526157', fontWeight: 700 }}>{formatAsOf(dashboard.report.generatedAt)}</span>
+            <div className="field-dashboard__updated-at">
+              <div>마지막 업데이트</div>
+              <button onClick={reload}>
+                <span>{formatAsOf(dashboard.report.generatedAt)}</span>
                 <RefreshCw size={12} color="#526157" />
               </button>
             </div>
           )}
-        </div>
-        <div style={{ fontSize: '0.82rem', color: '#6F7772', fontWeight: 600, marginBottom: 12 }}>
+        </header>
+        <p className="field-dashboard__meta">
           {dashboard.field.cropName || '작물 정보 없음'}
           {dashboard.field.cultivationDay ? ` · 재배 ${dashboard.field.cultivationDay}일차` : ''}
           {` · ${displayStage(dashboard.field.stage)}`}
           {` · ${dashboard.field.regionName}`}
-        </div>
+        </p>
 
         {dashboard.report.historical && (
-          <div style={{ backgroundColor: '#F1F5F9', borderRadius: 14, padding: '10px 16px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#3D4A5C' }}>
+          <div className="field-dashboard__history-notice">
+            <span>
               {formatKoreanDate(dashboard.report.reportDate)} 기록
             </span>
-            <button onClick={() => setSelectedDate(undefined)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2FA86A', fontSize: '0.8rem', fontWeight: 800 }}>
+            <button onClick={() => setSelectedDate(undefined)}>
               오늘로 돌아가기
             </button>
           </div>
         )}
 
-        <div style={{ display: 'flex', backgroundColor: '#FFFFFF', border: '1px solid #E5E8EB', borderRadius: 14, padding: 4, marginBottom: 20 }}>
+        <div className="field-dashboard-tabs">
           {(['dashboard', 'environment'] as const).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveSubTab(tab)}
-              style={{
-                flex: 1, border: 'none', cursor: 'pointer', padding: '10px 0', borderRadius: 10,
-                fontSize: '0.86rem', fontWeight: 800,
-                backgroundColor: activeSubTab === tab ? '#2FA86A' : '#FFFFFF',
-                color: activeSubTab === tab ? '#FFFFFF' : '#526157'
-              }}
+              className={`field-dashboard-tab${activeSubTab === tab ? ' field-dashboard-tab--active' : ''}`}
             >
               {tab === 'dashboard' ? '대시보드' : '전체 환경 데이터'}
             </button>
@@ -319,28 +309,30 @@ export const FieldDashboardView: React.FC<FieldDashboardViewProps> = ({ field, o
         {activeSubTab === 'dashboard' ? (
           <>
             {/* 0+1. 오늘 상태 + 종합 상태 점수 (통합 카드) */}
-            <div style={{
+            <section className="field-status-hero" style={{
               backgroundColor: headlineStyle.bg, border: `1px solid ${headlineStyle.border}`, borderRadius: 18,
-              padding: '18px 18px', marginBottom: 24
+              padding: '18px 18px'
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                {dashboard.report.status !== 'STABLE' && <AlertTriangle size={18} color={headlineStyle.color} />}
-                <strong style={{ fontSize: '1.05rem', fontWeight: 900, color: '#191F28' }}>{dashboard.report.headline}</strong>
+              <div className="field-status-hero__intro">
+                <div className="field-status-hero__headline">
+                  {dashboard.report.status !== 'STABLE' && <AlertTriangle className="field-status-hero__alert-icon" size={20} color={headlineStyle.color} aria-hidden="true" />}
+                  <strong>{dashboard.report.headline}</strong>
+                </div>
+                <span className="field-status-hero__state-chip" style={{ color: headlineStyle.color }}>
+                  {FIELD_STATUS_LABELS[dashboard.report.status] ?? '확인 필요'}
+                </span>
               </div>
-              <p style={{ margin: '0 0 14px', fontSize: '0.82rem', color: '#526157', lineHeight: 1.5 }}>{dashboard.report.headlineDescription}</p>
+              <p className="field-status-hero__description">{dashboard.report.headlineDescription}</p>
               <StatusGauge score={dashboard.report.statusScore} zone={dashboard.report.statusScoreZone} />
-              <span style={{ display: 'inline-block', marginTop: 10, fontSize: '0.7rem', fontWeight: 800, color: headlineStyle.color, backgroundColor: '#FFFFFF', padding: '3px 10px', borderRadius: 8 }}>
-                {FIELD_STATUS_LABELS[dashboard.report.status] ?? '확인 필요'}
-              </span>
-            </div>
+            </section>
 
             {/* 2. 오늘 꼭 해야 할 일 */}
-            <h3 style={{ fontSize: '1.02rem', fontWeight: 900, color: '#191F28', margin: '0 0 12px' }}>오늘 꼭 해야 할 일</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 24 }}>
+            <h3 className="field-section-title">오늘 꼭 해야 할 일</h3>
+            <section className="field-section field-task-list">
               {dashboard.tasks.map(task => {
                 const Icon = TASK_ICON[task.key] ?? Search;
                 return (
-                  <div key={task.key} style={{ backgroundColor: '#FFFFFF', border: '1px solid #E5E8EB', borderRadius: 16, padding: 16 }}>
+                  <div key={task.key} className="field-task-row">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <div style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: '#EAF6EE', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -376,22 +368,22 @@ export const FieldDashboardView: React.FC<FieldDashboardViewProps> = ({ field, o
                 );
               })}
               {dashboard.tasks.length === 0 && (
-                <div style={{ backgroundColor: '#F8FAF8', borderRadius: 14, padding: '14px', fontSize: '0.82rem', color: '#8d9590', textAlign: 'center' }}>
+                <div className="field-task-list__empty">
                   {allAcknowledged ? '오늘 할 일을 모두 확인했어요.' : '오늘 추가로 안내할 관리 작업이 없어요.'}
                 </div>
               )}
-            </div>
+            </section>
 
             {/* 3. 왜 이렇게 안내했나요? */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '0 0 12px' }}>
-              <h3 style={{ fontSize: '1.02rem', fontWeight: 900, color: '#191F28', margin: 0 }}>왜 이렇게 안내했나요?</h3>
+            <div className="field-section-title-row">
+              <h3 className="field-section-title">왜 이렇게 안내했나요?</h3>
               {dashboard.reasoning.points.length > 0 && (
                 <button onClick={() => setShowReasoning(prev => !prev)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2FA86A', fontSize: '0.78rem', fontWeight: 800, padding: 0 }}>
                   분석 근거 자세히 보기 {showReasoning ? '︿' : '›'}
                 </button>
               )}
             </div>
-            <div style={{ backgroundColor: '#EAF7EE', borderRadius: 18, padding: 18, marginBottom: 24, display: 'flex', gap: 10 }}>
+            <section className="field-section field-evidence-card">
               <Lightbulb size={20} color="#2FA86A" style={{ flexShrink: 0, marginTop: 2 }} />
               <div style={{ flex: 1 }}>
                 <p style={{ margin: 0, fontSize: '0.8rem', color: '#526157', lineHeight: 1.6 }}>{dashboard.reasoning.summary}</p>
@@ -401,16 +393,16 @@ export const FieldDashboardView: React.FC<FieldDashboardViewProps> = ({ field, o
                   </ul>
                 )}
               </div>
-            </div>
+            </section>
 
             {/* 4. 오늘의 주의·위험 */}
-            <h3 style={{ fontSize: '1.02rem', fontWeight: 900, color: '#191F28', margin: '0 0 12px' }}>오늘의 주의·위험</h3>
+            <h3 className="field-section-title">오늘의 주의·위험</h3>
             {dashboard.alerts.length === 0 ? (
-              <div style={{ backgroundColor: '#F8FAF8', borderRadius: 14, padding: '14px', fontSize: '0.82rem', color: '#8d9590', textAlign: 'center', marginBottom: 24 }}>
+              <div className="field-alert-list__empty">
                 오늘 예보에서 특별한 주의·위험이 확인되지 않았어요.
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 24 }}>
+              <div className="field-alert-list">
                 {dashboard.alerts.map(alert => (
                   <div
                     key={alert.key}
@@ -427,9 +419,9 @@ export const FieldDashboardView: React.FC<FieldDashboardViewProps> = ({ field, o
             )}
 
             {/* 5. 오늘의 기록 */}
-            <h3 ref={logSectionRef} style={{ fontSize: '1.02rem', fontWeight: 900, color: '#191F28', margin: '0 0 12px' }}>오늘의 기록</h3>
+            <h3 ref={logSectionRef} className="field-section-title">오늘의 기록</h3>
             {!dashboard.report.historical && (
-              <div style={{ backgroundColor: '#F8FAF8', border: '1px solid #E5E8EB', borderRadius: 18, padding: 18, marginBottom: 16 }}>
+              <section className="field-section field-log-card">
                 {!showLogForm ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                     <div style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: '#EAF6EE', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -479,15 +471,15 @@ export const FieldDashboardView: React.FC<FieldDashboardViewProps> = ({ field, o
                     </div>
                   </div>
                 )}
-              </div>
+              </section>
             )}
-            <div style={{ marginBottom: 24 }}>
+            <div className="field-today-log">
               <LogHistory logs={dashboard.todayLogs} />
             </div>
 
             {/* 6. 최근 7일 관리 이력 */}
-            <h3 style={{ fontSize: '1.02rem', fontWeight: 900, color: '#191F28', margin: '0 0 12px' }}>최근 7일 관리 이력</h3>
-            <div style={{ overflowX: 'auto', border: '1px solid #E5E8EB', borderRadius: 14 }}>
+            <h3 className="field-section-title">최근 7일 관리 이력</h3>
+            <div className="field-history-card">
               <table style={{ width: '100%', minWidth: 480, borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ backgroundColor: '#F8FAF8' }}>

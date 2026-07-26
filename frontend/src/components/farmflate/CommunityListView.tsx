@@ -37,28 +37,20 @@ export const CommunityListView: React.FC<CommunityListViewProps> = ({
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
-      <div className="full-screen-view no-scrollbar" style={{ padding: '32px 20px 96px 20px', overflowY: 'auto' }}>
+      <div className="full-screen-view no-scrollbar community-list__content">
 
         {/* Top Header: '커뮤니티' + '+ 글쓰기' green pill button */}
-        <div style={{ marginBottom: 20 }}>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 900, color: '#191F28', margin: 0, marginTop: -10, letterSpacing: '-0.03em' }}>
+        <div className="community-list__header">
+          <h2>
             커뮤니티
           </h2>
-          <div style={{ height: 1, backgroundColor: '#E5E8EB', width: '100%', marginTop: 5 }} />
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
-            <motion.button
-              whileTap={{ scale: 0.95 }}
-              onClick={onOpenWrite}
-              style={{
-                backgroundColor: '#2FA86A', color: '#FFFFFF', border: 'none',
-                borderRadius: 20, padding: '8px 16px', fontSize: '0.84rem',
-                fontWeight: 900, cursor: 'pointer', display: 'flex',
-                alignItems: 'center', gap: 4
-              }}
-            >
-              <Plus size={16} /> 글쓰기
-            </motion.button>
-          </div>
+          <motion.button
+            whileTap={{ scale: 0.95 }}
+            onClick={onOpenWrite}
+            className="community-list__write-button"
+          >
+            <Plus size={16} /> 글쓰기
+          </motion.button>
         </div>
 
         {/* Post Cards List or Empty State */}
