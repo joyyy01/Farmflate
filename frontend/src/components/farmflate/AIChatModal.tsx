@@ -5,6 +5,7 @@ import { ArrowUp, ChevronRight, X, Sparkles } from 'lucide-react';
 import { ApiError, ApiService } from '../../services/api';
 import type { Message, AIChatContext } from '../../types/chat';
 import { getChatSuggestions } from '../../services/chatSuggestions';
+import { visibleDataSignature } from '../../services/visibleDataContext';
 
 interface AIChatModalProps {
   isOpen: boolean;
@@ -29,6 +30,7 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
   const sessionIdRef = useRef(0);
 
   const detailedQuestions = getChatSuggestions(context);
+  const visibleDataKey = visibleDataSignature(context.visibleData);
 
   const resetConversation = () => {
     abortControllerRef.current?.abort();
@@ -53,7 +55,7 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
   useEffect(() => {
     resetConversation();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [context.route, context.regionAnalysisId, context.fieldId, context.reportDate]);
+  }, [context.route, context.regionAnalysisId, context.fieldId, context.reportDate, visibleDataKey]);
 
   useEffect(() => {
     if (messages.length > 0) {
@@ -94,7 +96,8 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
           regionAnalysisId: context.regionAnalysisId,
           fieldId: context.fieldId,
           reportDate: context.reportDate,
-          route: context.route
+          route: context.route,
+          visibleData: context.visibleData
         }
       });
       // A reset/close/context-change may have happened while this request was in flight.

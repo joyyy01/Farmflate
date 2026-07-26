@@ -62,5 +62,14 @@ public class AssistantApiController {
         private String fieldId;
         private String reportDate;
         private String route;
+        private List<VisibleDataRefDto> visibleData;
+    }
+
+    @Data
+    public static class VisibleDataRefDto {
+        private String key;
+        private String label;
+        private String section;
+        private String displayValue;
     }
 }

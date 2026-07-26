@@ -1,6 +1,7 @@
 package com.example.aiworkspace.service.assistant;
 
 import com.example.aiworkspace.controller.AssistantApiController.AssistantRequestDto;
+import com.example.aiworkspace.controller.AssistantApiController.VisibleDataRefDto;
 import com.example.aiworkspace.domain.farm.FarmEntity;
 import com.example.aiworkspace.domain.farm.FarmRepository;
 import com.example.aiworkspace.domain.farm.FieldDailyReportRepository;
@@ -31,6 +32,10 @@ public class AssistantService {
     private static final Set<String> ALLOWED_HISTORY_ROLES = Set.of("user", "assistant");
     private static final int MAX_HISTORY_MESSAGES = 8;
     private static final int MAX_HISTORY_CONTENT_LENGTH = 1_200;
+    private static final int MAX_VISIBLE_DATA_REFS = 12;
+    private static final int MAX_VISIBLE_LABEL_LENGTH = 80;
+    private static final Set<String> ALLOWED_VISIBLE_SECTIONS = Set.of(
+            "summary", "climate", "soil", "hazard", "crop", "field");
 
     private final RegionAnalysisRepository analysisRepository;
     private final FarmRepository farmRepository;
@@ -208,11 +213,12 @@ public class AssistantService {
         factPackage.put("userScope", Map.of("userId", email));
         factPackage.put("question", request.getMessage());
         factPackage.put("history", sanitizeHistory(request.getHistory()));
-        factPackage.put("context", Map.of(
-                "route", request.getContext() != null && request.getContext().getRoute() != null ? request.getContext().getRoute() : "ai_chat",
-                "regionAnalysisId", request.getContext() != null && request.getContext().getRegionAnalysisId() != null ? request.getContext().getRegionAnalysisId() : "",
-                "fieldId", request.getContext() != null && request.getContext().getFieldId() != null ? request.getContext().getFieldId() : ""
-        ));
+        Map<String, Object> context = new LinkedHashMap<>();
+        context.put("route", request.getContext() != null && request.getContext().getRoute() != null ? request.getContext().getRoute() : "ai_chat");
+        context.put("regionAnalysisId", request.getContext() != null && request.getContext().getRegionAnalysisId() != null ? request.getContext().getRegionAnalysisId() : "");
+        context.put("fieldId", request.getContext() != null && request.getContext().getFieldId() != null ? request.getContext().getFieldId() : "");
+        context.put("visibleData", sanitizeVisibleData(request.getContext() != null ? request.getContext().getVisibleData() : null));
+        factPackage.put("context", context);
         factPackage.put("facts", facts);
         factPackage.put("sources", sources);
 
@@ -286,6 +292,32 @@ public class AssistantService {
         return List.copyOf(sanitized);
     }
 
+    static List<Map<String, String>> sanitizeVisibleData(List<VisibleDataRefDto> visibleData) {
+        if (visibleData == null || visibleData.isEmpty()) return List.of();
+        List<Map<String, String>> sanitized = new ArrayList<>();
+        Set<String> seenKeys = new HashSet<>();
+        for (VisibleDataRefDto ref : visibleData) {
+            if (ref == null || sanitized.size() >= MAX_VISIBLE_DATA_REFS) continue;
+            String key = ref.getKey() == null ? "" : ref.getKey().trim();
+            String label = ref.getLabel() == null ? "" : ref.getLabel().trim();
+            String section = ref.getSection() == null ? "" : ref.getSection().trim();
+            if (!isAllowedVisibleFactKey(key) || label.isBlank() || label.length() > MAX_VISIBLE_LABEL_LENGTH
+                    || !ALLOWED_VISIBLE_SECTIONS.contains(section) || !seenKeys.add(key)) {
+                continue;
+            }
+            sanitized.add(Map.of("key", key, "label", label, "section", section));
+        }
+        return List.copyOf(sanitized);
+    }
+
+    private static boolean isAllowedVisibleFactKey(String key) {
+        return key.matches("region\\.(score|grade|summary)")
+                || key.matches("component\\.(climate|soil|hazard|cultivation)\\.(score|safetyScore|grade|description|soilPh|soilEc)")
+                || key.matches("crop\\.[1-5](\\.(name|score|baseFitness|seasonReadiness|caution|reason\\.1))?")
+                || key.matches("risk\\.[1-3](\\.(code|title|action\\.1))?")
+                || key.matches("field\\.(score|status|headline|headlineDescription|reasoning\\.1|alert\\.1|task\\.1|soil\\.(ph|ec)|weather\\.(minTemperature|maxTemperature|humidity|rainfall))");
+    }
+
     /**
      * Only ever reads an already-generated DAILY_0630 snapshot the caller
      * owns — never triggers a new report generation and never trusts a
@@ -304,6 +336,7 @@ public class AssistantService {
         }
         FarmEntity field = farmRepository.findByIdAndUserEmail(fieldId, email).orElse(null);
         if (field == null) return;
+        injectFieldSoilFacts(facts, email, field);
 
         LocalDate reportDate = LocalDate.now(clock);
         String requestedDate = request.getContext().getReportDate();
@@ -354,6 +387,22 @@ public class AssistantService {
                         log.warn("Unable to parse field daily report for AI fact injection: {}", entity.getId());
                     }
                 });
+    }
+
+    @SuppressWarnings("unchecked")
+    private void injectFieldSoilFacts(Map<String, Object> facts, String email, FarmEntity field) {
+        if (field.getRegionAnalysisId() == null || field.getRegionAnalysisId().isBlank()) return;
+        RegionAnalysisEntity analysis = analysisRepository.findByIdAndUserEmail(field.getRegionAnalysisId(), email).orElse(null);
+        if (analysis == null || analysis.getPayloadJson() == null || analysis.getPayloadJson().isBlank()) return;
+        try {
+            Map<String, Object> payload = objectMapper.readValue(analysis.getPayloadJson(), Map.class);
+            Map<String, Object> components = objectMap(payload.get("components"));
+            Map<String, Object> soil = objectMap(components.get("soil"));
+            putIfPresent(facts, "field.soil.ph", soil.get("soilPh"));
+            putIfPresent(facts, "field.soil.ec", soil.get("soilEc"));
+        } catch (Exception exception) {
+            log.warn("Unable to read field soil facts for AI context: {}", field.getId());
+        }
     }
 
     @SuppressWarnings("unchecked")

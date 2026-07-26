@@ -1,5 +1,6 @@
 package com.example.aiworkspace.service.assistant;
 
+import com.example.aiworkspace.controller.AssistantApiController;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -36,5 +37,28 @@ class AssistantServiceTest {
 
         assertThat(sanitized).hasSize(8);
         assertThat(sanitized).allSatisfy(message -> assertThat(message.get("content")).hasSize(1_200));
+    }
+
+    @Test
+    void visible_data_context_keeps_only_allowed_fact_hints_without_display_values() {
+        AssistantApiController.VisibleDataRefDto allowed = visibleRef("region.score", "종합 적합도", "summary", "62");
+        AssistantApiController.VisibleDataRefDto invalid = visibleRef("__proto__", "잘못된 키", "summary", "999");
+
+        List<Map<String, String>> sanitized = AssistantService.sanitizeVisibleData(List.of(allowed, invalid));
+
+        assertThat(sanitized).containsExactly(Map.of(
+                "key", "region.score",
+                "label", "종합 적합도",
+                "section", "summary"
+        ));
+    }
+
+    private static AssistantApiController.VisibleDataRefDto visibleRef(String key, String label, String section, String displayValue) {
+        AssistantApiController.VisibleDataRefDto ref = new AssistantApiController.VisibleDataRefDto();
+        ref.setKey(key);
+        ref.setLabel(label);
+        ref.setSection(section);
+        ref.setDisplayValue(displayValue);
+        return ref;
     }
 }

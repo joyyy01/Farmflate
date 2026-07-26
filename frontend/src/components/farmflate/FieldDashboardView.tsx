@@ -6,15 +6,19 @@ import {
 } from 'lucide-react';
 import type { FieldProfile } from '../../types/report';
 import type { FieldActivityLog, FieldDashboardResponse, FieldLogCategory } from '../../types/report';
+import type { VisibleDataRef } from '../../types/chat';
 import { ApiService, ApiError } from '../../services/api';
 import { displayStage, FIELD_STATUS_LABELS, LOG_CATEGORY_LABELS } from '../../constants/displayLabels';
 import { seasonalThemeFromReportDate } from './fieldDashboardTheme';
+import { buildFieldVisibleData } from '../../services/visibleDataContext';
+import { formatFieldReasoningSummary } from '../../services/fieldReasoning';
 
 interface FieldDashboardViewProps {
   field: FieldProfile;
   onBack: () => void;
   onOpenAIChat: () => void;
   onDateChange?: (date: string | null) => void;
+  onVisibleDataChange?: (visibleData: VisibleDataRef[], date: string | null) => void;
 }
 
 const LOG_CATEGORIES: FieldLogCategory[] = ['WATERING', 'FERTILIZING', 'LEAF_CHECK', 'PEST_CONTROL', 'OTHER'];
@@ -150,7 +154,7 @@ const LogHistory: React.FC<{ logs: FieldActivityLog[] }> = ({ logs }) => {
   );
 };
 
-export const FieldDashboardView: React.FC<FieldDashboardViewProps> = ({ field, onBack, onOpenAIChat, onDateChange }) => {
+export const FieldDashboardView: React.FC<FieldDashboardViewProps> = ({ field, onBack, onOpenAIChat, onDateChange, onVisibleDataChange }) => {
   const [activeSubTab, setActiveSubTab] = useState<'dashboard' | 'environment'>('dashboard');
   const [selectedDate, setSelectedDate] = useState<string | undefined>();
   const [dashboard, setDashboard] = useState<FieldDashboardResponse | null>(null);
@@ -197,6 +201,12 @@ export const FieldDashboardView: React.FC<FieldDashboardViewProps> = ({ field, o
   useEffect(() => {
     onDateChange?.(dashboard?.report.reportDate ?? null);
   }, [dashboard?.report.reportDate, onDateChange]);
+
+  useEffect(() => {
+    onVisibleDataChange?.(dashboard ? buildFieldVisibleData(dashboard) : [], dashboard?.report.reportDate ?? null);
+  }, [dashboard, onVisibleDataChange]);
+
+  useEffect(() => () => onVisibleDataChange?.([], null), [onVisibleDataChange]);
 
   const acknowledgeTask = async (taskKey: string) => {
     if (!dashboard || dashboard.report.historical || acknowledgingTaskKey) return;
@@ -390,7 +400,7 @@ export const FieldDashboardView: React.FC<FieldDashboardViewProps> = ({ field, o
             <section className="field-section field-evidence-card">
               <Lightbulb size={20} color="#2FA86A" style={{ flexShrink: 0, marginTop: 2 }} />
               <div style={{ flex: 1 }}>
-                <p style={{ margin: 0, fontSize: '0.8rem', color: '#526157', lineHeight: 1.6 }}>{dashboard.reasoning.summary}</p>
+                <p style={{ margin: 0, fontSize: '0.8rem', color: '#526157', lineHeight: 1.6 }}>{formatFieldReasoningSummary(dashboard)}</p>
                 {showReasoning && (
                   <ul style={{ margin: '10px 0 0', paddingLeft: 18, fontSize: '0.76rem', color: '#8d9590', lineHeight: 1.8 }}>
                     {dashboard.reasoning.points.map((point, i) => <li key={i}>{point}</li>)}

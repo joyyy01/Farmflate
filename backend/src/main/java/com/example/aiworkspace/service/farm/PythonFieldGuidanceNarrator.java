@@ -61,24 +61,29 @@ public class PythonFieldGuidanceNarrator implements FieldGuidanceNarrator {
         return validate(result, validated);
     }
 
-    private Map<String, Object> buildFactPackage(String cropCode, String cropName, String stage, LocalDate reportDate,
-                                                  FieldWeatherDto weather, FieldGuidanceRuleEngine.FieldGuidanceResult validated) {
+    Map<String, Object> buildFactPackage(String cropCode, String cropName, String stage, LocalDate reportDate,
+                                         FieldWeatherDto weather, FieldGuidanceRuleEngine.FieldGuidanceResult validated) {
         Map<String, Object> facts = new LinkedHashMap<>();
         facts.put("cropCode", cropCode);
         facts.put("cropName", cropName);
         facts.put("stage", stage);
         facts.put("reportDate", reportDate == null ? null : reportDate.toString());
-        facts.put("maxTemperature", weather == null ? null : weather.getMaxTemperature());
-        facts.put("minTemperature", weather == null ? null : weather.getMinTemperature());
-        facts.put("rainfallMm", weather == null ? null : weather.getRainfallMm());
-        facts.put("humidity", weather == null ? null : weather.getHumidity());
-        facts.put("windSpeed", weather == null ? null : weather.getWindSpeed());
-        facts.put("candidateTasks", validated.tasks().stream()
+        Map<String, Object> weatherFacts = new LinkedHashMap<>();
+        if (weather != null) {
+            weatherFacts.put("minTemperature", weather.getMinTemperature());
+            weatherFacts.put("maxTemperature", weather.getMaxTemperature());
+            weatherFacts.put("rainfallMm", weather.getRainfallMm());
+            weatherFacts.put("humidity", weather.getHumidity());
+            weatherFacts.put("windSpeed", weather.getWindSpeed());
+        }
+        facts.put("weather", weatherFacts);
+        facts.put("tasks", validated.tasks().stream()
                 .map(task -> Map.of("key", task.getKey(), "title", task.getTitle(), "description", task.getDescription()))
                 .toList());
-        facts.put("candidateAlerts", validated.alerts().stream()
-                .map(alert -> Map.of("key", alert.getKey(), "title", alert.getTitle()))
+        facts.put("alerts", validated.alerts().stream()
+                .map(alert -> Map.of("key", alert.getKey(), "title", alert.getTitle(), "description", alert.getDescription()))
                 .toList());
+        facts.put("reasoningPoints", validated.reasoningPoints());
         return facts;
     }
 

@@ -162,6 +162,60 @@ class AIServiceSafetyAndContextTest(unittest.TestCase):
         self.assertIn("15~20℃", answer.answer)
         self.assertEqual(answer.basisType, "GENERAL_INFORMATION")
 
+    def test_agent_explains_the_visible_ph_value_instead_of_only_the_glossary(self) -> None:
+        package = FactPackage(
+            requestId="test-request",
+            question="이 pH가 낮다는 건 무슨 뜻인가요?",
+            context={"visibleData": [{"key": "component.soil.soilPh", "label": "토양 pH", "section": "soil"}]},
+            facts={"component.soil.soilPh": 5.2},
+        )
+
+        with patch.object(ai_service.settings, "OPENAI_API_KEY", ""):
+            response = asyncio.run(self.service.run_agent(AgentRunRequest(fact_package=package)))
+
+        self.assertIn("5.2", response.answer.answer)
+        self.assertIn("component.soil.soilPh", response.answer.usedFactIds)
+
+    def test_agent_asks_which_visible_score_when_multiple_scores_match(self) -> None:
+        package = FactPackage(
+            requestId="test-request",
+            question="이 점수는 왜 이렇게 나왔나요?",
+            context={"visibleData": [
+                {"key": "region.score", "label": "종합 적합도 점수", "section": "summary"},
+                {"key": "component.soil.score", "label": "토양 적합도", "section": "soil"},
+            ]},
+            facts={"region.score": 71, "component.soil.score": 62},
+        )
+
+        with patch.object(ai_service.settings, "OPENAI_API_KEY", ""):
+            response = asyncio.run(self.service.run_agent(AgentRunRequest(fact_package=package)))
+
+        self.assertIn("어느 항목", response.answer.answer)
+        self.assertEqual(response.answer.usedFactIds, [])
+
+    def test_agent_compares_only_the_first_two_visible_crop_cards(self) -> None:
+        package = FactPackage(
+            requestId="test-request",
+            question="첫 번째 추천 작물과 두 번째 추천 작물을 비교해 주세요.",
+            context={"visibleData": [
+                {"key": "crop.1", "label": "상추", "section": "crop"},
+                {"key": "crop.2", "label": "오이", "section": "crop"},
+            ]},
+            facts={
+                "crop.1.name": "상추", "crop.1.score": 82,
+                "crop.2.name": "오이", "crop.2.score": 76,
+                "crop.3.name": "감자", "crop.3.score": 95,
+            },
+        )
+
+        with patch.object(ai_service.settings, "OPENAI_API_KEY", ""):
+            response = asyncio.run(self.service.run_agent(AgentRunRequest(fact_package=package)))
+
+        self.assertIn("상추는 82점", response.answer.answer)
+        self.assertIn("오이는 76점", response.answer.answer)
+        self.assertNotIn("감자", response.answer.answer)
+        self.assertEqual(response.answer.usedFactIds, ["crop.1.name", "crop.1.score", "crop.2.name", "crop.2.score"])
+
     def test_field_guidance_keeps_only_verified_rule_tasks_in_its_json_contract(self) -> None:
         response = asyncio.run(self.service.generate_field_guidance(FieldGuidanceRequest(facts={
             "cropName": "상추",
@@ -175,6 +229,56 @@ class AIServiceSafetyAndContextTest(unittest.TestCase):
         self.assertEqual(response.headline, "오후 고온 주의")
         self.assertEqual([task.key for task in response.tasks], ["CHECK_SOIL"])
         self.assertIn("토양 수분 확인", response.reasoningSummary)
+
+    def test_field_guidance_reasoning_connects_crop_condition_and_first_action(self) -> None:
+        with patch.object(ai_service.settings, "OPENAI_API_KEY", ""):
+            response = asyncio.run(self.service.generate_field_guidance(FieldGuidanceRequest(facts={
+                "cropName": "상추",
+                "stage": "생장기",
+                "weather": {"maxTemperature": 31, "minTemperature": 21, "rainfallMm": 0, "humidity": 58},
+                "tasks": [{"key": "CHECK_SHADE", "title": "차광과 통풍 확인", "description": "강한 햇빛을 줄이고 바람길을 확인하세요."}],
+                "alerts": [{"key": "HIGH_TEMPERATURE", "title": "오후 고온 주의"}],
+                "reasoningPoints": ["최고 기온이 상추 생육 적온보다 높습니다."],
+            })))
+
+        self.assertIn("상추", response.reasoningSummary)
+        self.assertIn("고온", response.reasoningSummary)
+        self.assertIn("차광", response.reasoningSummary)
+        self.assertNotEqual(response.reasoningSummary, "31")
+
+    def test_field_guidance_rejects_generic_llm_summary_without_the_verified_condition(self) -> None:
+        facts = {
+            "cropName": "상추",
+            "tasks": [{"key": "CHECK_SHADE", "title": "차광과 통풍 확인", "description": "강한 햇빛을 줄이세요."}],
+            "alerts": [{"key": "HIGH_TEMPERATURE", "title": "오후 고온 주의"}],
+        }
+
+        self.assertFalse(self.service._is_valid_field_guidance_summary(
+            "상추의 환경 분석 결과를 바탕으로 차광과 통풍 확인을 우선 안내합니다.",
+            facts,
+            "상추",
+        ))
+
+    def test_agent_explains_visible_field_reasoning_as_a_causal_summary(self) -> None:
+        package = FactPackage(
+            requestId="test-request",
+            question="왜 이렇게 안내했나요?",
+            context={"visibleData": [{"key": "field.reasoning.1", "label": "왜 이렇게 안내했나요?", "section": "field"}]},
+            facts={
+                "field.crop.name": "상추",
+                "field.reasoning.1": "오늘 예상 최고기온 31℃",
+                "field.alert.1.title": "오후 고온 주의",
+                "field.task.1.title": "차광과 통풍 확인",
+            },
+        )
+
+        with patch.object(ai_service.settings, "OPENAI_API_KEY", ""):
+            response = asyncio.run(self.service.run_agent(AgentRunRequest(fact_package=package)))
+
+        self.assertIn("상추", response.answer.answer)
+        self.assertIn("오후 고온 주의", response.answer.answer)
+        self.assertIn("차광", response.answer.answer)
+        self.assertNotIn("31", response.answer.answer)
 
 
 if __name__ == "__main__":

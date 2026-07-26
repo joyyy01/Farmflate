@@ -23,16 +23,28 @@ export interface ChatRequest {
     fieldId?: string | null;
     reportDate?: string | null;
     route?: string;
+    visibleData?: VisibleDataRef[];
   };
 }
 
 export type ChatRoute = 'home' | 'field_dashboard' | 'community' | 'mypage' | 'region_report';
+
+export type VisibleDataSection = 'summary' | 'climate' | 'soil' | 'hazard' | 'crop' | 'field';
+
+export interface VisibleDataRef {
+  key: string;
+  label: string;
+  section: VisibleDataSection;
+  /** Matching hint only. The server deliberately discards this value. */
+  displayValue?: string;
+}
 
 export interface AIChatContext {
   route: ChatRoute;
   regionAnalysisId: string | null;
   fieldId: string | null;
   reportDate: string | null;
+  visibleData?: VisibleDataRef[];
 }
 
 export interface StructuredAnswer {

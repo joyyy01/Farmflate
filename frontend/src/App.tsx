@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import type { ViewStep, TabState, CommunityPost } from './types/farmflate';
 import { SplashView } from './components/farmflate/SplashView';
@@ -24,6 +24,8 @@ import { AIChatModal } from './components/farmflate/AIChatModal';
 import { useDailyRefresh } from './hooks/useDailyRefresh';
 import type { NavigationFlow } from './types/navigation';
 import type { ChatRoute } from './types/chat';
+import type { VisibleDataRef } from './types/chat';
+import { buildRegionVisibleData } from './services/visibleDataContext';
 
 type ExtendedViewStep = ViewStep | 'splash';
 
@@ -234,6 +236,7 @@ export function App() {
   const [myFields, setMyFields] = useState<FieldProfile[]>([]);
   const [selectedField, setSelectedField] = useState<FieldProfile | null>(null);
   const [fieldChatReportDate, setFieldChatReportDate] = useState<string | null>(null);
+  const [fieldVisibleData, setFieldVisibleData] = useState<VisibleDataRef[]>([]);
 
   /* Landing directly on /field/:fieldId (a refresh, a shared link, browser
      back/forward) needs to resolve selectedField from the URL once the
@@ -330,8 +333,14 @@ export function App() {
   const handleSelectField = (field: FieldProfile) => {
     setSelectedField(field);
     setFieldChatReportDate(null);
+    setFieldVisibleData([]);
     navigate(`/field/${field.id}`);
   };
+
+  const handleFieldVisibleDataChange = useCallback((visibleData: VisibleDataRef[], reportDate: string | null) => {
+    setFieldVisibleData(visibleData);
+    setFieldChatReportDate(reportDate);
+  }, []);
 
   const openCropRegistrationFromMyField = () => {
     setActiveTab('myfield');
@@ -1152,9 +1161,10 @@ export function App() {
           selectedField ? (
             <FieldDashboardView
               field={selectedField}
-              onBack={returnToMyField}
-              onOpenAIChat={() => setIsAIChatOpen(true)}
-              onDateChange={setFieldChatReportDate}
+            onBack={returnToMyField}
+            onOpenAIChat={() => setIsAIChatOpen(true)}
+            onDateChange={setFieldChatReportDate}
+            onVisibleDataChange={handleFieldVisibleDataChange}
             />
           ) : null
         } />
@@ -1219,7 +1229,12 @@ export function App() {
           route: aiChatRouteFor(viewStep),
           regionAnalysisId: apiReport?.analysisId ?? null,
           fieldId: viewStep === 'field_dashboard' ? selectedField?.id ?? null : null,
-          reportDate: viewStep === 'field_dashboard' ? fieldChatReportDate : null
+          reportDate: viewStep === 'field_dashboard' ? fieldChatReportDate : null,
+          visibleData: viewStep === 'field_dashboard'
+            ? fieldVisibleData
+            : aiChatRouteFor(viewStep) === 'region_report'
+              ? buildRegionVisibleData(apiReport)
+              : []
         }}
       />
     </div>

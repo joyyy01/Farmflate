@@ -37,12 +37,21 @@ from app.services.tools import (
     CROP_PROFILES,
     RISK_GUIDES,
 )
+from app.services.screen_tools import (
+    TargetResolution,
+    compare_visible_crops,
+    explain_visible_metric,
+    recommend_next_checks,
+    resolve_visible_target,
+    summarize_report_evidence,
+)
 
 
 class AgentState(TypedDict, total=False):
     fact_package: FactPackage
     intent: str
     conversation_focus: str
+    target_resolution: TargetResolution
     selected_tools: list[str]
     tool_results: dict[str, Any]
     structured_answer: StructuredAnswer
@@ -68,6 +77,7 @@ class AIService:
     def __init__(self) -> None:
         builder = StateGraph(AgentState)
         builder.add_node("validate_request", self._validate_request)
+        builder.add_node("resolve_visible_target", self._resolve_visible_target)
         builder.add_node("classify_intent", self._classify_intent)
         builder.add_node("select_tools", self._select_tools)
         builder.add_node("execute_tools", self._execute_tools)
@@ -75,7 +85,8 @@ class AIService:
         builder.add_node("validate_facts_and_sources", self._validate_facts_and_sources)
         builder.add_node("fallback_or_return", self._fallback_or_return)
         builder.add_edge(START, "validate_request")
-        builder.add_edge("validate_request", "classify_intent")
+        builder.add_edge("validate_request", "resolve_visible_target")
+        builder.add_edge("resolve_visible_target", "classify_intent")
         builder.add_edge("classify_intent", "select_tools")
         builder.add_edge("select_tools", "execute_tools")
         builder.add_edge("execute_tools", "compose_structured_answer")
@@ -145,7 +156,7 @@ class AIService:
         invent a task or a numeric condition.
         """
         facts = request.facts if isinstance(request.facts, dict) else {}
-        raw_tasks = facts.get("tasks") if isinstance(facts.get("tasks"), list) else []
+        raw_tasks = facts.get("tasks") if isinstance(facts.get("tasks"), list) else facts.get("candidateTasks", [])
         tasks: list[FieldGuidanceTask] = []
         for raw_task in raw_tasks:
             if not isinstance(raw_task, dict):
@@ -156,7 +167,7 @@ class AIService:
             if key and title and description:
                 tasks.append(FieldGuidanceTask(key=key, title=title[:120], description=description[:300]))
 
-        raw_alerts = facts.get("alerts") if isinstance(facts.get("alerts"), list) else []
+        raw_alerts = facts.get("alerts") if isinstance(facts.get("alerts"), list) else facts.get("candidateAlerts", [])
         alert_titles = [
             str(alert.get("title") or "").strip()
             for alert in raw_alerts
@@ -168,16 +179,94 @@ class AIService:
             tasks[0].description if tasks
             else "현재 확인된 환경 정보를 바탕으로 작물 상태를 점검해 주세요."
         )[:300]
-        summary_items = [task.title for task in tasks[:2]] or alert_titles[:2]
-        reasoning_summary = (
-            "검증된 환경 분석 결과를 바탕으로 " + " · ".join(summary_items) + "을 우선 안내합니다."
-            if summary_items else "검증된 환경 분석 결과를 바탕으로 오늘의 작물 상태를 안내합니다."
-        )[:500]
+        reasoning_summary = self._build_field_guidance_reasoning(facts, crop_name, tasks, alert_titles)
+        if settings.OPENAI_API_KEY and settings.LLM_PROVIDER.lower() == "openai":
+            llm_summary = await self._call_field_guidance_reasoning(facts, crop_name, reasoning_summary)
+            if llm_summary is not None:
+                reasoning_summary = llm_summary
         return FieldGuidanceResponse(
             headline=headline,
             headlineDescription=headline_description,
             tasks=tasks,
             reasoningSummary=reasoning_summary,
+        )
+
+    @staticmethod
+    def _build_field_guidance_reasoning(
+        facts: dict[str, Any], crop_name: str, tasks: list[FieldGuidanceTask], alert_titles: list[str]
+    ) -> str:
+        reasoning_points = facts.get("reasoningPoints") if isinstance(facts.get("reasoningPoints"), list) else []
+        reason = next((str(point).strip() for point in reasoning_points if str(point).strip()), "")
+        alert = alert_titles[0] if alert_titles else "오늘의 환경 변화"
+        action = tasks[0].title if tasks else "밭 상태 확인"
+        if reason:
+            return f"{crop_name}에 {alert}가 예상돼요. {reason} 그래서 {action}을 먼저 안내했어요."[:500]
+        return f"{crop_name}의 오늘 환경을 확인한 결과 {alert}에 대비해 {action}을 먼저 안내했어요."[:500]
+
+    async def _call_field_guidance_reasoning(
+        self, facts: dict[str, Any], crop_name: str, fallback: str
+    ) -> str | None:
+        safe_facts = self._safe_prompt_json(facts)
+        system_prompt = (
+            "당신은 초보 농업인을 위한 Farmflate 안내문 작성기입니다. 제공된 사실만 사용해 '왜 이렇게 안내했나요?' "
+            "요약을 한국어 한두 문장으로 작성하세요. 작물, 경고, 작업, 수치는 제공된 사실 밖으로 만들지 마세요. "
+            "원시 숫자만 나열하지 말고 조건-영향-확인 행동을 연결하세요. 반드시 JSON만 반환하세요: "
+            '{"reasoningSummary":"요약"}'
+        )
+        try:
+            async with httpx.AsyncClient(timeout=settings.LLM_TIMEOUT_SECONDS) as client:
+                response = await client.post(
+                    f"{settings.OPENAI_BASE_URL.rstrip('/')}/chat/completions",
+                    headers={"Authorization": f"Bearer {settings.OPENAI_API_KEY}"},
+                    json={
+                        "model": settings.OPENAI_MODEL,
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": f"검증된 사실: {safe_facts}\n기본 안전 요약: {fallback}"},
+                        ],
+                        "temperature": 0.2,
+                    },
+                )
+                response.raise_for_status()
+                content = response.json()["choices"][0]["message"]["content"].strip()
+                if content.startswith("```"):
+                    content = re.sub(r"^```(?:json)?\s*", "", content)
+                    content = re.sub(r"\s*```$", "", content)
+                summary = str(json.loads(content).get("reasoningSummary", "")).strip()
+                if not self._is_valid_field_guidance_summary(summary, facts, crop_name):
+                    return None
+                return summary
+        except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError):
+            return None
+
+    @staticmethod
+    def _is_valid_field_guidance_summary(summary: str, facts: dict[str, Any], crop_name: str) -> bool:
+        if not summary or len(summary) > 500 or crop_name not in summary:
+            return False
+        known_numbers = {match for match in re.findall(r"\d+(?:\.\d+)?", json.dumps(facts, ensure_ascii=False, default=str))}
+        mentioned_numbers = set(re.findall(r"\d+(?:\.\d+)?", summary))
+        if not mentioned_numbers.issubset(known_numbers):
+            return False
+        task_titles = {
+            str(item.get("title", ""))
+            for key in ("tasks", "candidateTasks")
+            for item in (facts.get(key) if isinstance(facts.get(key), list) else [])
+            if isinstance(item, dict) and str(item.get("title", ""))
+        }
+        alert_titles = {
+            str(item.get("title", ""))
+            for key in ("alerts", "candidateAlerts")
+            for item in (facts.get(key) if isinstance(facts.get(key), list) else [])
+            if isinstance(item, dict) and str(item.get("title", ""))
+        }
+        known_risks = {profile["name"] for profile in CROP_PROFILES.values()}
+        mentions_condition = not alert_titles or any(title in summary for title in alert_titles)
+        mentions_action = not task_titles or any(title in summary for title in task_titles)
+        return (
+            not any(risk in summary for risk in known_risks - {crop_name})
+            and bool(task_titles or alert_titles)
+            and mentions_condition
+            and mentions_action
         )
 
     def _chat_request_to_fact_package(self, request: ChatRequest) -> FactPackage:
@@ -229,10 +318,41 @@ class AIService:
             raise ValueError("질문이 비어 있습니다.")
         return {"trace": ["요청을 검증했습니다."]}
 
+    def _resolve_visible_target(self, state: AgentState) -> dict[str, Any]:
+        fp = state["fact_package"]
+        context = fp.context if isinstance(fp.context, dict) else {}
+        visible_data = context.get("visibleData", [])
+        resolution = resolve_visible_target(fp.question, visible_data, fp.facts, fp.history)
+        trace = "화면 대상 없음"
+        if resolution.status == "resolved":
+            trace = f"화면 대상 확인: {resolution.label}"
+        elif resolution.status == "ambiguous":
+            trace = "화면 대상이 여러 개라 명확화 필요"
+        return {"target_resolution": resolution, "trace": [*state["trace"], trace]}
+
     def _classify_intent(self, state: AgentState) -> dict[str, Any]:
         fp = state["fact_package"]
         question = fp.question
-        intent = self._classify(question)
+        target = state.get("target_resolution")
+        visible_data = fp.context.get("visibleData", []) if isinstance(fp.context, dict) else []
+        if isinstance(target, TargetResolution) and target.status == "ambiguous":
+            intent = "SCREEN_CLARIFICATION"
+        elif isinstance(target, TargetResolution) and target.status == "resolved":
+            lowered = question.replace(" ", "").lower()
+            if len(target.fact_keys) > 0 and all(key.startswith("crop.") for key in target.fact_keys) and any(
+                token in lowered for token in self._COMPARE_WORDS + ("첫번째", "두번째", "1위", "2위")
+            ):
+                intent = "COMPARE_VISIBLE_DATA"
+            elif any(key.startswith(("risk.", "field.alert.")) for key in target.fact_keys) and any(
+                token in lowered for token in self._WHY_WORDS + self._RISK_WORDS
+            ):
+                intent = "EVIDENCE_REQUEST"
+            elif any(key.startswith("field.task.") for key in target.fact_keys):
+                intent = "NEXT_CHECK_RECOMMENDATION"
+            else:
+                intent = "EXPLAIN_VISIBLE_DATA"
+        else:
+            intent = self._classify(question)
         focus = self._conversation_focus(fp)
         trace = f"의도 분류: {intent}"
         if focus:
@@ -317,18 +437,25 @@ class AIService:
             "SOIL_ADVICE": ["get_region_analysis", "get_crop_profile", "get_report_sources"],
             "OFFICIAL_GUIDANCE": ["search_official_guidance", "get_report_sources"],
             "GENERAL_INFORMATION": ["get_region_analysis", "get_report_sources"],
+            "EXPLAIN_VISIBLE_DATA": ["explain_visible_metric"],
+            "COMPARE_VISIBLE_DATA": ["compare_visible_crops"],
+            "EVIDENCE_REQUEST": ["summarize_report_evidence"],
+            "NEXT_CHECK_RECOMMENDATION": ["recommend_next_checks"],
+            "SCREEN_CLARIFICATION": [],
             "UNSUPPORTED_ACTION": [],
         }
-        selected = list(tool_map.get(intent, ["get_region_analysis", "get_report_sources"]))
+        selected = list(tool_map.get(intent, ["get_region_analysis", "get_report_sources"]))[:2]
         # A field dashboard conversation should have access to the persisted
         # snapshot too. It is scoped by the Spring service before it reaches
         # the agent, so this adds context without granting data access.
-        if any(key.startswith("field.") for key in state["fact_package"].facts) and "get_field_report" not in selected:
+        if (not intent.endswith("VISIBLE_DATA") and intent not in {"EVIDENCE_REQUEST", "NEXT_CHECK_RECOMMENDATION", "SCREEN_CLARIFICATION"}
+                and any(key.startswith("field.") for key in state["fact_package"].facts) and "get_field_report" not in selected):
             selected.append("get_field_report")
         return {"selected_tools": selected, "trace": [*state["trace"], f"도구 선택: {selected}"]}
 
     def _execute_tools(self, state: AgentState) -> dict[str, Any]:
         fp = state["fact_package"]
+        target = state.get("target_resolution")
         results: dict[str, Any] = {}
         for tool_name in state.get("selected_tools", []):
             if tool_name == "get_region_analysis":
@@ -353,6 +480,19 @@ class AIService:
                 results["risk_guide"] = get_risk_guide(str(risk_code)) if risk_code else None
             elif tool_name == "compare_crops":
                 results["crop_comparison"] = compare_crops(fp.facts)
+            elif tool_name == "explain_visible_metric" and isinstance(target, TargetResolution):
+                results["visible_metric"] = explain_visible_metric(target, fp.facts)
+            elif tool_name == "summarize_report_evidence" and isinstance(target, TargetResolution):
+                results["visible_evidence"] = summarize_report_evidence(target, fp.facts, fp.sources)
+            elif tool_name == "compare_visible_crops" and isinstance(target, TargetResolution):
+                visible_data = fp.context.get("visibleData", []) if isinstance(fp.context, dict) else []
+                crop_keys = tuple(
+                    str(ref.get("key")) for ref in visible_data
+                    if isinstance(ref, dict) and str(ref.get("key", "")).startswith("crop.")
+                )
+                results["visible_crop_comparison"] = compare_visible_crops(crop_keys, fp.facts)
+            elif tool_name == "recommend_next_checks" and isinstance(target, TargetResolution):
+                results["next_checks"] = recommend_next_checks(target, fp.facts)
         return {"tool_results": results, "trace": [*state["trace"], f"도구 실행: {list(results.keys())}"]}
 
     def _extract_crop_name(
@@ -409,6 +549,27 @@ class AIService:
                 basisType="UNSUPPORTED",
             )
             return {"structured_answer": answer, "trace": [*state["trace"], "지원 불가 응답 생성"]}
+
+        if intent == "SCREEN_CLARIFICATION":
+            target = state.get("target_resolution")
+            clarification = target.clarification if isinstance(target, TargetResolution) else None
+            answer = StructuredAnswer(
+                answer=clarification or "현재 화면에서 어떤 항목을 설명할지 알려주세요.",
+                basisType="GENERAL_INFORMATION",
+            )
+            return {
+                "structured_answer": answer,
+                "deterministic_answer": answer,
+                "trace": [*state["trace"], "화면 항목 명확화 응답 생성"],
+            }
+
+        if intent in {"EXPLAIN_VISIBLE_DATA", "COMPARE_VISIBLE_DATA", "EVIDENCE_REQUEST", "NEXT_CHECK_RECOMMENDATION"}:
+            answer = self._build_visible_data_answer(fp, intent, tool_results)
+            return {
+                "structured_answer": answer,
+                "deterministic_answer": answer,
+                "trace": [*state["trace"], "읽기 전용 화면 근거 응답 생성"],
+            }
 
         if intent == "TERM_EXPLANATION" and "term_explanation" in tool_results:
             term_result = tool_results["term_explanation"]
@@ -574,6 +735,105 @@ class AIService:
         return StructuredAnswer(
             answer="아직 내 지역 또는 밭 분석 결과가 없어 개인화된 판단은 할 수 없습니다. 다만 작물의 기본 재배 조건, 토양 pH·EC 같은 용어 설명, 지역 분석 방식은 바로 안내해 드릴 수 있어요.",
             basisType="GENERAL_INFORMATION",
+        )
+
+    @staticmethod
+    def _topic_particle(value: str) -> str:
+        """Return the Korean topic particle matching the final Hangul syllable."""
+        if not value:
+            return "은"
+        codepoint = ord(value[-1])
+        if 0xAC00 <= codepoint <= 0xD7A3:
+            return "은" if (codepoint - 0xAC00) % 28 else "는"
+        return "은"
+
+    def _build_visible_data_answer(
+        self, fp: FactPackage, intent: str, tool_results: dict[str, Any]
+    ) -> StructuredAnswer:
+        source_ids = [s.get("sourceId", "") for s in fp.sources if isinstance(s, dict) and s.get("sourceId")]
+
+        if intent == "COMPARE_VISIBLE_DATA":
+            comparison = tool_results.get("visible_crop_comparison", {})
+            crops = comparison.get("crops", []) if isinstance(comparison, dict) else []
+            used = comparison.get("used_fact_ids", []) if isinstance(comparison, dict) else []
+            if len(crops) >= 2:
+                first, second = crops[0], crops[1]
+                first_score = first.get("score")
+                second_score = second.get("score")
+                score_text = (
+                    f"화면 기준 {first['name']}{self._topic_particle(str(first['name']))} {first_score}점, "
+                    f"{second['name']}{self._topic_particle(str(second['name']))} {second_score}점으로 표시돼 있어요."
+                    if first_score is not None and second_score is not None
+                    else f"화면에서 {first['name']}과 {second['name']}을 비교할 수 있어요."
+                )
+                return StructuredAnswer(
+                    answer=score_text + " 점수 외에도 각 작물 카드의 장점과 주의 사항을 함께 확인해 주세요.",
+                    basisType="CURRENT_REPORT", usedFactIds=list(used), usedSourceIds=source_ids,
+                    mentionedCrops=[str(first["name"]), str(second["name"])],
+                )
+            return StructuredAnswer(
+                answer="현재 화면에서 비교할 두 작물 정보를 찾지 못했어요. 비교할 작물 카드를 선택해 다시 물어봐 주세요.",
+                basisType="GENERAL_INFORMATION",
+            )
+
+        if intent == "EVIDENCE_REQUEST":
+            evidence = tool_results.get("visible_evidence", {})
+            values = evidence.get("facts", {}) if isinstance(evidence, dict) else {}
+            used = evidence.get("used_fact_ids", []) if isinstance(evidence, dict) else []
+            label = evidence.get("label", "이 안내") if isinstance(evidence, dict) else "이 안내"
+            title = values.get("field.alert.1.title") or values.get("risk.1.title") or label
+            detail = values.get("field.alert.1.description") or values.get("risk.1.action.1")
+            weather = [
+                f"최고 {values['field.weather.maxTemperature']}℃" for key in ["field.weather.maxTemperature"] if key in values
+            ] + [
+                f"최저 {values['field.weather.minTemperature']}℃" for key in ["field.weather.minTemperature"] if key in values
+            ]
+            parts = [f"‘{title}’ 안내는 현재 화면의 검증된 분석 근거를 바탕으로 한 것입니다."]
+            if detail:
+                parts.append(str(detail))
+            if weather:
+                parts.append("함께 반영된 날씨는 " + ", ".join(weather) + "입니다.")
+            return StructuredAnswer(
+                answer=" ".join(parts), basisType="CURRENT_REPORT", usedFactIds=list(used), usedSourceIds=source_ids,
+                mentionedRisks=[str(title)],
+            )
+
+        if intent == "NEXT_CHECK_RECOMMENDATION":
+            checks = tool_results.get("next_checks", {})
+            values = checks.get("facts", {}) if isinstance(checks, dict) else {}
+            used = checks.get("used_fact_ids", []) if isinstance(checks, dict) else []
+            task = values.get("field.task.1.title") or values.get("risk.1.action.1")
+            description = values.get("field.task.1.description")
+            if task:
+                text = f"현재 화면에서는 ‘{task}’를 먼저 확인하는 것이 좋아요."
+                if description:
+                    text += f" {description}"
+            else:
+                text = "현재 화면에서 먼저 확인할 관리 항목을 찾지 못했어요. 최신 분석을 다시 확인해 주세요."
+            return StructuredAnswer(
+                answer=text, basisType="CURRENT_REPORT", usedFactIds=list(used), usedSourceIds=source_ids,
+            )
+
+        metric = tool_results.get("visible_metric", {})
+        values = metric.get("facts", {}) if isinstance(metric, dict) else {}
+        used = metric.get("used_fact_ids", []) if isinstance(metric, dict) else []
+        label = metric.get("label", "이 항목") if isinstance(metric, dict) else "이 항목"
+        if "field.reasoning.1" in values:
+            crop = values.get("field.crop.name", "이 작물")
+            alert = values.get("field.alert.1.title", "오늘의 환경 변화")
+            task = values.get("field.task.1.title", "밭 상태 확인")
+            text = f"{crop}에 {alert}가 확인돼 {task}을 먼저 안내했어요."
+        elif "component.soil.soilPh" in values or "field.soil.ph" in values:
+            value = values.get("component.soil.soilPh", values.get("field.soil.ph"))
+            text = f"{label}는 현재 화면에서 {value}로 표시돼 있어요. pH는 흙의 산성·알칼리성 정도를 뜻하며, 작물이 잘 자라는 범위와 얼마나 가까운지 확인하는 데 사용해요."
+        elif "component.soil.soilEc" in values or "field.soil.ec" in values:
+            value = values.get("component.soil.soilEc", values.get("field.soil.ec"))
+            text = f"{label}는 현재 화면에서 {value}로 표시돼 있어요. EC는 흙 속에 녹은 양분 농도를 간접적으로 보여줘서, 너무 높거나 낮은지 확인하는 지표예요."
+        else:
+            fact_text = ", ".join(f"{key.split('.')[-1]} {value}" for key, value in values.items())
+            text = f"{label}는 현재 화면의 검증된 분석값({fact_text})을 바탕으로 표시된 항목이에요." if fact_text else f"{label}의 세부 분석값을 찾지 못했어요."
+        return StructuredAnswer(
+            answer=text, basisType="CURRENT_REPORT", usedFactIds=list(used), usedSourceIds=source_ids,
         )
 
     def _build_field_deterministic_answer(
