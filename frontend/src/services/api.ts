@@ -245,7 +245,7 @@ const normalizeField = (input: unknown): FieldProfile => {
       conditions: Array.isArray(latestReport.conditions) ? latestReport.conditions.map(normalizeFieldCondition) : []
     } : null,
     cultivationDay: isNumber(input.cultivationDay) ? input.cultivationDay : null,
-    dailyStatus: (input.dailyStatus === 'STABLE' || input.dailyStatus === 'CAUTION' || input.dailyStatus === 'NEEDS_CHECK') ? input.dailyStatus : null,
+    dailyStatus: (input.dailyStatus === 'STABLE' || input.dailyStatus === 'CAUTION' || input.dailyStatus === 'DANGER' || input.dailyStatus === 'NEEDS_CHECK') ? input.dailyStatus : null,
     dailyStatusLabel: isString(input.dailyStatusLabel) ? input.dailyStatusLabel : null,
     dailyHeadline: isString(input.dailyHeadline) ? input.dailyHeadline : null,
     dailyReportDate: isString(input.dailyReportDate) ? input.dailyReportDate : null,

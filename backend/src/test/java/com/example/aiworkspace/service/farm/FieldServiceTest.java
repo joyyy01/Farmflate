@@ -7,7 +7,9 @@ import com.example.aiworkspace.domain.farm.FieldDailyReportRepository;
 import com.example.aiworkspace.domain.region.RegionAnalysisEntity;
 import com.example.aiworkspace.domain.region.RegionAnalysisRepository;
 import com.example.aiworkspace.dto.field.CreateFieldRequestDto;
+import com.example.aiworkspace.dto.field.FieldAlertDto;
 import com.example.aiworkspace.dto.field.FieldDailyReportDto;
+import com.example.aiworkspace.dto.field.FieldDailyStatus;
 import com.example.aiworkspace.dto.field.FieldProfileResponseDto;
 import com.example.aiworkspace.dto.field.FieldSuitabilityReportDto;
 import com.example.aiworkspace.dto.region.RegionDto;
@@ -140,6 +142,37 @@ class FieldServiceTest {
         assertThat(payload.at("/suitabilityReport/conditions/0/key").asText()).isEqualTo("CLIMATE");
         assertThat(payload.at("/suitabilityReport/keyRisks/0/actions/0").asText()).isEqualTo("배수로를 점검하세요.");
         assertThat(payload.at("/latestReport/prioritizedActions/0").asText()).isEqualTo("배수로를 점검하세요.");
+    }
+
+    @Test
+    void exposes_danger_status_and_alerts_from_the_latest_daily_report() throws Exception {
+        FarmEntity field = FarmEntity.builder()
+                .id(11L).userEmail(OWNER).fieldName("감자밭").cropCode("POTATO").cropName("감자")
+                .regionAnalysisId(REGION_ANALYSIS_ID).cultivationMethod("OPEN_FIELD")
+                .cultivationStartDate(LocalDate.of(2026, 7, 1)).stage("PREPARATION").active(true).build();
+        RegionAnalysisEntity analysis = RegionAnalysisEntity.builder().id(REGION_ANALYSIS_ID).userEmail(OWNER)
+                .payloadJson(objectMapper.writeValueAsString(regionReport())).build();
+        FieldDailyReportDto daily = FieldDailyReportDto.builder()
+                .id("daily-danger").fieldId("11").reportDate("2026-07-24").generatedAt("2026-07-24T08:30:00")
+                .generationReason("DAILY_0630").status(FieldDailyStatus.CAUTION)
+                .headline("오후 고온에 대비하세요.")
+                .alerts(List.of(FieldAlertDto.builder().key("AFTERNOON_HEAT").severity("HIGH")
+                        .title("오후 고온 주의").description("고온 피해를 줄이기 위한 점검이 필요합니다.").build()))
+                .build();
+        FieldDailyReportEntity storedDaily = FieldDailyReportEntity.builder().id("daily-danger").farmId(11L)
+                .ownerEmail(OWNER).payloadJson(objectMapper.writeValueAsString(daily)).build();
+        when(farmRepository.findByUserEmailOrderByCreatedAtDesc(OWNER)).thenReturn(List.of(field));
+        when(regionAnalysisRepository.findByIdAndUserEmail(REGION_ANALYSIS_ID, OWNER)).thenReturn(Optional.of(analysis));
+        when(dailyReportRepository.findFirstByFarmIdAndOwnerEmailOrderByGeneratedAtDesc(11L, OWNER))
+                .thenReturn(Optional.of(storedDaily));
+        when(dailyReportRepository.findFirstByFarmIdAndOwnerEmailAndGenerationReasonOrderByGeneratedAtDesc(
+                11L, OWNER, "DAILY_0630")).thenReturn(Optional.of(storedDaily));
+
+        FieldProfileResponseDto listed = service.getFields(OWNER).get(0);
+
+        assertThat(listed.getDailyStatus()).isEqualTo(FieldDailyStatus.DANGER);
+        assertThat(listed.getDailyStatusLabel()).isEqualTo("위험");
+        assertThat(listed.getDailyAlerts()).extracting(FieldAlertDto::getTitle).containsExactly("오후 고온 주의");
     }
 
     @Test
