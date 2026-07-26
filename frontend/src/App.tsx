@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import type { ViewStep, TabState, CommunityPost } from './types/farmflate';
 import { SplashView } from './components/farmflate/SplashView';
 import { LandingView } from './components/farmflate/LandingView';
@@ -21,8 +22,39 @@ import type { FieldProfile, FieldSuitabilityPreview, HomeData, RegionAnalysisReq
 import { canOpenReport, stateFromAnalysisStatus, type AnalysisState, type FieldPreviewState } from './services/reportLifecycle';
 import { AIChatModal } from './components/farmflate/AIChatModal';
 import { useDailyRefresh } from './hooks/useDailyRefresh';
+import type { NavigationFlow } from './types/navigation';
+import type { ChatRoute } from './types/chat';
 
 type ExtendedViewStep = ViewStep | 'splash';
+
+/* URL for every screen except field_dashboard, which carries a :fieldId segment
+   and is navigated to directly (see handleSelectField) rather than through this map. */
+const VIEW_STEP_PATH: Record<Exclude<ExtendedViewStep, 'field_dashboard'>, string> = {
+  splash: '/',
+  landing: '/landing',
+  explore: '/explore',
+  analyzing: '/analyzing',
+  report_summary: '/report/summary',
+  report_risks: '/report/risks',
+  report_tips: '/report/tips',
+  recommended_crops: '/report/recommended-crops',
+  crop_suitability_report: '/crop/suitability',
+  condition: '/crop/condition',
+  dashboard: '/dashboard',
+  myfield: '/myfield',
+  community: '/community',
+  community_create: '/community/write',
+  mypage: '/mypage'
+};
+
+const PATH_TO_VIEW_STEP: Record<string, ExtendedViewStep> = Object.fromEntries(
+  Object.entries(VIEW_STEP_PATH).map(([step, path]) => [path, step as ExtendedViewStep])
+);
+
+const pathToViewStep = (pathname: string): ExtendedViewStep => {
+  if (pathname.startsWith('/field/')) return 'field_dashboard';
+  return PATH_TO_VIEW_STEP[pathname] ?? 'splash';
+};
 
 const STEP_CODE_TO_UI_INDEX: Record<string, number> = {
   REGION: 0,
@@ -42,6 +74,34 @@ const maxUiStepFromCodes = (codes: string[]): number => {
   return max;
 };
 
+const aiChatRouteFor = (viewStep: ExtendedViewStep): ChatRoute => {
+  switch (viewStep) {
+    case 'field_dashboard':
+      return 'field_dashboard';
+    case 'community':
+    case 'community_create':
+      return 'community';
+    case 'mypage':
+      return 'mypage';
+    case 'report_summary':
+    case 'report_risks':
+    case 'report_tips':
+    case 'recommended_crops':
+    case 'crop_suitability_report':
+      return 'region_report';
+    default:
+      return 'home';
+  }
+};
+
+const displayNameOf = (author: unknown): string => {
+  if (typeof author === 'string') return author;
+  if (author && typeof author === 'object' && typeof (author as Record<string, unknown>).displayName === 'string') {
+    return (author as Record<string, unknown>).displayName as string;
+  }
+  return '사용자';
+};
+
 const normalizeCommunityPosts = (data: unknown): CommunityPost[] => {
   if (!Array.isArray(data)) throw new ApiError(200, 'MALFORMED_COMMUNITY_POSTS', '게시글 목록 응답이 올바르지 않습니다.', data, false);
   return data.map((item): CommunityPost => {
@@ -49,39 +109,86 @@ const normalizeCommunityPosts = (data: unknown): CommunityPost[] => {
     const post = item as Record<string, unknown>;
     const id = typeof post.id === 'string' || typeof post.id === 'number' ? String(post.id) : '';
     const title = typeof post.title === 'string' ? post.title : '';
-    if (!id || !title || typeof post.category !== 'string' || typeof post.tagLocation !== 'string' || typeof post.content !== 'string' || typeof post.author !== 'string' || typeof post.likeCount !== 'number' || typeof post.commentCount !== 'number') {
+    if (!id || !title || typeof post.content !== 'string' || typeof post.likeCount !== 'number' || typeof post.commentCount !== 'number') {
       throw new ApiError(200, 'MALFORMED_COMMUNITY_POSTS', '게시글 항목이 올바르지 않습니다.', item, false);
     }
+    const attachments: CommunityPost['attachments'] = Array.isArray(post.attachments)
+      ? (post.attachments as Record<string, unknown>[]).map((a): CommunityPost['attachments'][number] => ({
+          id: String(a.id ?? ''),
+          type: (a.type === 'IMAGE' || a.type === 'FILE' || a.type === 'LINK') ? a.type : 'FILE',
+          name: typeof a.name === 'string' ? a.name : '첨부',
+          contentType: typeof a.contentType === 'string' ? a.contentType : null,
+          sizeBytes: typeof a.sizeBytes === 'number' ? a.sizeBytes : null,
+          url: typeof a.url === 'string' ? a.url : '',
+          order: typeof a.order === 'number' ? a.order : 0
+        }))
+      : [];
+    const comments = Array.isArray(post.comments)
+      ? (post.comments as Record<string, unknown>[]).map((c) => ({
+          id: String(c.id ?? ''),
+          author: displayNameOf(c.author),
+          content: typeof c.content === 'string' ? c.content : '',
+          timeAgo: typeof c.timeAgo === 'string' ? c.timeAgo : '시간 정보 없음'
+        }))
+      : [];
     return {
       id,
-      category: post.category,
-      tagLocation: post.tagLocation,
+      regionLabel: typeof post.regionLabel === 'string' ? post.regionLabel : '지역 정보 없음',
       title,
       content: post.content,
-      author: post.author,
+      author: displayNameOf(post.author),
+      profileType: 'DEFAULT',
       timeAgo: typeof post.timeAgo === 'string' ? post.timeAgo : '시간 정보 없음',
       commentCount: post.commentCount,
       likeCount: post.likeCount,
-      isLiked: typeof post.isLiked === 'boolean' ? post.isLiked : false,
-      isSaved: typeof post.isSaved === 'boolean' ? post.isSaved : false,
-      imageUrl: typeof post.imageUrl === 'string' ? post.imageUrl : undefined,
-      comments: Array.isArray(post.comments) ? post.comments as CommunityPost['comments'] : []
+      isLiked: typeof post.likedByMe === 'boolean' ? post.likedByMe : false,
+      isSaved: typeof post.savedByMe === 'boolean' ? post.savedByMe : false,
+      attachments,
+      comments
     };
   });
 };
 
 export function App() {
   const checkHasToken = () => !!(localStorage.getItem('jwtToken') || localStorage.getItem('token'));
-  const [viewStep, setViewStep] = useState<ExtendedViewStep>('splash');
+  const navigate = useNavigate();
+  const location = useLocation();
+  // App is rendered as the element of the outer "/*" route (see main.tsx), so
+  // useParams() here would resolve against that outer match (no named params)
+  // rather than the inner "/field/:fieldId" route App defines in its own JSX
+  // below. Parse the id straight from the pathname instead.
+  const fieldIdFromPath = useMemo(() => location.pathname.match(/^\/field\/([^/]+)/)?.[1], [location.pathname]);
+  const viewStep = useMemo(() => pathToViewStep(location.pathname), [location.pathname]);
+  const setViewStep = (step: ExtendedViewStep, options?: { replace?: boolean }) => {
+    navigate(VIEW_STEP_PATH[step as Exclude<ExtendedViewStep, 'field_dashboard'>] ?? '/', { replace: options?.replace });
+  };
   const [activeTab, setActiveTab] = useState<TabState>('home');
   const [isAIChatOpen, setIsAIChatOpen] = useState(false);
   const [isPreviewMode, setIsPreviewMode] = useState(false);
 
   /* Explore Screen Context (Fresh Region Analysis vs Changing an Existing Selection) */
   const [exploreMode, setExploreMode] = useState<'analyze' | 'change'>('analyze');
+  /* Where the explore screen's own back button (and, on completion, the
+     resulting report chain's back button) should return to: MainDashboardView
+     and MyPageView both open a fresh 'analyze' explore session but expect
+     back navigation to land on whichever screen opened it. */
+  const [exploreReturnStep, setExploreReturnStep] = useState<'dashboard' | 'mypage'>('dashboard');
+  /* A field's region is just "which region is this crop in" — a lightweight
+     pick, unlike the user's primary/representative region (set from Home or
+     My Page) which drives the full analysis + report experience. Picking a
+     region here still needs a backing region analysis (suitability scoring
+     reads from it) but resolves it silently, with no visible analyzing/report
+     screens, then returns straight to the registration form. */
+  const [isResolvingFieldRegion, setIsResolvingFieldRegion] = useState(false);
+  const [fieldRegionError, setFieldRegionError] = useState<string | null>(null);
 
-  /* Where the Region Tips screen's back button should return to */
-  const [tipsReturnStep, setTipsReturnStep] = useState<ExtendedViewStep>('report_risks');
+  /* Which multi-step flow (if any) is currently in progress, and where its
+     exit points should return to. Replaces the previous separate
+     tipsReturnStep/isFieldRegistrationFlow booleans so the field-registration
+     and tips-loop navigation is defined in one place. */
+  const [navigationFlow, setNavigationFlow] = useState<NavigationFlow>({ kind: 'NONE' });
+  const isFieldRegistrationFlow =
+    navigationFlow.kind === 'FIELD_REGISTRATION' || navigationFlow.kind === 'FIELD_REGISTRATION_TIPS';
 
   /* Whether the report_summary -> report_risks -> report_tips chain was entered
      fresh (onboarding) or by re-viewing an already-analyzed report from the dashboard */
@@ -118,12 +225,27 @@ export function App() {
   const [analysisState, setAnalysisState] = useState<AnalysisState>({ kind: 'IDLE' });
   const [lastAnalysisRequest, setLastAnalysisRequest] = useState<RegionAnalysisRequest | null>(null);
   const [pendingCropRegistration, setPendingCropRegistration] = useState<CropRegistrationInput | null>(null);
-  const [isFieldRegistrationFlow, setIsFieldRegistrationFlow] = useState(false);
+  /* Keeps the crop-registration form's typed values alive across a region-change
+     round trip (which unmounts/remounts CropConditionInputView via the router). */
+  const [cropRegistrationDraft, setCropRegistrationDraft] = useState<CropRegistrationInput | null>(null);
   const [fieldPreview, setFieldPreview] = useState<FieldSuitabilityPreview | null>(null);
   const [fieldPreviewState, setFieldPreviewState] = useState<FieldPreviewState>({ kind: 'IDLE' });
   const [homeData, setHomeData] = useState<HomeData | null>(null);
   const [myFields, setMyFields] = useState<FieldProfile[]>([]);
   const [selectedField, setSelectedField] = useState<FieldProfile | null>(null);
+  const [fieldChatReportDate, setFieldChatReportDate] = useState<string | null>(null);
+
+  /* Landing directly on /field/:fieldId (a refresh, a shared link, browser
+     back/forward) needs to resolve selectedField from the URL once the
+     field list has loaded, since the field object itself is never encoded
+     in the URL. */
+  useEffect(() => {
+    if (viewStep !== 'field_dashboard') return;
+    if (selectedField && String(selectedField.id) === fieldIdFromPath) return;
+    const match = myFields.find(field => String(field.id) === fieldIdFromPath);
+    if (match) setSelectedField(match);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewStep, fieldIdFromPath, myFields]);
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [homeLoadError, setHomeLoadError] = useState<string | null>(null);
   const [fieldLoadError, setFieldLoadError] = useState<string | null>(null);
@@ -152,7 +274,7 @@ export function App() {
     setAnalysisState({ kind: 'IDLE' });
     setLastAnalysisRequest(null);
     setPendingCropRegistration(null);
-    setIsFieldRegistrationFlow(false);
+    setNavigationFlow({ kind: 'NONE' });
     if (pollTimerRef.current !== null) window.clearTimeout(pollTimerRef.current);
     setPosts([]);
     setMyFields([]);
@@ -166,7 +288,7 @@ export function App() {
     setActiveTab('home');
 
     // 3. Navigate back to Landing screen
-    setViewStep('landing');
+    setViewStep('landing', { replace: true });
   };
 
   const openPreviewDashboard = () => {
@@ -183,7 +305,7 @@ export function App() {
     setAnalysisState({ kind: 'IDLE' });
     setLastAnalysisRequest(null);
     setPendingCropRegistration(null);
-    setIsFieldRegistrationFlow(false);
+    setNavigationFlow({ kind: 'NONE' });
     setHomeData(null);
     setMyFields([]);
     setPosts([]);
@@ -192,30 +314,32 @@ export function App() {
     setCommunityLoadError(null);
     setCommunityComposeError(null);
     setIsNewUser(false);
-    setViewStep('dashboard');
+    setViewStep('dashboard', { replace: true });
   };
 
   const returnToMyField = () => {
-    setIsFieldRegistrationFlow(false);
+    setNavigationFlow({ kind: 'NONE' });
     setPendingCropRegistration(null);
+    setCropRegistrationDraft(null);
     setActiveTab('myfield');
     setViewStep('myfield');
   };
 
   const handleSelectField = (field: FieldProfile) => {
     setSelectedField(field);
-    setViewStep('field_dashboard');
+    setFieldChatReportDate(null);
+    navigate(`/field/${field.id}`);
   };
 
   const openCropRegistrationFromMyField = () => {
     setActiveTab('myfield');
     if (!canOpenReport(analysisState)) {
-      setIsFieldRegistrationFlow(false);
+      setNavigationFlow({ kind: 'NONE' });
       setPendingCropRegistration(null);
       setViewStep('explore');
       return;
     }
-    setIsFieldRegistrationFlow(true);
+    setNavigationFlow({ kind: 'FIELD_REGISTRATION', returnTo: 'myfield' });
     setViewStep('condition');
   };
 
@@ -228,8 +352,7 @@ export function App() {
   };
 
   const openExploreFromCropRegistration = () => {
-    setIsFieldRegistrationFlow(false);
-    setPendingCropRegistration(null);
+    setFieldRegionError(null);
     setExploreMode('change');
     setViewStep('explore');
   };
@@ -256,6 +379,7 @@ export function App() {
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token');
     const targetView = params.get('view');
+    const bootPathname = window.location.pathname;
     let isCurrent = true;
 
     if (token) {
@@ -269,12 +393,12 @@ export function App() {
       localStorage.removeItem('token');
       if (!isCurrent) return;
       setHomeLoadError(error.message);
-      setViewStep('landing');
+      setViewStep('landing', { replace: true });
     };
 
     const initializeAuthenticatedSession = async () => {
       if (!checkHasToken()) {
-        if (isCurrent) setViewStep('landing');
+        if (isCurrent) setViewStep('landing', { replace: true });
         return;
       }
       try {
@@ -309,7 +433,16 @@ export function App() {
         }
 
         setIsNewUser(!resData.latestRegionAnalysis);
-        setViewStep(targetView === 'explore' ? 'explore' : targetView === 'landing' ? 'landing' : 'dashboard');
+        // A hard refresh/deep link on an authenticated screen (e.g. /myfield)
+        // should stay put; only splash ('/') or an explicit ?view= param
+        // decides where to land.
+        if (targetView === 'explore') {
+          setViewStep('explore', { replace: true });
+        } else if (targetView === 'landing') {
+          setViewStep('landing', { replace: true });
+        } else if (bootPathname === '/' || bootPathname === VIEW_STEP_PATH.landing) {
+          setViewStep('dashboard', { replace: true });
+        }
 
         void ApiService.getCommunityPosts()
           .then(data => { if (isCurrent && !previewModeRef.current) { setPosts(normalizeCommunityPosts(data)); setCommunityLoadError(null); } })
@@ -328,7 +461,9 @@ export function App() {
           } else {
             setHomeLoadError(error instanceof Error ? error.message : '홈 정보를 불러오지 못했습니다. 다시 시도해 주세요.');
           }
-          setViewStep('dashboard');
+          if (bootPathname === '/' || bootPathname === VIEW_STEP_PATH.landing) {
+            setViewStep('dashboard', { replace: true });
+          }
         }
       }
     };
@@ -443,7 +578,11 @@ export function App() {
     const nextState = stateFromAnalysisStatus({ analysisId, status }, report);
     if (!canOpenReport(nextState)) throw new ApiError(200, 'MALFORMED_REPORT', '검증 가능한 리포트를 받지 못했습니다.');
 
-    // Terminal catch-up: animate missing UI steps before navigating
+    // Terminal catch-up: animate missing UI steps before navigating. Each step
+    // is held slightly longer than one full spinner rotation (the CSS
+    // .spinner-rotate animation is 0.8s) so a cached/instant analysis still
+    // visibly completes at least one full spin instead of flashing past the
+    // step before the rotation finishes.
     const terminalMax = terminalStepCodes ? maxUiStepFromCodes(terminalStepCodes) : 4;
     const lastShown = lastDisplayedStepRef.current;
     if (terminalMax > lastShown) {
@@ -459,7 +598,7 @@ export function App() {
             .map(([code]) => code)
         });
         lastDisplayedStepRef.current = step;
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise(resolve => setTimeout(resolve, 900));
       }
       await new Promise(resolve => setTimeout(resolve, 200));
     }
@@ -524,7 +663,7 @@ export function App() {
   const handleStartAnalysis = async (input: Omit<RegionAnalysisRequest, 'idempotencyKey'>) => {
     if (pollTimerRef.current !== null) window.clearTimeout(pollTimerRef.current);
     setReportFlowSource('onboarding');
-    const request: RegionAnalysisRequest = { ...input, idempotencyKey: crypto.randomUUID() };
+    const request: RegionAnalysisRequest = { ...input, idempotencyKey: crypto.randomUUID(), purpose: 'PRIMARY' };
     setLastAnalysisRequest(request);
     setSelectedProvince(request.sidoName);
     setSelectedDistrict(request.sigunguName);
@@ -532,7 +671,7 @@ export function App() {
     localStorage.setItem('farmflate_district', request.sigunguName);
     setApiReport(null);
     setPendingCropRegistration(null);
-    setIsFieldRegistrationFlow(false);
+    setNavigationFlow({ kind: 'NONE' });
     lastDisplayedStepRef.current = 0;
     setAnalysisState({ kind: 'SUBMITTING' });
     setViewStep('analyzing');
@@ -550,6 +689,55 @@ export function App() {
       await pollAnalysis(status.analysisId);
     } catch (error) {
       setAnalysisFailure(error);
+    }
+  };
+
+  /* Silent counterpart to handleStartAnalysis for the crop-registration
+     "which region is this field in" pick: still resolves a backing region
+     analysis (suitability scoring reads from it), but never shows the
+     analyzing/report screens -- it stays on the explore screen with a small
+     inline loading state, then returns straight to the registration form. */
+  const submitFieldRegionChange = async (input: Omit<RegionAnalysisRequest, 'idempotencyKey'>) => {
+    setFieldRegionError(null);
+    setIsResolvingFieldRegion(true);
+    const request: RegionAnalysisRequest = { ...input, idempotencyKey: crypto.randomUUID(), purpose: 'FIELD_LINKED' };
+    try {
+      const initial = await ApiService.createRegionAnalysis(request);
+      let latest = initial;
+      let normalized = latest.status.toUpperCase();
+      let attempt = 0;
+      while (normalized !== 'COMPLETED' && normalized !== 'PARTIAL' && normalized !== 'FAILED') {
+        if (attempt >= 60) throw new Error('지역 정보를 확인하는 데 시간이 너무 오래 걸립니다. 다시 시도해 주세요.');
+        await new Promise(resolve => setTimeout(resolve, 900));
+        latest = await ApiService.getAnalysisStatus(latest.analysisId);
+        normalized = latest.status.toUpperCase();
+        attempt += 1;
+      }
+      if (normalized === 'FAILED') {
+        throw new Error(latest.errorMessage ?? '지역 정보를 확인하지 못했습니다.');
+      }
+      const report = await ApiService.getRegionReport(latest.analysisId, normalized as 'COMPLETED' | 'PARTIAL');
+      const nextState = stateFromAnalysisStatus({ ...latest, status: normalized }, report);
+      if (!canOpenReport(nextState)) throw new Error('검증 가능한 지역 정보를 받지 못했습니다.');
+      setApiReport(report);
+      setAnalysisState(nextState);
+      setSelectedProvince(report.region.sidoName);
+      setSelectedDistrict(report.region.sigunguName);
+      localStorage.setItem('farmflate_province', report.region.sidoName);
+      localStorage.setItem('farmflate_district', report.region.sigunguName);
+      setExploreMode('analyze');
+      setViewStep('condition');
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        localStorage.removeItem('jwtToken');
+        localStorage.removeItem('token');
+        setHomeLoadError('로그인이 만료되었습니다. 다시 로그인해 주세요.');
+        setViewStep('landing', { replace: true });
+        return;
+      }
+      setFieldRegionError(error instanceof ApiError ? error.message : (error instanceof Error ? error.message : '지역 정보를 확인하지 못했습니다.'));
+    } finally {
+      setIsResolvingFieldRegion(false);
     }
   };
 
@@ -668,7 +856,8 @@ export function App() {
       });
       setMyFields(previous => [field, ...previous.filter(item => item.id !== field.id)]);
       setPendingCropRegistration(null);
-      setIsFieldRegistrationFlow(false);
+      setCropRegistrationDraft(null);
+      setNavigationFlow({ kind: 'NONE' });
       setActiveTab('myfield');
       setViewStep('myfield');
     } catch (error) {
@@ -689,11 +878,19 @@ export function App() {
 
   /* Community Handlers */
   const handleToggleLike = async (postId: string) => {
+    const previous = posts;
+    const target = posts.find(p => p.id === postId);
+    const targetLiked = !target?.isLiked;
+    setPosts(current => current.map(p => p.id === postId
+      ? { ...p, isLiked: targetLiked, likeCount: Math.max(0, p.likeCount + (targetLiked ? 1 : -1)) }
+      : p));
     try {
-      await ApiService.likeCommunityPost(postId);
-      const postsFromServer = await ApiService.getCommunityPosts();
-      setPosts(normalizeCommunityPosts(postsFromServer));
+      const result = targetLiked
+        ? await ApiService.likeCommunityPost(postId)
+        : await ApiService.unlikeCommunityPost(postId);
+      setPosts(current => current.map(p => p.id === postId ? normalizeCommunityPosts([result])[0] : p));
     } catch (err) {
+      setPosts(previous);
       setCommunityLoadError('좋아요 처리에 실패했습니다. 다시 시도해 주세요.');
     }
   };
@@ -719,16 +916,10 @@ export function App() {
     }
   };
 
-  const handleCreatePost = async (title: string, content: string, category?: string, locationTag?: string, imageUrl?: string) => {
+  const handleCreatePost = async (title: string, content: string, attachmentIds?: string[]) => {
     setCommunityComposeError(null);
     try {
-      await ApiService.createCommunityPost({
-        title,
-        content,
-        category: category || '농가 노하우',
-        tagLocation: locationTag || `${selectedProvince} ${selectedDistrict}`,
-        imageUrl: imageUrl || ''
-      });
+      await ApiService.createCommunityPost({ title, content, attachmentIds });
       const postsFromServer = await ApiService.getCommunityPosts();
       setPosts(normalizeCommunityPosts(postsFromServer));
       setCommunityLoadError(null);
@@ -741,229 +932,280 @@ export function App() {
 
   return (
     <div className="mobile-wrapper min-h-screen bg-white" data-preview-mode={isPreviewMode ? 'true' : undefined}>
-      {/* 0. Splash Screen */}
-      {viewStep === 'splash' && (
-        <SplashView onComplete={() => {
-          if (!checkHasToken()) {
-            safeSetViewStep('landing');
-          }
-        }} />
-      )}
+      <Routes>
+        {/* 0. Splash Screen */}
+        <Route path={VIEW_STEP_PATH.splash} element={
+          <SplashView onComplete={() => {
+            if (!checkHasToken()) {
+              safeSetViewStep('landing');
+            }
+          }} />
+        } />
 
-      {/* 1. Landing Screen (Kakao OAuth Login) */}
-      {viewStep === 'landing' && (
-        <LandingView errorMessage={homeLoadError} onOpenPreview={openPreviewDashboard} />
-      )}
+        {/* 1. Landing Screen (Kakao OAuth Login) */}
+        <Route path={VIEW_STEP_PATH.landing} element={
+          <LandingView errorMessage={homeLoadError} onOpenPreview={openPreviewDashboard} />
+        } />
 
-      {/* 2. Region Search Screen */}
-      {viewStep === 'explore' && (
-        <RegionExploreView
-          onBack={() => safeSetViewStep('dashboard')}
-          onStartAnalysis={handleStartAnalysis}
-          mode={exploreMode}
-        />
-      )}
-
-      {/* 3. Crop Condition & Selection Screen (농작물/야채 등록 및 선택) */}
-      {viewStep === 'condition' && (
-        <CropConditionInputView
-          onBack={returnToMyField}
-          onStartAnalysis={handleStartCropConditionAnalysis}
-          onOpenExplore={openExploreFromCropRegistration}
-          selectedRegionName={apiReport?.region?.sidoName && apiReport?.region?.sigunguName ? `${apiReport.region.sidoName} ${apiReport.region.sigunguName}` : (selectedProvince && selectedDistrict ? `${selectedProvince} ${selectedDistrict}` : '지역 분석 전')}
-        />
-      )}
-
-      {/* 4. Animated Analysis Loading Screen */}
-      {viewStep === 'analyzing' && (
-        <AnalyzingView
-          regionName={selectedProvince && selectedDistrict ? `${selectedProvince} ${selectedDistrict}` : '선택한 지역'}
-          cropName={selectedCropName}
-          analysisType={isFieldRegistrationFlow || pendingCropRegistration ? 'crop' : 'region'}
-          fieldLabel={pendingCropRegistration?.fieldName}
-          state={isFieldRegistrationFlow || pendingCropRegistration ? fieldPreviewState : analysisState}
-          onRetry={() => {
-            if (fieldPreviewState.kind === 'ERROR' || fieldPreviewState.kind === 'UNAUTHORIZED') {
-              if (pendingCropRegistration) {
-                void handleStartCropConditionAnalysis(pendingCropRegistration);
+        {/* 2. Region Search Screen */}
+        <Route path={VIEW_STEP_PATH.explore} element={
+          <RegionExploreView
+            onBack={() => {
+              if (exploreMode === 'change') {
+                setFieldRegionError(null);
+                setViewStep('condition');
+                return;
               }
-              return;
-            }
-            if ((analysisState.kind === 'ERROR' || analysisState.kind === 'UNAUTHORIZED') && analysisState.pendingAction === 'FIELD_CREATE') {
-              void handleAddField();
-              return;
-            }
-            retryAnalysis();
-          }}
-          onBack={() => {
-            if (fieldPreviewState.kind === 'ERROR' || fieldPreviewState.kind === 'UNAUTHORIZED') {
-              setFieldPreviewState({ kind: 'IDLE' });
-              returnToCropCondition();
-              return;
-            }
-            setAnalysisState({ kind: 'IDLE' });
-            if ((analysisState.kind === 'ERROR' || analysisState.kind === 'UNAUTHORIZED') && analysisState.pendingAction === 'FIELD_CREATE') {
-              returnToMyField();
-            } else {
+              safeSetViewStep(exploreReturnStep);
+            }}
+            onStartAnalysis={exploreMode === 'change' ? submitFieldRegionChange : handleStartAnalysis}
+            mode={exploreMode}
+            isSubmitting={exploreMode === 'change' ? isResolvingFieldRegion : undefined}
+            submitError={exploreMode === 'change' ? fieldRegionError : undefined}
+          />
+        } />
+
+        {/* 3. Crop Condition & Selection Screen (농작물/야채 등록 및 선택) */}
+        <Route path={VIEW_STEP_PATH.condition} element={
+          <CropConditionInputView
+            onBack={returnToMyField}
+            onStartAnalysis={handleStartCropConditionAnalysis}
+            onOpenExplore={openExploreFromCropRegistration}
+            selectedRegionName={apiReport?.region?.sidoName && apiReport?.region?.sigunguName ? `${apiReport.region.sidoName} ${apiReport.region.sigunguName}` : (selectedProvince && selectedDistrict ? `${selectedProvince} ${selectedDistrict}` : '지역 분석 전')}
+            draft={cropRegistrationDraft ?? undefined}
+            onDraftChange={setCropRegistrationDraft}
+          />
+        } />
+
+        {/* 4. Animated Analysis Loading Screen */}
+        <Route path={VIEW_STEP_PATH.analyzing} element={
+          <AnalyzingView
+            regionName={selectedProvince && selectedDistrict ? `${selectedProvince} ${selectedDistrict}` : '선택한 지역'}
+            cropName={selectedCropName}
+            analysisType={isFieldRegistrationFlow || pendingCropRegistration ? 'crop' : 'region'}
+            fieldLabel={pendingCropRegistration?.fieldName}
+            state={isFieldRegistrationFlow || pendingCropRegistration ? fieldPreviewState : analysisState}
+            onRetry={() => {
+              if (fieldPreviewState.kind === 'ERROR' || fieldPreviewState.kind === 'UNAUTHORIZED') {
+                if (pendingCropRegistration) {
+                  void handleStartCropConditionAnalysis(pendingCropRegistration);
+                }
+                return;
+              }
+              if ((analysisState.kind === 'ERROR' || analysisState.kind === 'UNAUTHORIZED') && analysisState.pendingAction === 'FIELD_CREATE') {
+                void handleAddField();
+                return;
+              }
+              retryAnalysis();
+            }}
+            onBack={() => {
+              if (fieldPreviewState.kind === 'ERROR' || fieldPreviewState.kind === 'UNAUTHORIZED') {
+                setFieldPreviewState({ kind: 'IDLE' });
+                returnToCropCondition();
+                return;
+              }
+              setAnalysisState({ kind: 'IDLE' });
+              if ((analysisState.kind === 'ERROR' || analysisState.kind === 'UNAUTHORIZED') && analysisState.pendingAction === 'FIELD_CREATE') {
+                returnToMyField();
+              } else {
+                safeSetViewStep('explore');
+              }
+            }}
+            onLogin={() => safeSetViewStep('landing')}
+          />
+        } />
+
+        {/* 5. Region Report Summary Screen */}
+        <Route path={VIEW_STEP_PATH.report_summary} element={
+          <RegionReportSummaryView
+            regionName={apiReport?.region?.sidoName && apiReport?.region?.sigunguName ? `${apiReport.region.sidoName} ${apiReport.region.sigunguName}` : `${selectedProvince} ${selectedDistrict}`}
+            report={apiReport}
+            onBack={() => safeSetViewStep(reportReturnStep)}
+            onNext={() => safeSetViewStep('report_risks')}
+            onOpenAIChat={() => setIsAIChatOpen(true)}
+          />
+        } />
+
+        {/* 6. Region Risks Screen */}
+        <Route path={VIEW_STEP_PATH.report_risks} element={
+          <RegionRisksView
+            report={apiReport}
+            onBack={() => safeSetViewStep('report_summary')}
+            onNext={() => safeSetViewStep('report_tips')}
+          />
+        } />
+
+        {/* 7. Region Tips Screen */}
+        <Route path={VIEW_STEP_PATH.report_tips} element={
+          <RegionTipsView
+            districtName={apiReport?.region?.sigunguName || selectedDistrict}
+            report={apiReport}
+            onBack={() => setViewStep(
+              navigationFlow.kind === 'FIELD_REGISTRATION_TIPS' ? 'crop_suitability_report' : 'report_risks'
+            )}
+            variant={navigationFlow.kind === 'FIELD_REGISTRATION_TIPS' ? 'cropRegister' : (reportFlowSource === 'view' ? 'view' : 'default')}
+            onRegisterCrop={() => {
+              /* Already prepared a field via crop_suitability_report -> register
+                 once with the existing preview instead of looping back to the
+                 input screen. */
+              if (navigationFlow.kind === 'FIELD_REGISTRATION_TIPS' && pendingCropRegistration) {
+                void handleAddField();
+                return;
+              }
+              setNavigationFlow({ kind: 'FIELD_REGISTRATION', returnTo: 'myfield' });
+              setViewStep('condition');
+            }}
+            onSave={() => {
+              setIsNewUser(false);
+              localStorage.setItem('farmflate_is_new_user', 'false');
+              handleTabChange('home');
+            }}
+            onConfirm={() => handleTabChange('home')}
+            onOpenAIChat={() => setIsAIChatOpen(true)}
+          />
+        } />
+
+        {/* 8. Recommended Crops Screen */}
+        <Route path={VIEW_STEP_PATH.recommended_crops} element={
+          <RecommendedCropsView
+            districtName={apiReport?.region?.sigunguName || selectedDistrict}
+            report={apiReport}
+            onBack={() => safeSetViewStep('report_tips')}
+            onOpenAIChat={() => setIsAIChatOpen(true)}
+            onSelectCrop={() => {
+              // Picking a crop here means "register this region's field" --
+              // mirrors RegionTipsView's onRegisterCrop rather than silently
+              // discarding the selection by bouncing to MyField.
+              setNavigationFlow({ kind: 'FIELD_REGISTRATION', returnTo: 'myfield' });
+              setViewStep('condition');
+            }}
+          />
+        } />
+
+        {/* 9. Crop Suitability Report Screen (농작물 적합도 리포트) */}
+        <Route path={VIEW_STEP_PATH.crop_suitability_report} element={
+          <CropSuitabilityReportView
+            fieldName={pendingCropRegistration?.fieldName}
+            cropName={selectedCropName}
+            fieldPreview={fieldPreview}
+            onBack={returnToCropCondition}
+            onRegisterCrop={isFieldRegistrationFlow && pendingCropRegistration ? handleAddField : returnToMyField}
+            onOpenTips={() => {
+              setNavigationFlow({ kind: 'FIELD_REGISTRATION_TIPS', returnTo: 'crop_suitability_report' });
+              safeSetViewStep('report_tips');
+            }}
+          />
+        } />
+
+        {/* 10. Main Dashboard Screen */}
+        <Route path={VIEW_STEP_PATH.dashboard} element={
+          <MainDashboardView
+            key={dailyKey}
+            userName={userName}
+            analyzedRegion={apiReport?.region?.sidoName && apiReport?.region?.sigunguName ? `${apiReport.region.sidoName} ${apiReport.region.sigunguName}` : undefined}
+            homeData={homeData}
+            loadError={homeLoadError}
+            onGoToExplore={() => {
+              setExploreReturnStep('dashboard');
+              setReportReturnStep('dashboard');
+              setExploreMode('analyze');
               safeSetViewStep('explore');
-            }
-          }}
-          onLogin={() => safeSetViewStep('landing')}
-        />
-      )}
+            }}
+            onOpenReport={() => { void handleOpenConfirmedReport(undefined, 'dashboard'); }}
+            onOpenAIChat={() => setIsAIChatOpen(true)}
+            activeTab={activeTab}
+            onTabChange={handleTabChange}
+            isNewUser={isNewUser}
+          />
+        } />
 
-      {/* 5. Region Report Summary Screen */}
-      {viewStep === 'report_summary' && (
-        <RegionReportSummaryView
-          regionName={apiReport?.region?.sidoName && apiReport?.region?.sigunguName ? `${apiReport.region.sidoName} ${apiReport.region.sigunguName}` : `${selectedProvince} ${selectedDistrict}`}
-          report={apiReport}
-          onBack={() => safeSetViewStep(reportReturnStep)}
-          onNext={() => safeSetViewStep('report_risks')}
-          onOpenAIChat={() => setIsAIChatOpen(true)}
-        />
-      )}
+        {/* 11. My Field List Screen */}
+        <Route path={VIEW_STEP_PATH.myfield} element={
+          <MyFieldListView
+            fields={myFields}
+            loadError={fieldLoadError}
+            onAddField={openCropRegistrationFromMyField}
+            onSelectField={handleSelectField}
+            onOpenAIChat={() => setIsAIChatOpen(true)}
+            activeTab={activeTab}
+            onTabChange={handleTabChange}
+          />
+        } />
 
-      {/* 6. Region Risks Screen */}
-      {viewStep === 'report_risks' && (
-        <RegionRisksView
-          report={apiReport}
-          onBack={() => safeSetViewStep('report_summary')}
-          onNext={() => { setTipsReturnStep('report_risks'); safeSetViewStep('report_tips'); }}
-        />
-      )}
+        {/* 11b. Field Detail Dashboard Screen */}
+        <Route path="/field/:fieldId" element={
+          selectedField ? (
+            <FieldDashboardView
+              field={selectedField}
+              onBack={returnToMyField}
+              onOpenAIChat={() => setIsAIChatOpen(true)}
+              onDateChange={setFieldChatReportDate}
+            />
+          ) : null
+        } />
 
-      {/* 7. Region Tips Screen */}
-      {viewStep === 'report_tips' && (
-        <RegionTipsView
-          districtName={apiReport?.region?.sigunguName || selectedDistrict}
-          report={apiReport}
-          onBack={() => setViewStep(tipsReturnStep)}
-          variant={tipsReturnStep === 'crop_suitability_report' ? 'cropRegister' : (reportFlowSource === 'view' ? 'view' : 'default')}
-          onRegisterCrop={() => {
-            setIsFieldRegistrationFlow(true);
-            setViewStep('condition');
-          }}
-          onSave={() => {
-            setIsNewUser(false);
-            localStorage.setItem('farmflate_is_new_user', 'false');
-            handleTabChange('home');
-          }}
-          onConfirm={() => handleTabChange('home')}
-          onOpenAIChat={() => setIsAIChatOpen(true)}
-        />
-      )}
+        {/* 12. Community List Screen */}
+        <Route path={VIEW_STEP_PATH.community} element={
+          <CommunityListView
+            posts={posts}
+            loadError={communityLoadError}
+            onOpenAIChat={() => setIsAIChatOpen(true)}
+            onOpenWrite={() => safeSetViewStep('community_create')}
+            activeTab={activeTab}
+            onTabChange={handleTabChange}
+            onToggleLike={handleToggleLike}
+            onToggleSave={handleToggleSave}
+            onAddComment={handleAddComment}
+          />
+        } />
 
-      {/* 8. Recommended Crops Screen */}
-      {viewStep === 'recommended_crops' && (
-        <RecommendedCropsView
-          districtName={apiReport?.region?.sigunguName || selectedDistrict}
-          report={apiReport}
-          onBack={() => safeSetViewStep('report_tips')}
-          onOpenAIChat={() => setIsAIChatOpen(true)}
-          onSelectCrop={returnToMyField}
-        />
-      )}
+        {/* 13. Community Create Screen */}
+        <Route path={VIEW_STEP_PATH.community_create} element={
+          <CommunityCreatePostView
+            errorMessage={communityComposeError}
+            onCancel={() => { setCommunityComposeError(null); safeSetViewStep('community'); }}
+            onSubmitPost={handleCreatePost}
+          />
+        } />
 
-      {/* 9. Crop Suitability Report Screen (농작물 적합도 리포트) */}
-      {viewStep === 'crop_suitability_report' && (
-        <CropSuitabilityReportView
-          fieldName={pendingCropRegistration?.fieldName}
-          cropName={selectedCropName}
-          fieldPreview={fieldPreview}
-          onBack={returnToCropCondition}
-          onRegisterCrop={isFieldRegistrationFlow && pendingCropRegistration ? handleAddField : returnToMyField}
-          onOpenTips={() => { setTipsReturnStep('crop_suitability_report'); safeSetViewStep('report_tips'); }}
-        />
-      )}
+        {/* 14. My Page (Settings) Screen */}
+        <Route path={VIEW_STEP_PATH.mypage} element={
+          <MyPageView
+            userName={userName}
+            userEmail={userEmail}
+            userRegion={apiReport?.region?.sidoName && apiReport?.region?.sigunguName ? `${apiReport.region.sidoName} ${apiReport.region.sigunguName}` : (selectedProvince && selectedDistrict ? `${selectedProvince} ${selectedDistrict}` : '지역 정보 없음')}
+            posts={posts}
+            onOpenAIChat={() => setIsAIChatOpen(true)}
+            activeTab={activeTab}
+            onTabChange={handleTabChange}
+            onGoToExplore={() => {
+              setExploreReturnStep('mypage');
+              setReportReturnStep('mypage');
+              setExploreMode('analyze');
+              safeSetViewStep('explore');
+            }}
+            onUpdateUserName={setUserName}
+            onLogout={handleLogout}
+            onToggleLike={handleToggleLike}
+            onToggleSave={handleToggleSave}
+            onAddComment={handleAddComment}
+          />
+        } />
 
-      {/* 10. Main Dashboard Screen */}
-      {viewStep === 'dashboard' && (
-        <MainDashboardView
-          key={dailyKey}
-          userName={userName}
-          analyzedRegion={apiReport?.region?.sidoName && apiReport?.region?.sigunguName ? `${apiReport.region.sidoName} ${apiReport.region.sigunguName}` : undefined}
-          homeData={homeData}
-          loadError={homeLoadError}
-          onGoToExplore={() => { setExploreMode('analyze'); safeSetViewStep('explore'); }}
-          onOpenReport={() => { void handleOpenConfirmedReport(undefined, 'dashboard'); }}
-          onOpenAIChat={() => setIsAIChatOpen(true)}
-          activeTab={activeTab}
-          onTabChange={handleTabChange}
-          isNewUser={isNewUser}
-        />
-      )}
-
-      {/* 11. My Field List Screen */}
-      {viewStep === 'myfield' && (
-        <MyFieldListView
-          fields={myFields}
-          loadError={fieldLoadError}
-          onAddField={openCropRegistrationFromMyField}
-          onSelectField={handleSelectField}
-          onOpenAIChat={() => setIsAIChatOpen(true)}
-          activeTab={activeTab}
-          onTabChange={handleTabChange}
-        />
-      )}
-
-      {/* 11b. Field Detail Dashboard Screen */}
-      {viewStep === 'field_dashboard' && selectedField && (
-        <FieldDashboardView
-          field={selectedField}
-          onBack={returnToMyField}
-          onOpenAIChat={() => setIsAIChatOpen(true)}
-        />
-      )}
-
-      {/* 12. Community List Screen */}
-      {viewStep === 'community' && (
-        <CommunityListView
-          posts={posts}
-          loadError={communityLoadError}
-          onOpenAIChat={() => setIsAIChatOpen(true)}
-          onOpenWrite={() => safeSetViewStep('community_create')}
-          activeTab={activeTab}
-          onTabChange={handleTabChange}
-          onToggleLike={handleToggleLike}
-          onToggleSave={handleToggleSave}
-          onAddComment={handleAddComment}
-        />
-      )}
-
-      {/* 13. Community Create Screen */}
-      {viewStep === 'community_create' && (
-        <CommunityCreatePostView
-          userRegion={selectedProvince && selectedDistrict ? `${selectedProvince} ${selectedDistrict}` : '지역 정보 없음'}
-          errorMessage={communityComposeError}
-          onCancel={() => { setCommunityComposeError(null); safeSetViewStep('community'); }}
-          onSubmitPost={handleCreatePost}
-        />
-      )}
-
-      {/* 14. My Page (Settings) Screen */}
-      {viewStep === 'mypage' && (
-        <MyPageView
-          userName={userName}
-          userEmail={userEmail}
-          userRegion={apiReport?.region?.sidoName && apiReport?.region?.sigunguName ? `${apiReport.region.sidoName} ${apiReport.region.sigunguName}` : (selectedProvince && selectedDistrict ? `${selectedProvince} ${selectedDistrict}` : '지역 정보 없음')}
-          posts={posts}
-          onOpenAIChat={() => setIsAIChatOpen(true)}
-          activeTab={activeTab}
-          onTabChange={handleTabChange}
-          onGoToExplore={() => { setExploreMode('analyze'); safeSetViewStep('explore'); }}
-          onUpdateUserName={setUserName}
-          onLogout={handleLogout}
-          onToggleLike={handleToggleLike}
-          onToggleSave={handleToggleSave}
-          onAddComment={handleAddComment}
-        />
-      )}
+        {/* Unknown path: fall back to splash, which resolves to landing/dashboard once auth is known. */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
 
       {/* 15. Global Farmflate AI Bottom Sheet Modal */}
       <AIChatModal
         isOpen={isAIChatOpen}
         onClose={() => setIsAIChatOpen(false)}
-        regionAnalysisId={apiReport?.analysisId ?? null}
+        context={{
+          route: aiChatRouteFor(viewStep),
+          regionAnalysisId: apiReport?.analysisId ?? null,
+          fieldId: viewStep === 'field_dashboard' ? selectedField?.id ?? null : null,
+          reportDate: viewStep === 'field_dashboard' ? fieldChatReportDate : null
+        }}
       />
     </div>
   );

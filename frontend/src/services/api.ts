@@ -2,11 +2,15 @@ import type { ChatRequest, ChatResponse } from '../types/chat';
 import { normalizeRegionReport } from './reportLifecycle.ts';
 import type {
   CreateFieldRequest,
+  FieldActivityLog,
+  FieldDashboardResponse,
+  FieldLogCategory,
   FieldProfile,
   FieldSuitabilityPreview,
   RegionAnalysisRequest,
   RegionAnalysisStatus,
-  RegionReport
+  RegionReport,
+  TaskAcknowledgement
 } from '../types/report.ts';
 
 const viteEnv = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env ?? {};
@@ -14,11 +18,15 @@ const SPRING_BACKEND_URL = (viteEnv.VITE_API_BASE_URL ?? 'http://localhost:8080/
 
 export type {
   CreateFieldRequest,
+  FieldActivityLog,
+  FieldDashboardResponse,
+  FieldLogCategory,
   FieldProfile,
   FieldSuitabilityPreview,
   RegionAnalysisRequest,
   RegionAnalysisStatus,
-  RegionReport
+  RegionReport,
+  TaskAcknowledgement
 } from '../types/report.ts';
 
 export interface RegionDto {
@@ -43,6 +51,8 @@ export interface HomeData {
     minTemperature?: number | null;
     maxTemperature?: number | null;
     precipitationProbability?: number | null;
+    humidity?: number | null;
+    windSpeed?: number | null;
     condition?: 'SUNNY' | 'RAIN' | 'CLOUDY' | 'SNOW' | string | null;
     observedOrForecastAt?: string | null;
     isCached?: boolean | null;
@@ -52,7 +62,13 @@ export interface HomeData {
     analysisId: string;
     regionName?: string | null;
     score?: number | null;
-    topCrop?: { cropCode?: string | null; cropName?: string | null; score?: number | null; reason?: string | null } | null;
+    recommendedCrops?: Array<{
+      rank?: number | null;
+      cropCode?: string | null;
+      cropName?: string | null;
+      score?: number | null;
+      reason?: string | null;
+    }> | null;
     analyzedAt?: string | null;
   } | null;
 }
@@ -99,6 +115,15 @@ const normalizeFieldRisk = (value: unknown) => {
     actions: stringArray(risk.actions)
   };
 };
+const normalizeFieldAlert = (value: unknown) => {
+  const alert = isRecord(value) ? value : {};
+  return {
+    key: isString(alert.key) ? alert.key : '',
+    severity: (alert.severity === 'HIGH' || alert.severity === 'MEDIUM' || alert.severity === 'LOW') ? alert.severity : 'LOW',
+    title: isString(alert.title) ? alert.title : '',
+    description: isString(alert.description) ? alert.description : ''
+  } as const;
+};
 
 const getAuthHeaders = (): HeadersInit => {
   const token = typeof localStorage === 'undefined' ? null : (localStorage.getItem('jwtToken') || localStorage.getItem('token'));
@@ -138,7 +163,11 @@ const requestJson = async <T>(path: string, init?: RequestInit): Promise<T> => {
   try {
     response = await fetch(`${SPRING_BACKEND_URL}${path}`, init);
   } catch (error) {
-    throw new ApiError(0, 'NETWORK_ERROR', error instanceof Error ? error.message : '네트워크 요청에 실패했습니다.', null, true);
+    // The browser's native fetch failure message (e.g. "Failed to fetch",
+    // "NetworkError when attempting to fetch resource") is always in English
+    // and is shown to the user as-is elsewhere (e.g. AIChatModal's errorMessage),
+    // so it must never be surfaced directly -- always use a Korean message here.
+    throw new ApiError(0, 'NETWORK_ERROR', '네트워크 연결을 확인해 주세요.', error instanceof Error ? error.message : null, true);
   }
 
   const body = await parseBody(response);
@@ -214,7 +243,13 @@ const normalizeField = (input: unknown): FieldProfile => {
       prioritizedActions: stringArray(latestReport.prioritizedActions),
       keyRisks: Array.isArray(latestReport.keyRisks) ? latestReport.keyRisks.map(normalizeFieldRisk) : [],
       conditions: Array.isArray(latestReport.conditions) ? latestReport.conditions.map(normalizeFieldCondition) : []
-    } : null
+    } : null,
+    cultivationDay: isNumber(input.cultivationDay) ? input.cultivationDay : null,
+    dailyStatus: (input.dailyStatus === 'STABLE' || input.dailyStatus === 'CAUTION' || input.dailyStatus === 'NEEDS_CHECK') ? input.dailyStatus : null,
+    dailyStatusLabel: isString(input.dailyStatusLabel) ? input.dailyStatusLabel : null,
+    dailyHeadline: isString(input.dailyHeadline) ? input.dailyHeadline : null,
+    dailyReportDate: isString(input.dailyReportDate) ? input.dailyReportDate : null,
+    dailyAlerts: Array.isArray(input.dailyAlerts) ? input.dailyAlerts.map(normalizeFieldAlert) : []
   };
 };
 
@@ -245,6 +280,102 @@ const normalizeFieldPreview = (input: unknown): FieldSuitabilityPreview => {
   };
 };
 
+const normalizeFieldDashboard = (input: unknown): FieldDashboardResponse => {
+  if (!isRecord(input) || !isRecord(input.field) || !isRecord(input.report)) {
+    throw new ApiError(200, 'MALFORMED_FIELD_DASHBOARD', '밭 대시보드 응답이 올바르지 않습니다.', input, false);
+  }
+  const field = input.field;
+  const report = input.report;
+  const weather = isRecord(input.weather) ? input.weather : {};
+  const soil = isRecord(input.soil) ? input.soil : {};
+  const reasoning = isRecord(input.reasoning) ? input.reasoning : {};
+
+  if (!isString(field.id) || !isString(field.fieldName) || !isString(report.id) || !isString(report.status)) {
+    throw new ApiError(200, 'MALFORMED_FIELD_DASHBOARD', '밭 대시보드 응답이 올바르지 않습니다.', input, false);
+  }
+
+  const tasks = Array.isArray(input.tasks) ? input.tasks : [];
+  const alerts = Array.isArray(input.alerts) ? input.alerts : [];
+  const todayLogs = Array.isArray(input.todayLogs) ? input.todayLogs : [];
+  const history = Array.isArray(input.history) ? input.history : [];
+
+  return {
+    field: {
+      id: field.id,
+      fieldName: field.fieldName,
+      cropCode: isString(field.cropCode) ? field.cropCode : null,
+      cropName: isString(field.cropName) ? field.cropName : null,
+      regionName: isString(field.regionName) ? field.regionName : '지역 정보 없음',
+      cultivationStartDate: isString(field.cultivationStartDate) ? field.cultivationStartDate : null,
+      cultivationDay: isNumber(field.cultivationDay) ? field.cultivationDay : null,
+      stage: isString(field.stage) ? field.stage : null
+    },
+    report: {
+      id: report.id,
+      reportDate: isString(report.reportDate) ? report.reportDate : '',
+      generatedAt: isString(report.generatedAt) ? report.generatedAt : '',
+      generationReason: isString(report.generationReason) ? report.generationReason : '',
+      status: report.status as FieldDashboardResponse['report']['status'],
+      headline: isString(report.headline) ? report.headline : '',
+      headlineDescription: isString(report.headlineDescription) ? report.headlineDescription : '',
+      historical: Boolean(report.historical),
+      taskCountBeforeAcknowledgement: isNumber(report.taskCountBeforeAcknowledgement) ? report.taskCountBeforeAcknowledgement : tasks.length,
+      statusScore: isNumber(report.statusScore) ? report.statusScore : null,
+      statusScoreZone: isString(report.statusScoreZone) ? report.statusScoreZone : '확인 필요'
+    },
+    weather: {
+      status: weather.status === 'AVAILABLE' ? 'AVAILABLE' : 'UNAVAILABLE',
+      currentTemperature: isNumber(weather.currentTemperature) ? weather.currentTemperature : null,
+      minTemperature: isNumber(weather.minTemperature) ? weather.minTemperature : null,
+      maxTemperature: isNumber(weather.maxTemperature) ? weather.maxTemperature : null,
+      precipitationProbability: isNumber(weather.precipitationProbability) ? weather.precipitationProbability : null,
+      rainfallMm: isNumber(weather.rainfallMm) ? weather.rainfallMm : null,
+      humidity: isNumber(weather.humidity) ? weather.humidity : null,
+      windSpeed: isNumber(weather.windSpeed) ? weather.windSpeed : null,
+      condition: isString(weather.condition) ? weather.condition : null
+    },
+    soil: {
+      available: Boolean(soil.available),
+      ph: isNumber(soil.ph) ? soil.ph : null,
+      ec: isNumber(soil.ec) ? soil.ec : null
+    },
+    tasks: tasks.filter(isRecord).map(task => ({
+      key: isString(task.key) ? task.key : '',
+      title: isString(task.title) ? task.title : '',
+      description: isString(task.description) ? task.description : '',
+      badge: (task.badge === 'MORNING_RECOMMENDED' ? 'MORNING_RECOMMENDED' : 'CHECK_ANYTIME'),
+      acknowledged: Boolean(task.acknowledged)
+    })),
+    alerts: alerts.filter(isRecord).map(alert => ({
+      key: isString(alert.key) ? alert.key : '',
+      severity: (alert.severity === 'HIGH' || alert.severity === 'LOW' ? alert.severity : 'MEDIUM'),
+      title: isString(alert.title) ? alert.title : '',
+      description: isString(alert.description) ? alert.description : ''
+    })),
+    reasoning: {
+      summary: isString(reasoning.summary) ? reasoning.summary : '',
+      points: stringArray(reasoning.points)
+    },
+    todayLogs: todayLogs.filter(isRecord).map(log => ({
+      id: isString(log.id) ? log.id : '',
+      fieldId: isString(log.fieldId) ? log.fieldId : '',
+      category: (isString(log.category) ? log.category : 'OTHER') as FieldActivityLog['category'],
+      categoryLabel: isString(log.categoryLabel) ? log.categoryLabel : '기타',
+      note: isString(log.note) ? log.note : '',
+      loggedAt: isString(log.loggedAt) ? log.loggedAt : ''
+    })),
+    history: history.filter(isRecord).map(item => ({
+      date: isString(item.date) ? item.date : '',
+      status: isString(item.status) ? (item.status as FieldDashboardResponse['report']['status']) : null,
+      statusLabel: isString(item.statusLabel) ? item.statusLabel : '확인 필요',
+      logLabels: stringArray(item.logLabels),
+      reportAvailable: Boolean(item.reportAvailable),
+      keyMetric: isString(item.keyMetric) ? item.keyMetric : null,
+      managementSummary: isString(item.managementSummary) ? item.managementSummary : null
+    }))
+  };
+};
+
 const sidosCache: { data: RegionDto[] | null } = { data: null };
 const sigungusCacheMap = new Map<string, RegionDto[]>();
 
@@ -261,8 +392,8 @@ export const ApiService = {
     });
   },
 
-  async getSidos(): Promise<RegionDto[]> {
-    if (sidosCache.data) return sidosCache.data;
+  async getSidos(options?: { force?: boolean }): Promise<RegionDto[]> {
+    if (!options?.force && sidosCache.data) return sidosCache.data;
     const response = await requestJson<unknown>('/regions/sidos', { headers: getAuthHeaders() });
     if (!Array.isArray(response)) throw new ApiError(200, 'MALFORMED_SIDOS', '시/도 목록 응답이 올바르지 않습니다.', response, false);
     const parsed = response.map(region => {
@@ -275,8 +406,8 @@ export const ApiService = {
     return parsed;
   },
 
-  async getSigungus(sidoCode: string): Promise<RegionDto[]> {
-    if (sigungusCacheMap.has(sidoCode)) {
+  async getSigungus(sidoCode: string, options?: { force?: boolean }): Promise<RegionDto[]> {
+    if (!options?.force && sigungusCacheMap.has(sidoCode)) {
       return sigungusCacheMap.get(sidoCode)!;
     }
     const response = await requestJson<unknown>(`/regions/sidos/${encodeURIComponent(sidoCode)}/sigungus`, { headers: getAuthHeaders() });
@@ -339,26 +470,71 @@ export const ApiService = {
     return fields.map(normalizeField);
   },
 
+  async getFieldDashboard(fieldId: string, date?: string): Promise<FieldDashboardResponse> {
+    const query = date ? `?date=${encodeURIComponent(date)}` : '';
+    const raw = await requestJson<unknown>(`/fields/${encodeURIComponent(fieldId)}/dashboard${query}`, { headers: getAuthHeaders() });
+    return normalizeFieldDashboard(raw);
+  },
+
+  async acknowledgeFieldTask(fieldId: string, reportDate: string, taskKey: string): Promise<TaskAcknowledgement> {
+    return requestJson<TaskAcknowledgement>(
+      `/fields/${encodeURIComponent(fieldId)}/daily-reports/${encodeURIComponent(reportDate)}/tasks/${encodeURIComponent(taskKey)}/acknowledgement`,
+      { method: 'PUT', headers: getAuthHeaders() }
+    );
+  },
+
+  async createFieldLog(
+    fieldId: string,
+    payload: { category: FieldLogCategory; note: string },
+    idempotencyKey: string
+  ): Promise<FieldActivityLog> {
+    return requestJson<FieldActivityLog>(`/fields/${encodeURIComponent(fieldId)}/logs`, {
+      method: 'POST',
+      headers: { ...jsonHeaders(), 'Idempotency-Key': idempotencyKey },
+      body: JSON.stringify(payload)
+    });
+  },
+
   async getCommunityPosts(): Promise<unknown[]> {
     const response = await requestJson<unknown>('/community/posts', { headers: getAuthHeaders() });
     if (!Array.isArray(response)) throw new ApiError(200, 'MALFORMED_COMMUNITY_POSTS', '게시글 목록 응답이 올바르지 않습니다.', response, false);
     return response;
   },
 
-  async createCommunityPost(payload: { category: string; tagLocation: string; title: string; content: string; author?: string; imageUrl?: string }): Promise<unknown> {
+  async createCommunityPost(payload: { title: string; content: string; attachmentIds?: string[] }): Promise<unknown> {
     return requestJson<unknown>('/community/posts', { method: 'POST', headers: jsonHeaders(), body: JSON.stringify(payload) });
   },
 
   async likeCommunityPost(postId: string): Promise<unknown> {
-    return requestJson<unknown>(`/community/posts/${encodeURIComponent(postId)}/like`, { method: 'POST', headers: getAuthHeaders() });
+    return requestJson<unknown>(`/community/posts/${encodeURIComponent(postId)}/like`, { method: 'PUT', headers: getAuthHeaders() });
+  },
+
+  async unlikeCommunityPost(postId: string): Promise<unknown> {
+    return requestJson<unknown>(`/community/posts/${encodeURIComponent(postId)}/like`, { method: 'DELETE', headers: getAuthHeaders() });
   },
 
   async saveCommunityPost(postId: string): Promise<{ postId: number; isSaved: boolean }> {
     return requestJson<{ postId: number; isSaved: boolean }>(`/community/posts/${encodeURIComponent(postId)}/save`, { method: 'POST', headers: getAuthHeaders() });
   },
 
-  async addCommunityComment(postId: string, payload: { author?: string; content: string }): Promise<unknown> {
+  async addCommunityComment(postId: string, payload: { content: string }): Promise<unknown> {
     return requestJson<unknown>(`/community/posts/${encodeURIComponent(postId)}/comments`, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify(payload) });
+  },
+
+  async uploadCommunityImage(file: File): Promise<{ id: string; type: string; name: string; url: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return requestJson('/community/attachments/images', { method: 'POST', headers: getAuthHeaders(), body: formData });
+  },
+
+  async uploadCommunityFile(file: File): Promise<{ id: string; type: string; name: string; url: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return requestJson('/community/attachments/files', { method: 'POST', headers: getAuthHeaders(), body: formData });
+  },
+
+  async createCommunityLink(url: string): Promise<{ id: string; type: string; name: string; url: string }> {
+    return requestJson('/community/attachments/links', { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ url }) });
   },
 
   async submitInquiry(payload: { inquiryText: string; category?: string }): Promise<{ status: string; inquiryId: string }> {

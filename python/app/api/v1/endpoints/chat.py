@@ -8,7 +8,7 @@ from app.services.ai_service import ai_service
 router = APIRouter(dependencies=[Depends(verify_internal_key)])
 
 
-@router.post("/", response_model=ChatResponse)
+@router.post("", response_model=ChatResponse)
 async def chat_endpoint(request: ChatRequest):
     try:
         return await ai_service.process_chat(request)

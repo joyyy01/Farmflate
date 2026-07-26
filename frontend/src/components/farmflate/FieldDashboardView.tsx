@@ -1,30 +1,87 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft, ChevronDown, ChevronRight, RefreshCw, Droplet, Search,
-  Sun, Wind, CloudRain, AlertTriangle, Lightbulb, Bot
+  AlertTriangle, Lightbulb, Bot, Shield, ClipboardList
 } from 'lucide-react';
 import type { FieldProfile } from '../../types/report';
-import { fetchFieldDailyReport, cropPhRangeText, type FieldDailyReport, type ConditionStatus } from '../../services/fieldEnvironmentService';
-import {
-  getFieldLogs, addFieldLog, getSoilTestResult, saveSoilTestResult,
-  type FieldLogEntry, type FieldLogCategory, type SoilTestResult
-} from '../../services/fieldLogService';
+import type { FieldActivityLog, FieldDashboardResponse, FieldLogCategory } from '../../types/report';
+import { ApiService, ApiError } from '../../services/api';
+import { displayStage, FIELD_STATUS_LABELS, LOG_CATEGORY_LABELS } from '../../constants/displayLabels';
 
 interface FieldDashboardViewProps {
   field: FieldProfile;
   onBack: () => void;
   onOpenAIChat: () => void;
+  onDateChange?: (date: string | null) => void;
 }
 
-const TASK_ICONS = { water: Droplet, search: Search };
-const ALERT_ICONS = { sun: Sun, wind: Wind, rain: CloudRain };
-const LOG_CATEGORIES: FieldLogCategory[] = ['물주기', '비료', '잎 상태 확인', '병해충 방제', '기타'];
+const LOG_CATEGORIES: FieldLogCategory[] = ['WATERING', 'FERTILIZING', 'LEAF_CHECK', 'PEST_CONTROL', 'OTHER'];
 
-const STATUS_STYLE: Record<ConditionStatus, { bg: string; color: string; border: string }> = {
-  good: { bg: '#EDF7ED', color: '#2FA86A', border: '#D4EDDA' },
-  caution: { bg: '#FEF7E8', color: '#D97706', border: '#FCE8C1' },
-  bad: { bg: '#FDEDEC', color: '#DC2626', border: '#F6CFCB' }
+const STATUS_STYLE: Record<FieldDashboardResponse['report']['status'], { bg: string; color: string; border: string }> = {
+  STABLE: { bg: '#EDF7ED', color: '#2FA86A', border: '#D4EDDA' },
+  CAUTION: { bg: '#FEF7E8', color: '#D97706', border: '#FCE8C1' },
+  NEEDS_CHECK: { bg: '#FDEDEC', color: '#DC2626', border: '#F6CFCB' }
+};
+
+const SEVERITY_COLOR: Record<string, string> = { HIGH: '#DC2626', MEDIUM: '#D97706', LOW: '#8d9590' };
+
+const ZONE_COLOR: Record<string, string> = { '적정': '#2FA86A', '주의': '#D97706', '위험': '#DC2626', '확인 필요': '#8d9590' };
+
+/** Task key → the log category it most naturally corresponds to, so "기록 남기기" can preselect it. */
+const TASK_LOG_CATEGORY: Record<string, FieldLogCategory> = {
+  CHECK_SOIL_MOISTURE: 'WATERING',
+  CHECK_LEAF_CONDITION: 'LEAF_CHECK',
+  CHECK_DRAINAGE: 'OTHER',
+  CHECK_SUPPORT_STAKES: 'OTHER',
+  CHECK_FIELD_DIRECTLY: 'OTHER'
+};
+
+/** Task key → icon component (B7: icon by task type, not badge). */
+const TASK_ICON: Record<string, React.FC<{ size?: number; color?: string }>> = {
+  CHECK_SOIL_MOISTURE: Droplet,
+  CHECK_LEAF_CONDITION: Search,
+  CHECK_DRAINAGE: Droplet,
+  CHECK_SUPPORT_STAKES: Shield,
+  CHECK_FIELD_DIRECTLY: Search
+};
+
+const StatusGauge: React.FC<{ score: number | null; zone: string }> = ({ score, zone }) => {
+  const color = ZONE_COLOR[zone] ?? '#8d9590';
+  const pct = score == null ? null : Math.max(0, Math.min(100, score));
+  return (
+    <div>
+      <div style={{
+        position: 'relative', height: 10, borderRadius: 6,
+        background: 'linear-gradient(to right, #2FA86A 0%, #2FA86A 30%, #D97706 30%, #D97706 65%, #DC2626 65%, #DC2626 100%)'
+      }}>
+        {pct != null && (
+          <>
+            {/* 말풍선 툴팁 */}
+            <div style={{
+              position: 'absolute', bottom: '100%', left: `calc(${pct}% - 16px)`, marginBottom: 6,
+              backgroundColor: '#191F28', color: '#FFFFFF', fontSize: '0.72rem', fontWeight: 900,
+              padding: '3px 8px', borderRadius: 8, whiteSpace: 'nowrap', textAlign: 'center', minWidth: 32
+            }}>
+              {score}
+              <div style={{
+                position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
+                width: 0, height: 0, borderLeft: '5px solid transparent', borderRight: '5px solid transparent',
+                borderTop: '5px solid #191F28'
+              }} />
+            </div>
+            <div style={{
+              position: 'absolute', top: -3, left: `calc(${pct}% - 8px)`, width: 16, height: 16,
+              borderRadius: '50%', background: '#FFFFFF', border: `3px solid ${color}`, boxShadow: '0 1px 3px rgba(0,0,0,0.25)'
+            }} />
+          </>
+        )}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: '0.66rem', color: '#9CA3AF', fontWeight: 700 }}>
+        <span>적정</span><span>주의</span><span>위험</span>
+      </div>
+    </div>
+  );
 };
 
 const GLOSSARY: { key: string; title: string; body: string }[] = [
@@ -37,23 +94,28 @@ const GLOSSARY: { key: string; title: string; body: string }[] = [
   { key: '기타 용어', title: '기타 용어', body: '추가 용어 설명은 준비 중이에요.' }
 ];
 
-const stageLabel = (stage?: string | null) => {
-  if (stage === 'before') return '심기 전';
-  if (stage === 'growing') return '생장기';
-  return stage || '단계 정보 없음';
+const formatKoreanDate = (iso: string) => {
+  const date = new Date(iso + 'T00:00:00');
+  const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
+  return `${date.getMonth() + 1}월 ${date.getDate()}일 (${weekdays[date.getDay()]})`;
 };
 
-const formatAsOf = (timestamp: number) => {
-  const date = new Date(timestamp);
+const formatAsOf = (iso: string) => {
+  if (!iso) return '';
+  const date = new Date(iso);
   const isToday = new Date().toDateString() === date.toDateString();
   const time = new Intl.DateTimeFormat('ko-KR', { hour: '2-digit', minute: '2-digit' }).format(date);
   return isToday ? `오늘 ${time}` : new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric' }).format(date) + ` ${time}`;
 };
 
-const formatLogDate = (iso: string) => {
-  const date = new Date(iso);
-  const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
-  return `${date.getMonth() + 1}월 ${date.getDate()}일 (${weekdays[date.getDay()]})`;
+const displayMetric = (value: number | null | undefined, suffix: string): string =>
+  value == null ? '데이터 없음' : `${value}${suffix}`;
+
+const historyThStyle: React.CSSProperties = {
+  textAlign: 'left', padding: '10px 12px', fontSize: '0.7rem', fontWeight: 800, color: '#8d9590', whiteSpace: 'nowrap'
+};
+const historyTdStyle: React.CSSProperties = {
+  padding: '10px 12px', fontSize: '0.76rem', color: '#191F28', verticalAlign: 'middle'
 };
 
 const StatTile: React.FC<{ label: string; value: string; caption?: string }> = ({ label, value, caption }) => (
@@ -64,17 +126,17 @@ const StatTile: React.FC<{ label: string; value: string; caption?: string }> = (
   </div>
 );
 
-const LogHistory: React.FC<{ logs: FieldLogEntry[] }> = ({ logs }) => {
+const LogHistory: React.FC<{ logs: FieldActivityLog[] }> = ({ logs }) => {
   if (logs.length === 0) {
     return (
       <div style={{ backgroundColor: '#F8FAF8', border: '1px solid #E5E8EB', borderRadius: 16, padding: 20, textAlign: 'center', color: '#8d9590', fontSize: '0.82rem' }}>
-        아직 기록이 없어요. "오늘의 기록 남기기"로 첫 기록을 남겨보세요.
+        아직 오늘 기록이 없어요. 아래에서 첫 기록을 남겨보세요.
       </div>
     );
   }
   return (
     <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E5E8EB', borderRadius: 16, overflow: 'hidden' }}>
-      {logs.slice(0, 7).map((log, idx, arr) => (
+      {logs.map((log, idx, arr) => (
         <div
           key={log.id}
           style={{
@@ -82,9 +144,8 @@ const LogHistory: React.FC<{ logs: FieldLogEntry[] }> = ({ logs }) => {
             borderBottom: idx === arr.length - 1 ? 'none' : '1px solid #F1F5F9'
           }}
         >
-          <span style={{ fontSize: '0.76rem', color: '#6F7772', width: 78, flexShrink: 0 }}>{formatLogDate(log.loggedAt)}</span>
           <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#2FA86A', backgroundColor: '#EDF7ED', padding: '3px 8px', borderRadius: 8, flexShrink: 0 }}>
-            {log.category}
+            {log.categoryLabel}
           </span>
           <span style={{ fontSize: '0.78rem', color: '#191F28', flex: 1, fontWeight: 500 }}>{log.note || '메모 없음'}</span>
         </div>
@@ -93,97 +154,151 @@ const LogHistory: React.FC<{ logs: FieldLogEntry[] }> = ({ logs }) => {
   );
 };
 
-export const FieldDashboardView: React.FC<FieldDashboardViewProps> = ({ field, onBack, onOpenAIChat }) => {
+export const FieldDashboardView: React.FC<FieldDashboardViewProps> = ({ field, onBack, onOpenAIChat, onDateChange }) => {
   const [activeSubTab, setActiveSubTab] = useState<'dashboard' | 'environment'>('dashboard');
-  const [report, setReport] = useState<FieldDailyReport | null>(null);
-  const [completedTaskIds, setCompletedTaskIds] = useState<string[]>([]);
+  const [selectedDate, setSelectedDate] = useState<string | undefined>();
+  const [dashboard, setDashboard] = useState<FieldDashboardResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [acknowledgingTaskKey, setAcknowledgingTaskKey] = useState<string | null>(null);
   const [showReasoning, setShowReasoning] = useState(false);
-  const [logs, setLogs] = useState<FieldLogEntry[]>(() => getFieldLogs(field.id));
   const [showLogForm, setShowLogForm] = useState(false);
-  const [logCategory, setLogCategory] = useState<FieldLogCategory>('물주기');
+  const [logCategory, setLogCategory] = useState<FieldLogCategory>('WATERING');
   const [logNote, setLogNote] = useState('');
-  const [soilTest, setSoilTest] = useState<SoilTestResult | null>(() => getSoilTestResult(field.id));
-  const [showSoilForm, setShowSoilForm] = useState(false);
-  const [soilPhInput, setSoilPhInput] = useState('');
-  const [soilEcInput, setSoilEcInput] = useState('');
+  const [submittingLog, setSubmittingLog] = useState(false);
+  const [logError, setLogError] = useState<string | null>(null);
   const [expandedTerm, setExpandedTerm] = useState<string | null>(null);
+  const logSectionRef = useRef<HTMLHeadingElement>(null);
 
-  const loadReport = () => {
-    void fetchFieldDailyReport(field.id, field.cropName).then(setReport);
+  const startLogForTask = (taskKey: string) => {
+    setLogCategory(TASK_LOG_CATEGORY[taskKey] ?? 'OTHER');
+    setShowLogForm(true);
+    requestAnimationFrame(() => logSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  };
+
+  const reload = () => {
+    let current = true;
+    setLoading(true);
+    setError(null);
+
+    ApiService.getFieldDashboard(field.id, selectedDate)
+      .then(data => { if (current) setDashboard(data); })
+      .catch(err => {
+        if (!current) return;
+        setError(err instanceof ApiError ? err.message : '밭 정보를 불러오지 못했습니다.');
+      })
+      .finally(() => { if (current) setLoading(false); });
+
+    return () => { current = false; };
   };
 
   useEffect(() => {
-    loadReport();
-    setLogs(getFieldLogs(field.id));
-    setSoilTest(getSoilTestResult(field.id));
+    const cleanup = reload();
+    return cleanup;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [field.id, field.cropName]);
+  }, [field.id, selectedDate]);
 
-  const daysPlanted = field.cultivationStartDate
-    ? Math.max(1, Math.floor((Date.now() - new Date(field.cultivationStartDate).getTime()) / (24 * 60 * 60 * 1000)) + 1)
-    : null;
+  useEffect(() => {
+    onDateChange?.(dashboard?.report.reportDate ?? null);
+  }, [dashboard?.report.reportDate, onDateChange]);
 
-  const toggleTaskComplete = (taskId: string) => {
-    setCompletedTaskIds(prev => prev.includes(taskId) ? prev.filter(id => id !== taskId) : [...prev, taskId]);
+  const acknowledgeTask = async (taskKey: string) => {
+    if (!dashboard || dashboard.report.historical || acknowledgingTaskKey) return;
+    const previous = dashboard;
+    setAcknowledgingTaskKey(taskKey);
+    setDashboard(current => current ? { ...current, tasks: current.tasks.filter(task => task.key !== taskKey) } : current);
+
+    try {
+      await ApiService.acknowledgeFieldTask(field.id, dashboard.report.reportDate, taskKey);
+    } catch (err) {
+      setDashboard(previous);
+      setError(err instanceof ApiError ? err.message : '할 일 확인을 저장하지 못했습니다.');
+    } finally {
+      setAcknowledgingTaskKey(null);
+    }
   };
 
-  const submitLog = () => {
-    if (!logNote.trim()) return;
-    const next = addFieldLog(field.id, logCategory, logNote.trim());
-    setLogs(next);
-    setLogNote('');
-    setShowLogForm(false);
+  const submitLog = async () => {
+    if (submittingLog || dashboard?.report.historical) return;
+    setSubmittingLog(true);
+    setLogError(null);
+    try {
+      const created = await ApiService.createFieldLog(
+        field.id,
+        { category: logCategory, note: logNote.trim() },
+        crypto.randomUUID()
+      );
+      setDashboard(current => current ? { ...current, todayLogs: [created, ...current.todayLogs] } : current);
+      setLogNote('');
+      setShowLogForm(false);
+    } catch (err) {
+      setLogError(err instanceof ApiError ? err.message : '기록을 저장하지 못했습니다.');
+    } finally {
+      setSubmittingLog(false);
+    }
   };
 
-  const submitSoilTest = () => {
-    const ph = soilPhInput.trim() ? Number(soilPhInput) : null;
-    const ec = soilEcInput.trim() ? Number(soilEcInput) : null;
-    if (ph === null && ec === null) return;
-    const result: SoilTestResult = { ph, ec, testedAt: new Date().toISOString().slice(0, 10) };
-    saveSoilTestResult(field.id, result);
-    setSoilTest(result);
-    setShowSoilForm(false);
-  };
-
-  if (!report) {
-    return <div className="full-screen-view" style={{ padding: 20 }} />;
+  if (loading) {
+    return <div className="full-screen-view" style={{ padding: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8d9590' }}>불러오는 중...</div>;
+  }
+  if (error || !dashboard) {
+    return (
+      <div className="full-screen-view" style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignSelf: 'flex-start' }}>
+          <ArrowLeft size={22} color="#191F28" />
+        </button>
+        <div role="alert" style={{ backgroundColor: '#FFF4F2', border: '1px solid #F3CCC5', borderRadius: 14, padding: 20, color: '#A43A2F', fontSize: '0.86rem' }}>
+          {error || '표시할 밭 정보가 없습니다.'}
+        </div>
+        <button onClick={reload} style={{ alignSelf: 'flex-start', border: 'none', background: 'none', color: '#2FA86A', fontWeight: 800, cursor: 'pointer' }}>다시 시도</button>
+      </div>
+    );
   }
 
-  const activeTasks = report.tasks.filter(t => !completedTaskIds.includes(t.id));
-  const completedTasks = report.tasks.filter(t => completedTaskIds.includes(t.id));
-  const headlineStyle = STATUS_STYLE[report.headlineLevel];
-  const phRangeText = cropPhRangeText(field.cropName);
+  const headlineStyle = STATUS_STYLE[dashboard.report.status] ?? STATUS_STYLE.NEEDS_CHECK;
+  const allAcknowledged = dashboard.report.taskCountBeforeAcknowledgement > 0 && dashboard.tasks.length === 0;
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
       <div className="full-screen-view no-scrollbar" style={{ padding: '20px 20px 40px 20px', overflowY: 'auto' }}>
 
-        {/* Back button */}
         <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginBottom: 16, display: 'flex' }}>
           <ArrowLeft size={22} color="#191F28" />
         </button>
 
-        {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <h2 style={{ fontSize: '1.35rem', fontWeight: 900, color: '#191F28', margin: 0 }}>{field.fieldName}</h2>
+            <h2 style={{ fontSize: '1.35rem', fontWeight: 900, color: '#191F28', margin: 0 }}>{dashboard.field.fieldName}</h2>
             <ChevronDown size={18} color="#8E9892" />
           </div>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: '0.68rem', color: '#9CA3AF', marginBottom: 2 }}>마지막 업데이트</div>
-            <button onClick={loadReport} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, padding: 0 }}>
-              <span style={{ fontSize: '0.76rem', color: '#526157', fontWeight: 700 }}>{formatAsOf(report.generatedAt)}</span>
-              <RefreshCw size={12} color="#526157" />
-            </button>
-          </div>
+          {!dashboard.report.historical && (
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: '0.68rem', color: '#9CA3AF', marginBottom: 2 }}>마지막 업데이트</div>
+              <button onClick={reload} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, padding: 0 }}>
+                <span style={{ fontSize: '0.76rem', color: '#526157', fontWeight: 700 }}>{formatAsOf(dashboard.report.generatedAt)}</span>
+                <RefreshCw size={12} color="#526157" />
+              </button>
+            </div>
+          )}
         </div>
-        <div style={{ fontSize: '0.82rem', color: '#6F7772', fontWeight: 600, marginBottom: 20 }}>
-          {field.cropName || '작물 정보 없음'}
-          {daysPlanted ? ` · 재배 ${daysPlanted}일차` : ''}
-          {` · ${stageLabel(field.stage)}`}
+        <div style={{ fontSize: '0.82rem', color: '#6F7772', fontWeight: 600, marginBottom: 12 }}>
+          {dashboard.field.cropName || '작물 정보 없음'}
+          {dashboard.field.cultivationDay ? ` · 재배 ${dashboard.field.cultivationDay}일차` : ''}
+          {` · ${displayStage(dashboard.field.stage)}`}
+          {` · ${dashboard.field.regionName}`}
         </div>
 
-        {/* Tabs */}
+        {dashboard.report.historical && (
+          <div style={{ backgroundColor: '#F1F5F9', borderRadius: 14, padding: '10px 16px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#3D4A5C' }}>
+              {formatKoreanDate(dashboard.report.reportDate)} 기록
+            </span>
+            <button onClick={() => setSelectedDate(undefined)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2FA86A', fontSize: '0.8rem', fontWeight: 800 }}>
+              오늘로 돌아가기
+            </button>
+          </div>
+        )}
+
         <div style={{ display: 'flex', backgroundColor: '#FFFFFF', border: '1px solid #E5E8EB', borderRadius: 14, padding: 4, marginBottom: 20 }}>
           {(['dashboard', 'environment'] as const).map(tab => (
             <button
@@ -203,31 +318,29 @@ export const FieldDashboardView: React.FC<FieldDashboardViewProps> = ({ field, o
 
         {activeSubTab === 'dashboard' ? (
           <>
-            {/* 오늘 상태 */}
+            {/* 0+1. 오늘 상태 + 종합 상태 점수 (통합 카드) */}
             <div style={{
               backgroundColor: headlineStyle.bg, border: `1px solid ${headlineStyle.border}`, borderRadius: 18,
-              padding: '18px 18px', marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+              padding: '18px 18px', marginBottom: 24
             }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                  {report.headlineLevel !== 'good' && <AlertTriangle size={18} color={headlineStyle.color} />}
-                  <strong style={{ fontSize: '1.05rem', fontWeight: 900, color: '#191F28' }}>{report.headline}</strong>
-                </div>
-                <p style={{ margin: 0, fontSize: '0.82rem', color: '#526157', lineHeight: 1.5 }}>{report.headlineDescription}</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                {dashboard.report.status !== 'STABLE' && <AlertTriangle size={18} color={headlineStyle.color} />}
+                <strong style={{ fontSize: '1.05rem', fontWeight: 900, color: '#191F28' }}>{dashboard.report.headline}</strong>
               </div>
-              <Sun size={40} color="#F2B84B" style={{ flexShrink: 0, marginLeft: 12 }} />
+              <p style={{ margin: '0 0 14px', fontSize: '0.82rem', color: '#526157', lineHeight: 1.5 }}>{dashboard.report.headlineDescription}</p>
+              <StatusGauge score={dashboard.report.statusScore} zone={dashboard.report.statusScoreZone} />
+              <span style={{ display: 'inline-block', marginTop: 10, fontSize: '0.7rem', fontWeight: 800, color: headlineStyle.color, backgroundColor: '#FFFFFF', padding: '3px 10px', borderRadius: 8 }}>
+                {FIELD_STATUS_LABELS[dashboard.report.status] ?? '확인 필요'}
+              </span>
             </div>
 
-            {/* 오늘 꼭 해야 할 일 */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <h3 style={{ fontSize: '1.02rem', fontWeight: 900, color: '#191F28', margin: 0 }}>오늘 꼭 해야 할 일</h3>
-              <span style={{ fontSize: '0.82rem', color: '#6F7772', fontWeight: 700 }}>{completedTasks.length}/{report.tasks.length}</span>
-            </div>
+            {/* 2. 오늘 꼭 해야 할 일 */}
+            <h3 style={{ fontSize: '1.02rem', fontWeight: 900, color: '#191F28', margin: '0 0 12px' }}>오늘 꼭 해야 할 일</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 24 }}>
-              {activeTasks.map(task => {
-                const Icon = TASK_ICONS[task.icon];
+              {dashboard.tasks.map(task => {
+                const Icon = TASK_ICON[task.key] ?? Search;
                 return (
-                  <div key={task.id} style={{ backgroundColor: '#FFFFFF', border: '1px solid #E5E8EB', borderRadius: 16, padding: 16 }}>
+                  <div key={task.key} style={{ backgroundColor: '#FFFFFF', border: '1px solid #E5E8EB', borderRadius: 16, padding: 16 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <div style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: '#EAF6EE', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -236,230 +349,236 @@ export const FieldDashboardView: React.FC<FieldDashboardViewProps> = ({ field, o
                         <strong style={{ fontSize: '0.92rem', fontWeight: 800, color: '#191F28' }}>{task.title}</strong>
                       </div>
                       <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#D97706', backgroundColor: '#FEF7E8', padding: '3px 8px', borderRadius: 8, flexShrink: 0, marginLeft: 8 }}>
-                        {task.urgency}
+                        {task.badge === 'MORNING_RECOMMENDED' ? '오전 권장' : '수시 확인'}
                       </span>
                     </div>
                     <p style={{ margin: '0 0 12px 44px', fontSize: '0.78rem', color: '#6F7772', lineHeight: 1.5 }}>{task.description}</p>
-                    <div style={{ marginLeft: 44 }}>
-                      <button
-                        onClick={() => toggleTaskComplete(task.id)}
-                        style={{ backgroundColor: '#2FA86A', color: '#FFFFFF', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer' }}
-                      >
-                        확인했어요
-                      </button>
-                    </div>
+                    {!dashboard.report.historical && (
+                      <div style={{ marginLeft: 44, display: 'flex', gap: 8 }}>
+                        <button
+                          onClick={() => acknowledgeTask(task.key)}
+                          disabled={acknowledgingTaskKey === task.key}
+                          style={{ backgroundColor: '#2FA86A', color: '#FFFFFF', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer', opacity: acknowledgingTaskKey === task.key ? 0.6 : 1 }}
+                        >
+                          확인했어요
+                        </button>
+                        {task.badge === 'MORNING_RECOMMENDED' && (
+                          <button
+                            onClick={() => startLogForTask(task.key)}
+                            style={{ backgroundColor: '#FFFFFF', color: '#2FA86A', border: '1px solid #BFE3CD', borderRadius: 10, padding: '8px 14px', fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer' }}
+                          >
+                            기록 남기기
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}
-              {activeTasks.length === 0 && (
+              {dashboard.tasks.length === 0 && (
                 <div style={{ backgroundColor: '#F8FAF8', borderRadius: 14, padding: '14px', fontSize: '0.82rem', color: '#8d9590', textAlign: 'center' }}>
-                  오늘 할 일을 모두 확인했어요.
+                  {allAcknowledged ? '오늘 할 일을 모두 확인했어요.' : '오늘 추가로 안내할 관리 작업이 없어요.'}
                 </div>
               )}
             </div>
 
-            {/* 오늘의 주의·위험 */}
-            {report.alerts.length > 0 && (
-              <>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                  <h3 style={{ fontSize: '1.02rem', fontWeight: 900, color: '#191F28', margin: 0 }}>오늘의 주의·위험</h3>
-                  <span style={{ fontSize: '0.82rem', color: '#6F7772', fontWeight: 700 }}>{report.alerts.length}건</span>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 24 }}>
-                  {report.alerts.map(alert => {
-                    const Icon = ALERT_ICONS[alert.icon];
-                    return (
-                      <div
-                        key={alert.id}
-                        style={{
-                          backgroundColor: '#FEFBF2', border: '1px solid #FCE8C1', borderRadius: 16, padding: '14px 16px',
-                          display: 'flex', alignItems: 'flex-start', gap: 12
-                        }}
-                      >
-                        <Icon size={20} color="#D97706" style={{ flexShrink: 0, marginTop: 2 }} />
-                        <div style={{ flex: 1 }}>
-                          <strong style={{ display: 'block', fontSize: '0.88rem', fontWeight: 800, color: '#191F28', marginBottom: 3 }}>{alert.title}</strong>
-                          <p style={{ margin: 0, fontSize: '0.78rem', color: '#6F7772', lineHeight: 1.5 }}>{alert.description}</p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-
-            {/* 오늘 재배 환경 */}
-            <h3 style={{ fontSize: '1.02rem', fontWeight: 900, color: '#191F28', margin: '0 0 4px' }}>오늘 재배 환경</h3>
-            <p style={{ margin: '0 0 12px', fontSize: '0.76rem', color: '#8d9590' }}>오늘 작물이 자라는 데 영향을 주는 날씨를 한눈에 확인해보세요.</p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 10 }}>
-              <StatTile label="현재 기온" value={`${report.weather.currentTemp}℃`} caption="지금 작물이 느끼는 공기 온도예요." />
-              <StatTile label="최고·최저 기온" value={`${report.weather.maxTemp}℃/${report.weather.minTemp}℃`} caption="오늘 예상되는 온도예요." />
-              <StatTile label="강수확률" value={`${report.weather.precipitationProbability}%`} caption="오늘 비가 올 가능성이에요." />
-              <StatTile label="습도" value={`${report.weather.humidity}%`} caption="공기 중 수분의 양이에요." />
-            </div>
-            <button
-              onClick={() => setActiveSubTab('environment')}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2FA86A', fontSize: '0.82rem', fontWeight: 800, display: 'block', margin: '0 auto 24px' }}
-            >
-              전체 환경 데이터 보기 ›
-            </button>
-
-            {/* 오늘의 기록 */}
-            <h3 style={{ fontSize: '1.02rem', fontWeight: 900, color: '#191F28', margin: '0 0 12px' }}>오늘의 기록</h3>
-            <div style={{ backgroundColor: '#F8FAF8', border: '1px solid #E5E8EB', borderRadius: 18, padding: 18, marginBottom: 24 }}>
-              {!showLogForm ? (
-                <>
-                  <p style={{ margin: '0 0 14px', fontSize: '0.8rem', color: '#526157', lineHeight: 1.6 }}>
-                    오늘 한 일을 기록해보세요.<br />물주기, 비료, 방제, 잎 상태 등을 기록하면 다음 업데이트에 반영돼요.
-                  </p>
-                  <motion.button
-                    whileTap={{ scale: 0.98 }}
-                    className="btn-farm-primary"
-                    onClick={() => setShowLogForm(true)}
-                    style={{ width: '100%', height: 48, fontSize: '0.9rem', borderRadius: 14 }}
-                  >
-                    + 오늘의 기록 남기기
-                  </motion.button>
-                </>
-              ) : (
-                <div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
-                    {LOG_CATEGORIES.map(cat => (
-                      <button
-                        key={cat}
-                        onClick={() => setLogCategory(cat)}
-                        style={{
-                          border: logCategory === cat ? 'none' : '1px solid #D1DFD7',
-                          backgroundColor: logCategory === cat ? '#2FA86A' : '#FFFFFF',
-                          color: logCategory === cat ? '#FFFFFF' : '#526157',
-                          borderRadius: 10, padding: '6px 12px', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer'
-                        }}
-                      >
-                        {cat}
-                      </button>
-                    ))}
-                  </div>
-                  <textarea
-                    value={logNote}
-                    onChange={(e) => setLogNote(e.target.value)}
-                    placeholder="오늘 한 일을 적어주세요 (예: 오전에 물 흠뻑 줌)"
-                    style={{ width: '100%', minHeight: 70, borderRadius: 12, border: '1px solid #D1DFD7', padding: 10, fontSize: '0.82rem', marginBottom: 10, resize: 'vertical', boxSizing: 'border-box' }}
-                  />
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button onClick={submitLog} style={{ flex: 1, backgroundColor: '#2FA86A', color: '#FFFFFF', border: 'none', borderRadius: 12, padding: '10px 0', fontSize: '0.84rem', fontWeight: 800, cursor: 'pointer' }}>저장</button>
-                    <button onClick={() => { setShowLogForm(false); setLogNote(''); }} style={{ flex: 1, backgroundColor: '#FFFFFF', color: '#6F7772', border: '1px solid #D1DFD7', borderRadius: 12, padding: '10px 0', fontSize: '0.84rem', fontWeight: 800, cursor: 'pointer' }}>취소</button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* 왜 이렇게 안내했나요? */}
-            <h3 style={{ fontSize: '1.02rem', fontWeight: 900, color: '#191F28', margin: '0 0 12px' }}>왜 이렇게 안내했나요?</h3>
-            <div style={{ backgroundColor: '#F8FAF8', border: '1px solid #E5E8EB', borderRadius: 18, padding: 18, marginBottom: 24, display: 'flex', gap: 10 }}>
-              <Lightbulb size={20} color="#2FA86A" style={{ flexShrink: 0, marginTop: 2 }} />
-              <div style={{ flex: 1 }}>
-                <p style={{ margin: '0 0 8px', fontSize: '0.8rem', color: '#526157', lineHeight: 1.6 }}>{report.reasoningSummary}</p>
-                <button onClick={() => setShowReasoning(prev => !prev)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2FA86A', fontSize: '0.8rem', fontWeight: 800, padding: 0 }}>
+            {/* 3. 왜 이렇게 안내했나요? */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '0 0 12px' }}>
+              <h3 style={{ fontSize: '1.02rem', fontWeight: 900, color: '#191F28', margin: 0 }}>왜 이렇게 안내했나요?</h3>
+              {dashboard.reasoning.points.length > 0 && (
+                <button onClick={() => setShowReasoning(prev => !prev)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2FA86A', fontSize: '0.78rem', fontWeight: 800, padding: 0 }}>
                   분석 근거 자세히 보기 {showReasoning ? '︿' : '›'}
                 </button>
+              )}
+            </div>
+            <div style={{ backgroundColor: '#EAF7EE', borderRadius: 18, padding: 18, marginBottom: 24, display: 'flex', gap: 10 }}>
+              <Lightbulb size={20} color="#2FA86A" style={{ flexShrink: 0, marginTop: 2 }} />
+              <div style={{ flex: 1 }}>
+                <p style={{ margin: 0, fontSize: '0.8rem', color: '#526157', lineHeight: 1.6 }}>{dashboard.reasoning.summary}</p>
                 {showReasoning && (
                   <ul style={{ margin: '10px 0 0', paddingLeft: 18, fontSize: '0.76rem', color: '#8d9590', lineHeight: 1.8 }}>
-                    {report.reasoningPoints.map((point, i) => <li key={i}>{point}</li>)}
+                    {dashboard.reasoning.points.map((point, i) => <li key={i}>{point}</li>)}
                   </ul>
                 )}
               </div>
             </div>
 
-            {/* 최근 7일 관리 이력 */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <h3 style={{ fontSize: '1.02rem', fontWeight: 900, color: '#191F28', margin: 0 }}>최근 7일 관리 이력</h3>
+            {/* 4. 오늘의 주의·위험 */}
+            <h3 style={{ fontSize: '1.02rem', fontWeight: 900, color: '#191F28', margin: '0 0 12px' }}>오늘의 주의·위험</h3>
+            {dashboard.alerts.length === 0 ? (
+              <div style={{ backgroundColor: '#F8FAF8', borderRadius: 14, padding: '14px', fontSize: '0.82rem', color: '#8d9590', textAlign: 'center', marginBottom: 24 }}>
+                오늘 예보에서 특별한 주의·위험이 확인되지 않았어요.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 24 }}>
+                {dashboard.alerts.map(alert => (
+                  <div
+                    key={alert.key}
+                    style={{ backgroundColor: '#FEFBF2', border: '1px solid #FCE8C1', borderRadius: 16, padding: '14px 16px', display: 'flex', alignItems: 'flex-start', gap: 12 }}
+                  >
+                    <AlertTriangle size={20} color={SEVERITY_COLOR[alert.severity] ?? '#D97706'} style={{ flexShrink: 0, marginTop: 2 }} />
+                    <div style={{ flex: 1 }}>
+                      <strong style={{ display: 'block', fontSize: '0.88rem', fontWeight: 800, color: '#191F28', marginBottom: 3 }}>{alert.title}</strong>
+                      <p style={{ margin: 0, fontSize: '0.78rem', color: '#6F7772', lineHeight: 1.5 }}>{alert.description}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* 5. 오늘의 기록 */}
+            <h3 ref={logSectionRef} style={{ fontSize: '1.02rem', fontWeight: 900, color: '#191F28', margin: '0 0 12px' }}>오늘의 기록</h3>
+            {!dashboard.report.historical && (
+              <div style={{ backgroundColor: '#F8FAF8', border: '1px solid #E5E8EB', borderRadius: 18, padding: 18, marginBottom: 16 }}>
+                {!showLogForm ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                    <div style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: '#EAF6EE', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <ClipboardList size={20} color="#2FA86A" />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <strong style={{ display: 'block', fontSize: '0.9rem', fontWeight: 800, color: '#191F28', marginBottom: 2 }}>오늘의 기록</strong>
+                      <span style={{ fontSize: '0.76rem', color: '#6F7772', lineHeight: 1.5 }}>물주기, 비료, 방제, 잎 상태 등을 기록하면 다음 안내에 반영돼요.</span>
+                    </div>
+                    <motion.button
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => setShowLogForm(true)}
+                      style={{ backgroundColor: '#2FA86A', color: '#FFFFFF', border: 'none', borderRadius: 20, padding: '10px 16px', fontSize: '0.8rem', fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}
+                    >
+                      + 기록 남기기
+                    </motion.button>
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                      {LOG_CATEGORIES.map(cat => (
+                        <button
+                          key={cat}
+                          onClick={() => setLogCategory(cat)}
+                          style={{
+                            border: logCategory === cat ? 'none' : '1px solid #D1DFD7',
+                            backgroundColor: logCategory === cat ? '#2FA86A' : '#FFFFFF',
+                            color: logCategory === cat ? '#FFFFFF' : '#526157',
+                            borderRadius: 10, padding: '6px 12px', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer'
+                          }}
+                        >
+                          {LOG_CATEGORY_LABELS[cat]}
+                        </button>
+                      ))}
+                    </div>
+                    <textarea
+                      value={logNote}
+                      onChange={(e) => setLogNote(e.target.value)}
+                      placeholder="메모를 남겨보세요 (선택)"
+                      disabled={submittingLog}
+                      style={{ width: '100%', minHeight: 70, borderRadius: 12, border: '1px solid #D1DFD7', padding: 10, fontSize: '0.82rem', marginBottom: 10, resize: 'vertical', boxSizing: 'border-box' }}
+                    />
+                    {logError && <p style={{ margin: '0 0 10px', fontSize: '0.76rem', color: '#DC2626' }}>{logError}</p>}
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button onClick={submitLog} disabled={submittingLog} style={{ flex: 1, backgroundColor: '#2FA86A', color: '#FFFFFF', border: 'none', borderRadius: 12, padding: '10px 0', fontSize: '0.84rem', fontWeight: 800, cursor: 'pointer', opacity: submittingLog ? 0.7 : 1 }}>저장</button>
+                      <button onClick={() => { setShowLogForm(false); setLogNote(''); setLogError(null); }} disabled={submittingLog} style={{ flex: 1, backgroundColor: '#FFFFFF', color: '#6F7772', border: '1px solid #D1DFD7', borderRadius: 12, padding: '10px 0', fontSize: '0.84rem', fontWeight: 800, cursor: 'pointer' }}>취소</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            <div style={{ marginBottom: 24 }}>
+              <LogHistory logs={dashboard.todayLogs} />
             </div>
-            <LogHistory logs={logs} />
+
+            {/* 6. 최근 7일 관리 이력 */}
+            <h3 style={{ fontSize: '1.02rem', fontWeight: 900, color: '#191F28', margin: '0 0 12px' }}>최근 7일 관리 이력</h3>
+            <div style={{ overflowX: 'auto', border: '1px solid #E5E8EB', borderRadius: 14 }}>
+              <table style={{ width: '100%', minWidth: 480, borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#F8FAF8' }}>
+                    <th style={historyThStyle}>날짜</th>
+                    <th style={historyThStyle}>상태</th>
+                    <th style={historyThStyle}>관리내용</th>
+                    <th style={historyThStyle}>주요지표</th>
+                    <th style={historyThStyle}>상세확인</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dashboard.history.map((item, idx) => {
+                    const rowStatusStyle = STATUS_STYLE[item.status ?? 'NEEDS_CHECK'] ?? STATUS_STYLE.NEEDS_CHECK;
+                    return (
+                    <tr key={item.date} style={{ borderTop: idx === 0 ? 'none' : '1px solid #F1F5F9', backgroundColor: selectedDate === item.date ? '#F8FAF8' : '#FFFFFF' }}>
+                      <td style={historyTdStyle}>
+                        <time dateTime={item.date} style={{ fontWeight: 700, color: '#526157', whiteSpace: 'nowrap' }}>{formatKoreanDate(item.date)}</time>
+                      </td>
+                      <td style={historyTdStyle}>
+                        <span style={{ fontSize: '0.7rem', fontWeight: 800, color: rowStatusStyle.color, backgroundColor: rowStatusStyle.bg, padding: '3px 8px', borderRadius: 8, whiteSpace: 'nowrap' }}>
+                          {item.statusLabel}
+                        </span>
+                      </td>
+                      <td style={{ ...historyTdStyle, color: '#526157' }}>{item.managementSummary || item.logLabels.join(' · ') || '-'}</td>
+                      <td style={{ ...historyTdStyle, color: '#8d9590', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          {item.keyMetric && <Droplet size={12} color="#8d9590" style={{ flexShrink: 0 }} />}
+                          {item.keyMetric ?? '-'}
+                        </div>
+                      </td>
+                      <td style={historyTdStyle}>
+                        <button
+                          disabled={!item.reportAvailable}
+                          onClick={() => { setSelectedDate(item.date); setActiveSubTab('dashboard'); }}
+                          aria-current={selectedDate === item.date ? 'date' : undefined}
+                          style={{
+                            border: 'none', background: 'none', color: item.reportAvailable ? '#2FA86A' : '#C4C9C4',
+                            fontSize: '0.76rem', fontWeight: 800, cursor: item.reportAvailable ? 'pointer' : 'default',
+                            padding: 0, textDecoration: 'underline', textUnderlineOffset: 2
+                          }}
+                        >
+                          상세확인
+                        </button>
+                      </td>
+                    </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </>
         ) : (
           <>
-            {/* 오늘 재배 환경 */}
-            <h3 style={{ fontSize: '1.02rem', fontWeight: 900, color: '#191F28', margin: '0 0 4px' }}>오늘 재배 환경</h3>
+            {/* 오늘 날씨 데이터 */}
+            <h3 style={{ fontSize: '1.02rem', fontWeight: 900, color: '#191F28', margin: '0 0 4px' }}>오늘 날씨 데이터</h3>
             <p style={{ margin: '0 0 12px', fontSize: '0.76rem', color: '#8d9590' }}>작물이 오늘 어떤 환경에서 자라는지 날씨 데이터를 통해 확인해보세요.</p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 8 }}>
-              <StatTile label="현재 기온" value={`${report.weather.currentTemp}℃`} />
-              <StatTile label="최고·최저기온" value={`${report.weather.maxTemp}℃/${report.weather.minTemp}℃`} />
-              <StatTile label="강수확률" value={`${report.weather.precipitationProbability}%`} />
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 20 }}>
-              <StatTile label="최근 강수량" value={`${report.weather.recentRainfallMm}mm`} caption="비가 적었다면 흙 상태를 더 자주 확인해야 해요." />
-              <StatTile label="습도" value={`${report.weather.humidity}%`} caption="습도가 너무 높으면 병해충이 발생하기 쉬워요." />
-              <StatTile label="풍속" value={`${report.weather.windSpeed} m/s`} caption="바람이 강하면 지지대가 흔들릴 수 있어요." />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginBottom: 8 }}>
+              <StatTile label="현재 기온" value={displayMetric(dashboard.weather.currentTemperature, '℃')} />
+              <StatTile label="최고/최저 기온" value={
+                dashboard.weather.maxTemperature == null && dashboard.weather.minTemperature == null
+                  ? '데이터 없음'
+                  : `${dashboard.weather.maxTemperature ?? '-'}℃ / ${dashboard.weather.minTemperature ?? '-'}℃`
+              } />
+              <StatTile label="강수확률" value={displayMetric(dashboard.weather.precipitationProbability, '%')} />
+              <StatTile label="강수량" value={displayMetric(dashboard.weather.rainfallMm, 'mm')} />
+              <StatTile label="습도" value={displayMetric(dashboard.weather.humidity, '%')} caption="습도가 너무 높으면 병해충이 발생하기 쉬워요." />
+              <StatTile label="풍속" value={displayMetric(dashboard.weather.windSpeed, 'm/s')} caption="바람이 강하면 지지대가 흔들릴 수 있어요." />
             </div>
 
             {/* 내 토양 정보 */}
-            <h3 style={{ fontSize: '1.02rem', fontWeight: 900, color: '#191F28', margin: '0 0 4px' }}>내 토양 정보</h3>
-            <p style={{ margin: '0 0 12px', fontSize: '0.76rem', color: '#8d9590' }}>토양검정이나 직접 입력한 내 밭의 토양 정보예요.</p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+            <h3 style={{ fontSize: '1.02rem', fontWeight: 900, color: '#191F28', margin: '20px 0 4px' }}>내 토양 정보</h3>
+            <p style={{ margin: '0 0 12px', fontSize: '0.76rem', color: '#8d9590' }}>연결된 지역 분석의 흙토람 토양검정 평균값이에요. 필지 실측값은 아니에요.</p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 20 }}>
               <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E5E8EB', borderRadius: 16, padding: '14px 16px' }}>
                 <div style={{ fontSize: '0.82rem', color: '#6F7772', fontWeight: 700, marginBottom: 6 }}>토양 pH</div>
-                {soilTest?.ph != null ? (
-                  <>
-                    <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#191F28', marginBottom: 4 }}>{soilTest.ph}</div>
-                    <p style={{ margin: '0 0 6px', fontSize: '0.72rem', color: '#8d9590', lineHeight: 1.5 }}>{phRangeText || '토양검정 결과가 등록되어 있어요.'}</p>
-                    <p style={{ margin: 0, fontSize: '0.68rem', color: '#9CA3AF' }}>최근 토양검정: {soilTest.testedAt}</p>
-                  </>
-                ) : (
-                  <>
-                    <div style={{ fontSize: '1rem', fontWeight: 800, color: '#9CA3AF', marginBottom: 4 }}>데이터 없음</div>
-                    <p style={{ margin: 0, fontSize: '0.72rem', color: '#8d9590', lineHeight: 1.5 }}>토양검정 결과를 입력하면 내 밭에 맞는 설명을 받을 수 있어요.</p>
-                  </>
-                )}
+                <div style={{ fontSize: '1rem', fontWeight: 800, color: dashboard.soil?.ph != null ? '#191F28' : '#9CA3AF' }}>
+                  {dashboard.soil?.ph != null ? dashboard.soil.ph.toFixed(1) : '데이터 없음'}
+                </div>
               </div>
               <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E5E8EB', borderRadius: 16, padding: '14px 16px' }}>
                 <div style={{ fontSize: '0.82rem', color: '#6F7772', fontWeight: 700, marginBottom: 6 }}>EC(전기전도도)</div>
-                {soilTest?.ec != null ? (
-                  <>
-                    <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#191F28', marginBottom: 4 }}>{soilTest.ec}dS/m</div>
-                    <p style={{ margin: '0 0 6px', fontSize: '0.72rem', color: '#8d9590', lineHeight: 1.5 }}>흙 속 양분의 농도가 등록되어 있어요.</p>
-                    <p style={{ margin: 0, fontSize: '0.68rem', color: '#9CA3AF' }}>최근 측정일: {soilTest.testedAt}</p>
-                  </>
-                ) : (
-                  <>
-                    <div style={{ fontSize: '1rem', fontWeight: 800, color: '#9CA3AF', marginBottom: 4 }}>데이터 없음</div>
-                    <p style={{ margin: 0, fontSize: '0.72rem', color: '#8d9590', lineHeight: 1.5 }}>EC는 흙 속 양분 농도를 보여주는 값이에요. 토양검정 결과를 입력해 주세요.</p>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {!showSoilForm ? (
-              <button
-                onClick={() => { setSoilPhInput(soilTest?.ph != null ? String(soilTest.ph) : ''); setSoilEcInput(soilTest?.ec != null ? String(soilTest.ec) : ''); setShowSoilForm(true); }}
-                style={{ width: '100%', backgroundColor: '#FFFFFF', border: '1px solid #2FA86A', color: '#2FA86A', borderRadius: 14, padding: '12px 0', fontSize: '0.86rem', fontWeight: 800, cursor: 'pointer', marginBottom: 20 }}
-              >
-                토양검정 결과 입력·수정하기
-              </button>
-            ) : (
-              <div style={{ backgroundColor: '#F8FAF8', border: '1px solid #E5E8EB', borderRadius: 16, padding: 16, marginBottom: 20 }}>
-                <label style={{ display: 'block', fontSize: '0.78rem', color: '#526157', fontWeight: 700, marginBottom: 6 }}>토양 pH</label>
-                <input
-                  type="number" step="0.1" value={soilPhInput} onChange={(e) => setSoilPhInput(e.target.value)}
-                  placeholder="예: 6.4"
-                  style={{ width: '100%', borderRadius: 10, border: '1px solid #D1DFD7', padding: '8px 10px', fontSize: '0.84rem', marginBottom: 12, boxSizing: 'border-box' }}
-                />
-                <label style={{ display: 'block', fontSize: '0.78rem', color: '#526157', fontWeight: 700, marginBottom: 6 }}>EC (dS/m)</label>
-                <input
-                  type="number" step="0.1" value={soilEcInput} onChange={(e) => setSoilEcInput(e.target.value)}
-                  placeholder="예: 1.1"
-                  style={{ width: '100%', borderRadius: 10, border: '1px solid #D1DFD7', padding: '8px 10px', fontSize: '0.84rem', marginBottom: 12, boxSizing: 'border-box' }}
-                />
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={submitSoilTest} style={{ flex: 1, backgroundColor: '#2FA86A', color: '#FFFFFF', border: 'none', borderRadius: 12, padding: '10px 0', fontSize: '0.84rem', fontWeight: 800, cursor: 'pointer' }}>저장</button>
-                  <button onClick={() => setShowSoilForm(false)} style={{ flex: 1, backgroundColor: '#FFFFFF', color: '#6F7772', border: '1px solid #D1DFD7', borderRadius: 12, padding: '10px 0', fontSize: '0.84rem', fontWeight: 800, cursor: 'pointer' }}>취소</button>
+                <div style={{ fontSize: '1rem', fontWeight: 800, color: dashboard.soil?.ec != null ? '#191F28' : '#9CA3AF' }}>
+                  {dashboard.soil?.ec != null ? `${dashboard.soil.ec.toFixed(2)} dS/m` : '데이터 없음'}
                 </div>
               </div>
-            )}
+            </div>
 
             {/* 용어 쉽게 설명 */}
             <h3 style={{ fontSize: '1.02rem', fontWeight: 900, color: '#191F28', margin: '0 0 4px' }}>용어가 어려우신가요?</h3>
             <p style={{ margin: '0 0 12px', fontSize: '0.76rem', color: '#8d9590' }}>처음 보는 농업 용어를 쉬운 말로 설명해드려요.</p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 20 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {GLOSSARY.map(term => (
                 <div key={term.key} style={{ width: '100%' }}>
                   <button
@@ -478,41 +597,15 @@ export const FieldDashboardView: React.FC<FieldDashboardViewProps> = ({ field, o
                     <div style={{ backgroundColor: '#F8FAF8', border: '1px solid #E5E8EB', borderTop: 'none', borderRadius: '0 0 12px 12px', padding: '12px 14px', marginBottom: 6 }}>
                       <strong style={{ display: 'block', fontSize: '0.8rem', color: '#191F28', marginBottom: 4 }}>{term.title}</strong>
                       <p style={{ margin: 0, fontSize: '0.76rem', color: '#6F7772', lineHeight: 1.6 }}>{term.body}</p>
-                      {term.key === '토양 pH' && phRangeText && (
-                        <p style={{ margin: '6px 0 0', fontSize: '0.76rem', color: '#2FA86A', fontWeight: 700 }}>{phRangeText}</p>
-                      )}
-                      {term.key === 'EC(전기전도도)' && (
-                        <p style={{ margin: '6px 0 0', fontSize: '0.76rem', color: soilTest?.ec != null ? '#2FA86A' : '#8d9590', fontWeight: 700 }}>
-                          {soilTest?.ec != null ? `현재 EC는 ${field.cropName || '작물'} 생육에 참고할 수 있는 값이에요.` : '현재 밭의 EC 데이터는 아직 등록되지 않았어요.'}
-                        </p>
-                      )}
                     </div>
                   )}
                 </div>
               ))}
             </div>
-
-            {/* 데이터 출처 및 기준일 */}
-            <h3 style={{ fontSize: '1.02rem', fontWeight: 900, color: '#191F28', margin: '0 0 12px' }}>데이터 출처 및 기준일</h3>
-            <div style={{ backgroundColor: '#F8FAF8', border: '1px solid #E5E8EB', borderRadius: 16, padding: '14px 16px', marginBottom: 20 }}>
-              <p style={{ margin: '0 0 6px', fontSize: '0.78rem', color: '#6F7772', lineHeight: 1.8 }}>
-                날씨: {report.weather.source} · 기준 {formatAsOf(report.weather.asOf)}
-              </p>
-              <p style={{ margin: 0, fontSize: '0.78rem', color: '#6F7772', lineHeight: 1.8 }}>
-                토양: {soilTest ? `사용자 입력 · ${soilTest.testedAt}` : '등록된 토양검정 결과 없음'}
-              </p>
-            </div>
-
-            {/* 최근 7일 환경 요약 */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <h3 style={{ fontSize: '1.02rem', fontWeight: 900, color: '#191F28', margin: 0 }}>최근 7일 환경 요약</h3>
-            </div>
-            <LogHistory logs={logs} />
           </>
         )}
       </div>
 
-      {/* Floating AI Button */}
       <button className="floating-ai-btn" onClick={onOpenAIChat} title="AI Assistant">
         <Bot size={26} color="#FFFFFF" />
       </button>

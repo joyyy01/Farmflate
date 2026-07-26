@@ -1,16 +1,27 @@
 package com.example.aiworkspace.service.assistant;
 
 import com.example.aiworkspace.controller.AssistantApiController.AssistantRequestDto;
+import com.example.aiworkspace.domain.farm.FarmEntity;
+import com.example.aiworkspace.domain.farm.FarmRepository;
+import com.example.aiworkspace.domain.farm.FieldDailyReportRepository;
 import com.example.aiworkspace.domain.region.RegionAnalysisEntity;
 import com.example.aiworkspace.domain.region.RegionAnalysisRepository;
+import com.example.aiworkspace.dto.field.FieldAlertDto;
+import com.example.aiworkspace.dto.field.FieldDailyReportDto;
+import com.example.aiworkspace.dto.field.FieldTaskDto;
+import com.example.aiworkspace.service.farm.FieldDailyReportService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import java.time.Clock;
+import java.time.LocalDate;
 import java.util.*;
 
 @Slf4j
@@ -19,8 +30,11 @@ import java.util.*;
 public class AssistantService {
 
     private final RegionAnalysisRepository analysisRepository;
+    private final FarmRepository farmRepository;
+    private final FieldDailyReportRepository fieldDailyReportRepository;
     private final ObjectMapper objectMapper;
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final Clock clock;
+    private RestTemplate restTemplate;
 
     @Value("${app.python-server.url:http://localhost:8000}")
     private String pythonServerUrl;
@@ -30,6 +44,18 @@ public class AssistantService {
 
     @Value("${app.python-server.request-timeout-ms:15000}")
     private int requestTimeoutMs;
+
+    /* @Value fields aren't populated yet during field initializers, so the
+       timeout-configured RestTemplate has to be built after injection --
+       previously this value was read but never actually applied, leaving the
+       Python agent call with no timeout at all. */
+    @PostConstruct
+    private void initRestTemplate() {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(requestTimeoutMs);
+        factory.setReadTimeout(requestTimeoutMs);
+        this.restTemplate = new RestTemplate(factory);
+    }
 
     @SuppressWarnings("unchecked")
     public Map<String, Object> processMessage(String email, AssistantRequestDto request) {
@@ -89,9 +115,11 @@ public class AssistantService {
             }
             response.putIfAbsent("requestId", factPackage.get("requestId"));
             response.putIfAbsent("sources", factPackage.getOrDefault("sources", List.of()));
-            if (!"completed".equals(response.get("status"))) {
-                response.put("status", "completed");
-            }
+            // Pass the agent's real status through instead of forcing
+            // "completed" -- "fallback" means the LLM answer failed grounding
+            // validation and a rule-based answer was substituted; masking
+            // that made a degraded response indistinguishable from a normal one.
+            response.putIfAbsent("status", "completed");
             return response;
         }
         return buildFallbackResponse(factPackage);
@@ -137,6 +165,8 @@ public class AssistantService {
             }
         }
 
+        injectFieldFacts(facts, email, request);
+
         Object srcList = payload.get("sources");
         if (srcList instanceof List) {
             for (Object src : (List<?>) srcList) {
@@ -171,6 +201,63 @@ public class AssistantService {
         factPackage.put("sources", sources);
 
         return factPackage;
+    }
+
+    /**
+     * Only ever reads an already-generated DAILY_0630 snapshot the caller
+     * owns — never triggers a new report generation and never trusts a
+     * fieldId/date the requesting user doesn't own.
+     */
+    private void injectFieldFacts(Map<String, Object> facts, String email, AssistantRequestDto request) {
+        if (request.getContext() == null || request.getContext().getFieldId() == null
+                || request.getContext().getFieldId().isBlank()) {
+            return;
+        }
+        Long fieldId;
+        try {
+            fieldId = Long.valueOf(request.getContext().getFieldId());
+        } catch (NumberFormatException exception) {
+            return;
+        }
+        FarmEntity field = farmRepository.findByIdAndUserEmail(fieldId, email).orElse(null);
+        if (field == null) return;
+
+        LocalDate reportDate = LocalDate.now(clock);
+        String requestedDate = request.getContext().getReportDate();
+        if (requestedDate != null && !requestedDate.isBlank()) {
+            try {
+                LocalDate parsed = LocalDate.parse(requestedDate);
+                if (!parsed.isAfter(LocalDate.now(clock))) reportDate = parsed;
+            } catch (Exception ignored) {
+                // Keep today's date rather than trusting an unparsable client value.
+            }
+        }
+
+        fieldDailyReportRepository
+                .findFirstByFarmIdAndOwnerEmailAndReportDateAndGenerationReasonOrderByGeneratedAtDesc(
+                        fieldId, email, reportDate, FieldDailyReportService.GENERATION_REASON)
+                .ifPresent(entity -> {
+                    try {
+                        FieldDailyReportDto report = objectMapper.readValue(entity.getPayloadJson(), FieldDailyReportDto.class);
+                        facts.put("field.name", field.getFieldName());
+                        facts.put("field.crop.name", field.getCropName());
+                        facts.put("field.report.date", report.getReportDate());
+                        if (report.getWeather() != null) {
+                            facts.put("field.weather.maxTemperature", report.getWeather().getMaxTemperature());
+                            facts.put("field.weather.humidity", report.getWeather().getHumidity());
+                        }
+                        List<FieldTaskDto> tasks = report.getTasks();
+                        if (tasks != null && !tasks.isEmpty()) facts.put("field.task.1.title", tasks.get(0).getTitle());
+                        List<FieldAlertDto> alerts = report.getAlerts();
+                        if (alerts != null && !alerts.isEmpty()) facts.put("field.alert.1.title", alerts.get(0).getTitle());
+                        if (report.getReasoning() != null && report.getReasoning().getPoints() != null
+                                && !report.getReasoning().getPoints().isEmpty()) {
+                            facts.put("field.reasoning.1", report.getReasoning().getPoints().get(0));
+                        }
+                    } catch (Exception exception) {
+                        log.warn("Unable to parse field daily report for AI fact injection: {}", entity.getId());
+                    }
+                });
     }
 
     @SuppressWarnings("unchecked")

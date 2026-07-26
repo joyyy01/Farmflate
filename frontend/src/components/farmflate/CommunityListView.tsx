@@ -30,16 +30,6 @@ export const CommunityListView: React.FC<CommunityListViewProps> = ({
 }) => {
   const [selectedPost, setSelectedPost] = useState<CommunityPost | null>(null);
 
-  const getTagBadgeStyle = (tagText: string, index: number) => {
-    if (tagText.includes('전북') || tagText.includes('고창') || index % 3 === 0) {
-      return { bg: '#E9F7EC', color: '#2FA86A' }; // Soft green pill
-    }
-    if (tagText.includes('경북') || tagText.includes('상주') || index % 3 === 1) {
-      return { bg: '#E0F2FE', color: '#0284C7' }; // Soft blue pill
-    }
-    return { bg: '#FFF4DC', color: '#FF842F' }; // Soft yellow/orange pill for 장터
-  };
-
   // Active post detail reference
   const activeDetailPost = selectedPost
     ? posts.find(p => p.id === selectedPost.id) ?? null
@@ -88,10 +78,7 @@ export const CommunityListView: React.FC<CommunityListViewProps> = ({
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {posts.map((post, idx) => {
-              const tagText = post.tagLocation || post.category;
-              const badge = getTagBadgeStyle(tagText, idx);
-
+            {posts.map((post) => {
               return (
                 <motion.div
                   key={post.id}
@@ -105,12 +92,12 @@ export const CommunityListView: React.FC<CommunityListViewProps> = ({
                 >
                   {/* Tag Pill + Time Ago */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                    <span style={{
-                      backgroundColor: badge.bg, color: badge.color,
+                    <span className="region-badge" style={{
+                      backgroundColor: '#E9F7EC', color: '#2FA86A',
                       fontSize: '0.76rem', fontWeight: 800,
                       padding: '4px 12px', borderRadius: 12
                     }}>
-                      {tagText}
+                      {post.regionLabel || '지역 정보 없음'}
                     </span>
                     <span style={{ fontSize: '0.76rem', color: '#8E9892', fontWeight: 500 }}>
                       {post.timeAgo}

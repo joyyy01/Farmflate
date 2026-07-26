@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronRight, HelpCircle, X, Check, Bookmark, MessageSquare, Send, ShieldCheck, Mail, Calendar, Bot } from 'lucide-react';
+import { ChevronRight, HelpCircle, X, Bookmark, MessageSquare, Send, ShieldCheck, Mail, Calendar, Bot } from 'lucide-react';
 import type { TabState, CommunityPost } from '../../types/farmflate';
 import { BottomNavigation } from '../common/BottomNavigation';
 import { CommunityPostDetailModal } from './CommunityPostDetailModal';
@@ -37,33 +37,8 @@ export const MyPageView: React.FC<MyPageViewProps> = ({
   onToggleSave = () => {},
   onAddComment = () => {}
 }) => {
-  const [activeModal, setActiveModal] = useState<'account' | 'crops' | 'saved' | 'my_posts' | 'support' | null>(null);
+  const [activeModal, setActiveModal] = useState<'account' | 'saved' | 'my_posts' | 'support' | null>(null);
   const [selectedPost, setSelectedPost] = useState<CommunityPost | null>(null);
-
-  /* User-selected favorites are not analysis recommendations. */
-  const availableCrops = [
-    { name: '감자', icon: '/svg-assets/crops/potato.svg' },
-    { name: '상추', icon: '/svg-assets/crops/lettuce.svg' },
-    { name: '오이', icon: '/svg-assets/crops/cucumber.svg' },
-    { name: '사과', icon: '/svg-assets/crops/apple.svg' },
-    { name: '배', icon: '/svg-assets/crops/pear.svg' },
-    { name: '고추', icon: '/svg-assets/crops/pepper.svg' },
-    { name: '토마토', icon: '/svg-assets/crops/tomato.svg' },
-    { name: '배추', icon: '/svg-assets/crops/cabbage.svg' }
-  ];
-
-  const [favoriteCrops, setFavoriteCrops] = useState<string[]>(() => {
-    const saved = localStorage.getItem('farmflate_favorite_crops');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const toggleFavoriteCrop = (cropName: string) => {
-    setFavoriteCrops(prev => {
-      const next = prev.includes(cropName) ? prev.filter(c => c !== cropName) : [...prev, cropName];
-      localStorage.setItem('farmflate_favorite_crops', JSON.stringify(next));
-      return next;
-    });
-  };
 
   /* Support FAQ State & Inquiry */
   const [expandedFaq, setExpandedFaq] = useState<number | null>(0);
@@ -212,16 +187,6 @@ export const MyPageView: React.FC<MyPageViewProps> = ({
               <ChevronRight size={18} color="#CBD5E1" />
             </div>
 
-            <div onClick={() => setActiveModal('crops')} style={{ padding: '16px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #F1F5F9', cursor: 'pointer' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: '0.9rem', fontWeight: 700, color: '#202a24' }}>
-                <img src="/svg-assets/crops/leaf.svg" alt="" style={{ width: 18, height: 18 }} /> 관심 작물 설정
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontSize: '0.78rem', color: '#2FA86A', fontWeight: 800 }}>{favoriteCrops.join(', ')}</span>
-                <ChevronRight size={18} color="#CBD5E1" />
-              </div>
-            </div>
-
             <div onClick={onLogout} style={{ padding: '16px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: '0.9rem', fontWeight: 700, color: '#ef4444' }}>
                 <img src="/svg-assets/ui-icons/user.svg" alt="" style={{ width: 18, height: 18 }} /> 로그아웃
@@ -326,51 +291,7 @@ export const MyPageView: React.FC<MyPageViewProps> = ({
         )}
       </AnimatePresence>
 
-      {/* 2. Modal: 관심 작물 설정 */}
-      <AnimatePresence>
-        {activeModal === 'crops' && (
-          <div style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={() => setActiveModal(null)}>
-            <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 25 }} onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 480, backgroundColor: '#FFFFFF', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <h3 style={{ fontSize: '1.15rem', fontWeight: 900, color: '#191F28', margin: 0 }}>관심 작물 설정</h3>
-                <button onClick={() => setActiveModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}><X size={20} /></button>
-              </div>
-              <p style={{ fontSize: '0.82rem', color: '#6E7671', margin: '0 0 20px 0', fontWeight: 500 }}>
-                관심 작물을 선택하시면 홈 화면과 리포트에 우선 배치됩니다.
-              </p>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 24 }}>
-                {availableCrops.map(c => {
-                  const isChecked = favoriteCrops.includes(c.name);
-                  return (
-                    <div
-                      key={c.name}
-                      onClick={() => toggleFavoriteCrop(c.name)}
-                      style={{
-                        backgroundColor: isChecked ? '#E9F7EC' : '#F8FAF8',
-                        border: isChecked ? '1.5px solid #2FA86A' : '1px solid #EAEFEA',
-                        borderRadius: 16, padding: '12px 14px',
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        cursor: 'pointer', transition: 'all 0.15s ease'
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <img src={c.icon} alt={c.name} style={{ width: 28, height: 28, objectFit: 'contain' }} />
-                        <span style={{ fontSize: '0.88rem', fontWeight: 800, color: isChecked ? '#154F36' : '#191F28' }}>{c.name}</span>
-                      </div>
-                      {isChecked && <div style={{ width: 22, height: 22, borderRadius: '50%', backgroundColor: '#2FA86A', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Check size={14} /></div>}
-                    </div>
-                  );
-                })}
-              </div>
-
-              <button onClick={() => setActiveModal(null)} className="btn-farm-primary" style={{ width: '100%', height: 48, borderRadius: 14 }}>저장하기</button>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* 3. Modal: 저장한 게시글 */}
+      {/* 2. Modal: 저장한 게시글 */}
       <AnimatePresence>
         {activeModal === 'saved' && (
           <div style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={() => setActiveModal(null)}>
@@ -390,7 +311,7 @@ export const MyPageView: React.FC<MyPageViewProps> = ({
                 ) : (
                   savedPosts.map(post => (
                     <div key={post.id} onClick={() => setSelectedPost(post)} style={{ backgroundColor: '#F8FAF8', borderRadius: 16, padding: '16px', border: '1px solid #EAEFEA', cursor: 'pointer' }}>
-                      <div style={{ fontSize: '0.74rem', color: '#2FA86A', fontWeight: 800, marginBottom: 4 }}>{post.category} · {post.tagLocation}</div>
+                      <div style={{ fontSize: '0.74rem', color: '#2FA86A', fontWeight: 800, marginBottom: 4 }}>{post.regionLabel}</div>
                       <h4 style={{ fontSize: '0.94rem', fontWeight: 850, color: '#191F28', margin: '0 0 6px 0' }}>{post.title}</h4>
                       <div style={{ fontSize: '0.76rem', color: '#8E9892', fontWeight: 500 }}>작성자: {post.author} · {post.timeAgo}</div>
                     </div>
@@ -422,7 +343,7 @@ export const MyPageView: React.FC<MyPageViewProps> = ({
                 ) : (
                   myAuthoredPosts.map(post => (
                     <div key={post.id} onClick={() => setSelectedPost(post)} style={{ backgroundColor: '#F8FAF8', borderRadius: 16, padding: '16px', border: '1px solid #EAEFEA', cursor: 'pointer' }}>
-                      <div style={{ fontSize: '0.74rem', color: '#2FA86A', fontWeight: 800, marginBottom: 4 }}>{post.category} · {post.tagLocation}</div>
+                      <div style={{ fontSize: '0.74rem', color: '#2FA86A', fontWeight: 800, marginBottom: 4 }}>{post.regionLabel}</div>
                       <h4 style={{ fontSize: '0.94rem', fontWeight: 850, color: '#191F28', margin: '0 0 6px 0' }}>{post.title}</h4>
                       <div style={{ fontSize: '0.76rem', color: '#8E9892', fontWeight: 500 }}>댓글 {post.comments?.length || post.commentCount}개 · 좋아요 {post.likeCount}개</div>
                     </div>

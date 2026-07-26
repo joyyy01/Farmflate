@@ -53,6 +53,64 @@ class DecisionEngineSafetyTest {
         });
     }
 
+    @Test
+    void soilPhDeviation_scoresSlightlyOutOfRangeHigherThanFarOutOfRange() {
+        CropScoringEngine.AnalysisInput slightlyLow = baseLettuceInput();
+        slightlyLow.soilPh = 6.0; // LETTUCE optimal 6.6-7.2; ~0.6 below range (just over 1 caution margin of 0.5)
+
+        CropScoringEngine.AnalysisInput farLow = baseLettuceInput();
+        farLow.soilPh = 4.5; // ~2.1 below range: much further out
+
+        double slightlyOutScore = engine.analyze(slightlyLow).decisionOutput.cropResults.stream()
+                .filter(crop -> "LETTUCE".equals(crop.cropCode)).findFirst().orElseThrow().soilPhScore;
+        double farOutScore = engine.analyze(farLow).decisionOutput.cropResults.stream()
+                .filter(crop -> "LETTUCE".equals(crop.cropCode)).findFirst().orElseThrow().soilPhScore;
+
+        assertThat(slightlyOutScore).isGreaterThan(farOutScore);
+        assertThat(farOutScore).isLessThan(70.0);
+    }
+
+    @Test
+    void soilEc_isScoredWithCropSpecificSensitivity() {
+        CropScoringEngine.AnalysisInput elevatedEc = baseLettuceInput();
+        elevatedEc.soilEc = 2.0; // above LETTUCE's tighter 1.0 threshold, within POTATO's 1.8 threshold
+
+        CropScoringEngine.DecisionOutput decision = engine.analyze(elevatedEc).decisionOutput;
+        Double lettuceEcContribution = decision.cropResults.stream()
+                .filter(crop -> "LETTUCE".equals(crop.cropCode)).findFirst().orElseThrow()
+                .contributions.stream().filter(c -> "soilEc".equals(c.metric)).findFirst()
+                .map(c -> c.score).orElse(null);
+        Double potatoEcContribution = decision.cropResults.stream()
+                .filter(crop -> "POTATO".equals(crop.cropCode)).findFirst().orElseThrow()
+                .contributions.stream().filter(c -> "soilEc".equals(c.metric)).findFirst()
+                .map(c -> c.score).orElse(null);
+
+        assertThat(lettuceEcContribution).isNotNull();
+        assertThat(potatoEcContribution).isNotNull();
+        assertThat(potatoEcContribution).isGreaterThan(lettuceEcContribution);
+    }
+
+    @Test
+    void implausibleSoilReadings_areTreatedAsMissingNotScored() {
+        CropScoringEngine.AnalysisInput input = baseLettuceInput();
+        input.soilPh = 15.0; // impossible pH reading
+        input.soilEc = -3.0; // impossible EC reading
+
+        CropScoringEngine.CropResult lettuce = engine.analyze(input).decisionOutput.cropResults.stream()
+                .filter(crop -> "LETTUCE".equals(crop.cropCode)).findFirst().orElseThrow();
+
+        assertThat(lettuce.soilPhScore).isNull();
+        assertThat(lettuce.contributions.stream().anyMatch(c -> "soilEc".equals(c.metric))).isFalse();
+    }
+
+    private CropScoringEngine.AnalysisInput baseLettuceInput() {
+        CropScoringEngine.AnalysisInput input = new CropScoringEngine.AnalysisInput();
+        input.meanTemperature30d = 17.0;
+        input.soilSuitabilityScores.put("LETTUCE", 90.0);
+        input.soilSuitabilityScores.put("POTATO", 90.0);
+        return input;
+    }
+
     private CropScoringEngine.AnalysisInput highFitnessPearBlossomFrost() {
         CropScoringEngine.AnalysisInput input = new CropScoringEngine.AnalysisInput();
         input.meanTemperature30d = 20.0;

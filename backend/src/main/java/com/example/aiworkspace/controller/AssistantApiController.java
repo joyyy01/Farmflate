@@ -60,6 +60,7 @@ public class AssistantApiController {
     public static class AssistantContextDto {
         private String regionAnalysisId;
         private String fieldId;
+        private String reportDate;
         private String route;
     }
 }

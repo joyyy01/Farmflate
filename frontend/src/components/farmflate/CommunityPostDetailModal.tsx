@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Heart, Bookmark, MessageSquare, Send, MapPin, UserCheck } from 'lucide-react';
+import { X, Heart, Bookmark, MessageSquare, Send, MapPin, Paperclip, Link as LinkIcon } from 'lucide-react';
 import type { CommunityPost } from '../../types/farmflate';
+import { DefaultUserAvatar } from '../common/DefaultUserAvatar';
 
 interface CommunityPostDetailModalProps {
   post: CommunityPost | null;
@@ -56,18 +57,14 @@ export const CommunityPostDetailModal: React.FC<CommunityPostDetailModalProps> =
             padding: '18px 20px', borderBottom: '1px solid #F0F2F1'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{
+              <span className="region-badge" style={{
                 backgroundColor: '#E9F7EC', color: '#2FA86A',
                 fontSize: '0.78rem', fontWeight: 850,
-                padding: '4px 12px', borderRadius: 12
+                padding: '4px 12px', borderRadius: 12,
+                display: 'flex', alignItems: 'center', gap: 4
               }}>
-                {post.category}
+                <MapPin size={12} color="#2FA86A" /> {post.regionLabel || '지역 정보 없음'}
               </span>
-              {post.tagLocation && (
-                <span style={{ fontSize: '0.78rem', color: '#6E7671', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 3 }}>
-                  <MapPin size={12} color="#2FA86A" /> {post.tagLocation}
-                </span>
-              )}
             </div>
 
             <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex' }}>
@@ -81,12 +78,7 @@ export const CommunityPostDetailModal: React.FC<CommunityPostDetailModalProps> =
             {/* Author Profile Bar */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{
-                  width: 40, height: 40, borderRadius: '50%', backgroundColor: '#F0FAF3',
-                  border: '1.5px solid #2FA86A', display: 'flex', alignItems: 'center', justifyContent: 'center'
-                }}>
-                  <UserCheck size={20} color="#2FA86A" />
-                </div>
+                <DefaultUserAvatar size={40} />
                 <div>
                   <div style={{ fontSize: '0.94rem', fontWeight: 850, color: '#191F28' }}>
                     {post.author}
@@ -122,10 +114,30 @@ export const CommunityPostDetailModal: React.FC<CommunityPostDetailModalProps> =
               {post.title}
             </h2>
 
-            {/* Attached Image Preview */}
-            {post.imageUrl && (
-              <div style={{ marginBottom: 16, borderRadius: 16, overflow: 'hidden', border: '1px solid #EAEFEA' }}>
-                <img src={post.imageUrl} alt="첨부 이미지" style={{ width: '100%', maxHeight: 260, objectFit: 'cover', display: 'block' }} />
+            {/* Attachments: images, files, links */}
+            {post.attachments && post.attachments.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+                {post.attachments.filter(a => a.type === 'IMAGE').map(a => (
+                  <div key={a.id} style={{ borderRadius: 16, overflow: 'hidden', border: '1px solid #EAEFEA', backgroundColor: '#F8FAF8' }}>
+                    <img
+                      src={a.url}
+                      alt={a.name || '첨부 이미지'}
+                      style={{ width: '100%', maxHeight: 360, objectFit: 'contain', backgroundColor: '#F8FAF8', display: 'block' }}
+                    />
+                  </div>
+                ))}
+                {post.attachments.filter(a => a.type !== 'IMAGE').map(a => (
+                  <a
+                    key={a.id}
+                    href={a.url}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 14, border: '1px solid #EAEFEA', backgroundColor: '#F8FAF8', color: '#191F28', fontSize: '0.84rem', fontWeight: 700, textDecoration: 'none' }}
+                  >
+                    {a.type === 'LINK' ? <LinkIcon size={16} color="#0284C7" /> : <Paperclip size={16} color="#8E9892" />}
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
+                  </a>
+                ))}
               </div>
             )}
 

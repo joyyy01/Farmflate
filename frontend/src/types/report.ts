@@ -137,6 +137,10 @@ export interface RegionReport {
 export interface RegionAnalysisRequest extends RegionIdentity {
   idempotencyKey: string;
   forceRefresh?: boolean;
+  /** 'FIELD_LINKED' when this analysis only backs one field's suitability
+      scoring; omit (defaults to 'PRIMARY' server-side) for the user's
+      representative region set from Home/My Page. */
+  purpose?: 'PRIMARY' | 'FIELD_LINKED';
 }
 
 export interface RegionAnalysisStatus {
@@ -167,6 +171,12 @@ export interface FieldProfile {
   updatedAt?: string | null;
   suitabilityReport?: FieldSuitabilityReport | null;
   latestReport?: LatestFieldReport | null;
+  cultivationDay?: number | null;
+  dailyStatus?: 'STABLE' | 'CAUTION' | 'NEEDS_CHECK' | null;
+  dailyStatusLabel?: string | null;
+  dailyHeadline?: string | null;
+  dailyReportDate?: string | null;
+  dailyAlerts?: FieldAlert[] | null;
 }
 
 export interface FieldCondition {
@@ -183,6 +193,13 @@ export interface FieldRisk {
   title?: string | null;
   description?: string | null;
   actions: string[];
+}
+
+export interface FieldAlert {
+  key: string;
+  severity: 'LOW' | 'MEDIUM' | 'HIGH';
+  title: string;
+  description: string;
 }
 
 export interface FieldSuitabilityReport {
@@ -205,6 +222,8 @@ export interface LatestFieldReport {
   generationReason?: string | null;
   suitabilityScore?: number | null;
   summary?: string | null;
+  headline?: string | null;
+  headlineDescription?: string | null;
   prioritizedActions: string[];
   keyRisks: FieldRisk[];
   conditions: FieldCondition[];
@@ -229,4 +248,101 @@ export interface FieldSuitabilityPreview {
   stage?: string | null;
   regionAnalysisId?: string | null;
   suitabilityReport?: FieldSuitabilityReport | null;
+}
+
+export type FieldDailyStatus = 'STABLE' | 'CAUTION' | 'NEEDS_CHECK';
+export type FieldTaskBadge = 'MORNING_RECOMMENDED' | 'CHECK_ANYTIME';
+export type FieldLogCategory =
+  | 'WATERING'
+  | 'FERTILIZING'
+  | 'LEAF_CHECK'
+  | 'PEST_CONTROL'
+  | 'OTHER';
+
+export interface FieldActivityLog {
+  id: string;
+  fieldId: string;
+  category: FieldLogCategory;
+  categoryLabel: string;
+  note: string;
+  loggedAt: string;
+}
+
+export interface FieldHistoryItem {
+  date: string;
+  status: FieldDailyStatus | null;
+  statusLabel: string;
+  logLabels: string[];
+  reportAvailable: boolean;
+  keyMetric: string | null;
+  managementSummary: string | null;
+}
+
+export interface FieldDashboardResponse {
+  field: {
+    id: string;
+    fieldName: string;
+    cropCode: string | null;
+    cropName: string | null;
+    regionName: string;
+    cultivationStartDate: string | null;
+    cultivationDay: number | null;
+    stage: string | null;
+  };
+  report: {
+    id: string;
+    reportDate: string;
+    generatedAt: string;
+    generationReason: string;
+    status: FieldDailyStatus;
+    headline: string;
+    headlineDescription: string;
+    historical: boolean;
+    taskCountBeforeAcknowledgement: number;
+    /** 0-100 종합 상태 점수; null when weather data was unavailable that day. */
+    statusScore: number | null;
+    /** '적정' | '주의' | '위험' | '확인 필요' (null-score fallback). */
+    statusScoreZone: string;
+  };
+  weather: {
+    status: 'AVAILABLE' | 'UNAVAILABLE';
+    currentTemperature: number | null;
+    minTemperature: number | null;
+    maxTemperature: number | null;
+    precipitationProbability: number | null;
+    rainfallMm: number | null;
+    humidity: number | null;
+    windSpeed: number | null;
+    condition: string | null;
+  };
+  soil?: {
+    available: boolean;
+    ph: number | null;
+    ec: number | null;
+  };
+  tasks: Array<{
+    key: string;
+    title: string;
+    description: string;
+    badge: FieldTaskBadge;
+    acknowledged: boolean;
+  }>;
+  alerts: Array<{
+    key: string;
+    severity: 'LOW' | 'MEDIUM' | 'HIGH';
+    title: string;
+    description: string;
+  }>;
+  reasoning: {
+    summary: string;
+    points: string[];
+  };
+  todayLogs: FieldActivityLog[];
+  history: FieldHistoryItem[];
+}
+
+export interface TaskAcknowledgement {
+  taskKey: string;
+  acknowledged: boolean;
+  acknowledgedAt: string;
 }

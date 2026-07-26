@@ -3,17 +3,24 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, ChevronDown, MapPin } from 'lucide-react';
 import { ApiError, ApiService } from '../../services/api';
 import type { RegionAnalysisRequest, RegionDto } from '../../services/api';
+import { SigunguPickerSheet } from '../common/SigunguPickerSheet';
 
 interface RegionExploreViewProps {
   onBack: () => void;
   onStartAnalysis: (request: Omit<RegionAnalysisRequest, 'idempotencyKey'>) => void;
   mode?: 'analyze' | 'change';
+  /** 'change' mode resolves the region silently in the background instead of
+      navigating to the full analyzing screen; these reflect that in-flight state. */
+  isSubmitting?: boolean;
+  submitError?: string | null;
 }
 
 export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
   onBack,
   onStartAnalysis,
-  mode = 'analyze'
+  mode = 'analyze',
+  isSubmitting = false,
+  submitError = null
 }) => {
   const [provinces, setProvinces] = useState<RegionDto[]>([]);
   const [districts, setDistricts] = useState<RegionDto[]>([]);
@@ -21,16 +28,20 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
   const [selectedDistrictCode, setSelectedDistrictCode] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [isDistrictPickerOpen, setIsDistrictPickerOpen] = useState(false);
 
   const selectedProvince = provinces.find(region => region.sidoCode === selectedProvinceCode);
   const selectedDistrict = districts.find(region => region.sigunguCode === selectedDistrictCode);
 
-  const loadProvinces = async () => {
+  const loadProvinces = async (force = false) => {
     setIsLoading(true);
     setLoadError(null);
     try {
-      const next = await ApiService.getSidos();
+      const next = force ? await ApiService.getSidos({ force: true }) : await ApiService.getSidos();
       setProvinces(next);
+      if (next.length === 0) {
+        setLoadError('등록된 시/도 정보가 없습니다. 잠시 후 다시 시도해 주세요.');
+      }
       if (mode === 'change') {
         setSelectedProvinceCode(previous => previous || next[0]?.sidoCode || '');
       }
@@ -55,8 +66,8 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
       .then(next => {
         if (!isCurrent) return;
         setDistricts(next);
-        if (mode === 'change') {
-          setSelectedDistrictCode(next[0]?.sigunguCode || '');
+        if (next.length === 0) {
+          setLoadError('선택한 시/도에 등록된 시/군/구 정보가 없습니다.');
         }
       })
       .catch(error => { if (isCurrent) setLoadError(error instanceof ApiError ? error.message : '시/군/구 목록을 불러오지 못했습니다.'); });
@@ -82,7 +93,7 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
           borderBottom: '1px solid #F0F2F1',
           marginBottom: 20
         }}>
-          <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#202A24', padding: 0 }}>
+          <button onClick={onBack} disabled={isSubmitting} style={{ background: 'none', border: 'none', cursor: isSubmitting ? 'default' : 'pointer', color: '#202A24', padding: 0, opacity: isSubmitting ? 0.4 : 1 }}>
             <ArrowLeft size={22} />
           </button>
           <h1 style={{ fontSize: '1.1rem', fontWeight: 850, color: '#202A24', margin: 0, textAlign: 'center' }}>
@@ -106,7 +117,7 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
         {loadError && (
           <div role="alert" style={{ backgroundColor: '#FFF4F2', border: '1px solid #F3CCC5', borderRadius: 14, padding: '12px 14px', marginBottom: 20, color: '#A43A2F', fontSize: '0.82rem', fontWeight: 650 }}>
             {loadError}
-            <button type="button" onClick={() => void loadProvinces()} style={{ marginLeft: 8, border: 0, background: 'none', color: '#A43A2F', textDecoration: 'underline', fontWeight: 800 }}>다시 시도</button>
+            <button type="button" onClick={() => void loadProvinces(true)} style={{ marginLeft: 8, border: 0, background: 'none', color: '#A43A2F', textDecoration: 'underline', fontWeight: 800 }}>다시 시도</button>
           </div>
         )}
 
@@ -151,10 +162,10 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
           </h3>
 
           <div style={{ position: 'relative' }}>
-            <select
-              value={selectedDistrictCode}
+            <button
+              type="button"
               disabled={!selectedProvinceCode}
-              onChange={e => setSelectedDistrictCode(e.target.value)}
+              onClick={() => setIsDistrictPickerOpen(true)}
               style={{
                 width: '100%',
                 height: 52,
@@ -164,20 +175,26 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
                 padding: '0 44px 0 18px',
                 fontSize: '0.96rem',
                 fontWeight: 750,
-                color: '#191F28',
+                color: selectedDistrict ? '#191F28' : '#8B95A1',
                 outline: 'none',
-                appearance: 'none',
-                cursor: 'pointer'
+                textAlign: 'left',
+                cursor: selectedProvinceCode ? 'pointer' : 'not-allowed',
+                opacity: selectedProvinceCode ? 1 : 0.6
               }}
             >
-              <option value="">시/군/구 선택</option>
-              {districts.map(d => (
-                <option key={d.sigunguCode} value={d.sigunguCode}>{d.sigunguName || d.sigunguCode}</option>
-              ))}
-            </select>
+              {selectedDistrict?.sigunguName || '시/군/구 선택'}
+            </button>
             <ChevronDown size={22} color="#2FA86A" style={{ position: 'absolute', right: 16, top: 15, pointerEvents: 'none' }} />
           </div>
         </div>
+
+        <SigunguPickerSheet
+          isOpen={isDistrictPickerOpen}
+          options={districts}
+          value={selectedDistrictCode}
+          onSelect={setSelectedDistrictCode}
+          onClose={() => setIsDistrictPickerOpen(false)}
+        />
 
         {/* Selected Region Card */}
         <div style={{
@@ -190,7 +207,7 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
           justifyContent: 'space-between'
         }}>
           <div>
-            <span style={{ fontSize: '0.76rem', color: '#2FA86A', fontWeight: 750 }}>선택된 분석 지역</span>
+            <span style={{ fontSize: '0.76rem', color: '#2FA86A', fontWeight: 750 }}>{mode === 'change' ? '선택된 지역' : '선택된 분석 지역'}</span>
             <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#154F36', marginTop: 2 }}>
               {[selectedProvince?.sidoName, selectedDistrict?.sigunguName].filter(Boolean).join(' ') || '지역을 선택해 주세요'}
             </div>
@@ -207,9 +224,14 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
 
       {/* Fixed Bottom CTA Button */}
       <div style={{ padding: '16px 20px 32px 20px', backgroundColor: '#FFFFFF', borderTop: '1px solid #F0F2F1' }}>
+        {submitError && (
+          <div role="alert" style={{ backgroundColor: '#FFF4F2', border: '1px solid #F3CCC5', borderRadius: 14, padding: '10px 14px', marginBottom: 12, color: '#A43A2F', fontSize: '0.82rem', fontWeight: 650 }}>
+            {submitError}
+          </div>
+        )}
         <motion.button
           whileTap={{ scale: 0.98 }}
-          disabled={isLoading || !selectedProvince || !selectedDistrict}
+          disabled={isLoading || isSubmitting || !selectedProvince || !selectedDistrict}
           onClick={() => {
             if (!selectedProvince || !selectedDistrict) return;
             onStartAnalysis({
@@ -220,9 +242,9 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
             });
           }}
           className="btn-farm-primary"
-          style={{ width: '100%', height: 56, fontSize: '1.05rem', borderRadius: 16 }}
+          style={{ width: '100%', height: 56, fontSize: '1.05rem', borderRadius: 16, opacity: isSubmitting ? 0.7 : 1 }}
         >
-          {mode === 'change' ? '지역 변경하기' : '지역 환경 분석하기'}
+          {isSubmitting ? '지역 확인 중...' : (mode === 'change' ? '지역 변경하기' : '지역 환경 분석하기')}
         </motion.button>
       </div>
     </div>

@@ -49,6 +49,7 @@ public class RegionReportResponseDto {
     private List<CropDecisionDto> cropResults;
     private List<RiskDto> topRisks;
     private List<TipDto> tips;
+    private List<SafeWorkWindowDto> safeWorkWindows;
     private List<SourceDto> sources;
     private List<String> missingMetrics;
 
@@ -100,6 +101,9 @@ public class RegionReportResponseDto {
         private String grade;
         private String status;
         private String description;
+        /** Raw 토양 pH / EC(전기전도도) readings; only populated on the soil component. */
+        private Double soilPh;
+        private Double soilEc;
     }
 
     @Getter
@@ -214,6 +218,19 @@ public class RegionReportResponseDto {
         private String actionLabel;
         private String dataDate;
         private List<SourceDto> sourceRefs;
+    }
+
+    @Getter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public static class SafeWorkWindowDto {
+        private String start;
+        private String end;
+        private String label;
+        private String reason;
+        private List<String> evidenceRefs;
     }
 
     @Getter

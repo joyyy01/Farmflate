@@ -7,10 +7,12 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 @Getter
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
+@Builder(toBuilder = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class FieldProfileResponseDto {
     private String id;
@@ -29,4 +31,13 @@ public class FieldProfileResponseDto {
     private FieldSuitabilityReportDto suitabilityReport;
     /** Optional: absent means no daily snapshot has been generated, not a synthetic report. */
     private FieldDailyReportDto latestReport;
+
+    private Integer cultivationDay;
+    private FieldDailyStatus dailyStatus;
+    private String dailyStatusLabel;
+    private String dailyHeadline;
+    private String dailyReportDate;
+    /** Today's dashboard alerts (오늘의 주의·위험), shown inline on the MyFarm list card. */
+    @Builder.Default
+    private List<FieldAlertDto> dailyAlerts = List.of();
 }

@@ -19,8 +19,8 @@ export interface WeatherSnapshot {
   temperature: number;
   minTemperature: number;
   maxTemperature: number;
-  humidity: number;
-  windSpeed: number;
+  humidity: number | null;
+  windSpeed: number | null;
   precipitationProbability: number;
   condition: WeatherCondition;
   conditionLabel: string;
@@ -72,6 +72,8 @@ export function snapshotFromBackend(weather: {
   minTemperature?: number | null;
   maxTemperature?: number | null;
   precipitationProbability?: number | null;
+  humidity?: number | null;
+  windSpeed?: number | null;
   condition?: string | null;
   status?: string | null;
 } | null | undefined): WeatherSnapshot | null {
@@ -82,8 +84,8 @@ export function snapshotFromBackend(weather: {
     temperature: temp,
     minTemperature: weather.minTemperature ?? temp - 3,
     maxTemperature: weather.maxTemperature ?? temp + 4,
-    humidity: 0,
-    windSpeed: 0,
+    humidity: weather.humidity ?? null,
+    windSpeed: weather.windSpeed ?? null,
     precipitationProbability: weather.precipitationProbability ?? 0,
     condition,
     conditionLabel: CONDITION_LABELS[condition],

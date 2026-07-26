@@ -20,8 +20,9 @@ public interface RegionAnalysisRepository extends JpaRepository<RegionAnalysisEn
     Optional<RegionAnalysisEntity> findFirstByUserEmailAndSigunguCodeAndRuleVersionAndAnalyzedAtAfterOrderByAnalyzedAtDesc(
             String userEmail, String sigunguCode, String ruleVersion, LocalDateTime since);
     Optional<RegionAnalysisEntity> findByIdAndUserEmail(String id, String userEmail);
-    Optional<RegionAnalysisEntity> findFirstByUserEmailOrderByAnalyzedAtDesc(String userEmail);
-    Optional<RegionAnalysisEntity> findFirstByUserEmailAndReportStatusInOrderByAnalyzedAtDesc(String userEmail, java.util.Collection<String> reportStatuses);
+    Optional<RegionAnalysisEntity> findFirstByUserEmailAndPurposeOrderByAnalyzedAtDesc(String userEmail, String purpose);
+    Optional<RegionAnalysisEntity> findFirstByUserEmailAndPurposeAndReportStatusInOrderByAnalyzedAtDesc(
+            String userEmail, String purpose, java.util.Collection<String> reportStatuses);
 
     Optional<RegionAnalysisEntity> findByAnalysisScopeAndScopeSubjectAndIdempotencyKey(
             String analysisScope, String scopeSubject, String idempotencyKey);

@@ -3,32 +3,66 @@ import { motion, AnimatePresence } from 'framer-motion';
 import type { PanInfo } from 'framer-motion';
 import { ArrowUp, ChevronRight, X, Sparkles } from 'lucide-react';
 import { ApiError, ApiService } from '../../services/api';
-import type { Message } from '../../types/chat';
+import type { Message, AIChatContext } from '../../types/chat';
 
 interface AIChatModalProps {
   isOpen: boolean;
   onClose: () => void;
-  regionAnalysisId?: string | null;
+  context: AIChatContext;
 }
+
+const GENERIC_QUESTIONS = [
+  { title: '지역 분석 결과를 쉽게 설명해 주세요', desc: '내 지역 분석 결과를 쉬운 말로 풀어드려요.', img: '/svg-assets/ai/faq-icons/season-question.svg' },
+  { title: '추천 작물은 어떤 기준으로 정했나요?', desc: '추천 작물이 정해진 근거를 알려드려요.', img: '/svg-assets/ai/faq-icons/crop-question.svg' },
+  { title: '농사 용어가 어려워요', desc: '쉬운 설명으로 이해를 도와드려요.', img: '/svg-assets/ai/faq-icons/term-question.svg' }
+];
+
+const FIELD_QUESTIONS = [
+  { title: '이 상태가 왜 그런가요?', desc: '오늘 이 밭의 상태나 원인을 알려드려요.', img: '/svg-assets/ai/faq-icons/state-question.svg' },
+  { title: '오늘 물을 줘야 하나요?', desc: '최근 날씨를 설명하고, 직접 확인할 토양 상태를 알려드려요.', img: '/svg-assets/ai/faq-icons/season-question.svg' },
+  { title: '오늘 무엇을 조심해야 하나요?', desc: '오늘 주의할 점과 관리 팁을 알려드려요.', img: '/svg-assets/ai/faq-icons/crop-question.svg' }
+];
 
 export const AIChatModal: React.FC<AIChatModalProps> = ({
   isOpen,
   onClose,
-  regionAnalysisId
+  context
 }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [hasStartedChat, setHasStartedChat] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [lastFailedPrompt, setLastFailedPrompt] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const sessionIdRef = useRef(0);
 
-  const detailedQuestions = [
-    { title: '이 상태가 왜 그런가요?', desc: '작물 상태나 문제 원인을 알려드려요.', img: '/svg-assets/ai/faq-icons/state-question.svg' },
-    { title: '오늘 물을 줘야 하나요?', desc: '최근 날씨를 설명하고, 직접 확인할 토양 상태를 알려드려요.', img: '/svg-assets/ai/faq-icons/season-question.svg' },
-    { title: '이 시기에는 무엇을 조심해야 하나요?', desc: '시기별 주의사항과 관리 팁을 알려드려요.', img: '/svg-assets/ai/faq-icons/crop-question.svg' },
-    { title: '농사 용어가 어려워요', desc: '쉬운 설명으로 이해를 도와드려요.', img: '/svg-assets/ai/faq-icons/term-question.svg' }
-  ];
+  const detailedQuestions = context.fieldId ? FIELD_QUESTIONS : GENERIC_QUESTIONS;
+
+  const resetConversation = () => {
+    abortControllerRef.current?.abort();
+    sessionIdRef.current += 1;
+    setMessages([]);
+    setInput('');
+    setLoading(false);
+    setHasStartedChat(false);
+    setErrorMessage(null);
+    setLastFailedPrompt(null);
+  };
+
+  /* Reopening (or switching screens while open) must never show the previous conversation. */
+  useEffect(() => {
+    if (!isOpen) {
+      resetConversation();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
+  useEffect(() => {
+    resetConversation();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [context.route, context.regionAnalysisId, context.fieldId, context.reportDate]);
 
   useEffect(() => {
     if (messages.length > 0) {
@@ -40,6 +74,7 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
     if (!promptText.trim() || loading) return;
     setHasStartedChat(true);
     setErrorMessage(null);
+    setLastFailedPrompt(null);
     const userMsg: Message = {
       id: crypto.randomUUID(),
       sender: 'user',
@@ -50,6 +85,10 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
     setInput('');
     setLoading(true);
 
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+    const requestSessionId = sessionIdRef.current;
+
     try {
       const response = await ApiService.sendChatMessage({
         message: promptText,
@@ -58,10 +97,14 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
           content: message.content
         })),
         context: {
-          regionAnalysisId: regionAnalysisId ?? null,
-          route: 'ai_chat'
+          regionAnalysisId: context.regionAnalysisId,
+          fieldId: context.fieldId,
+          reportDate: context.reportDate,
+          route: context.route
         }
       });
+      // A reset/close/context-change may have happened while this request was in flight.
+      if (requestSessionId !== sessionIdRef.current) return;
       const aiMsg: Message = {
         id: crypto.randomUUID(),
         sender: 'assistant',
@@ -72,17 +115,20 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
       };
       setMessages(prev => [...prev, aiMsg]);
     } catch (err) {
-      console.error(err);
-      setErrorMessage(err instanceof ApiError ? err.message : 'AI 답변을 불러오지 못했습니다.');
+      if (requestSessionId !== sessionIdRef.current) return;
+      setErrorMessage(err instanceof ApiError ? err.message : 'AI 답변을 불러오지 못했습니다. 다시 시도해 주세요.');
+      setLastFailedPrompt(promptText);
     } finally {
-      setLoading(false);
+      if (requestSessionId === sessionIdRef.current) setLoading(false);
     }
   };
 
+  const handleRetry = () => {
+    if (lastFailedPrompt) void handleSendPrompt(lastFailedPrompt);
+  };
+
   const handleReset = () => {
-    setHasStartedChat(false);
-    setMessages([]);
-    setErrorMessage(null);
+    resetConversation();
   };
 
   const handleDragEnd = (_: any, info: PanInfo) => {
@@ -293,7 +339,12 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
                   )}
                   {errorMessage && (
                     <div role="alert" style={{ alignSelf: 'flex-start', maxWidth: '85%', padding: '12px 16px', backgroundColor: '#FFF4F0', border: '1px solid #FFD5C8', borderRadius: 18, fontSize: '0.84rem', color: '#B54708', lineHeight: 1.5 }}>
-                      {errorMessage}
+                      <div style={{ marginBottom: lastFailedPrompt ? 8 : 0 }}>{errorMessage}</div>
+                      {lastFailedPrompt && (
+                        <button onClick={handleRetry} style={{ background: 'none', border: 'none', color: '#B54708', fontWeight: 800, fontSize: '0.8rem', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>
+                          다시 보내기
+                        </button>
+                      )}
                     </div>
                   )}
                   <div ref={chatEndRef} />

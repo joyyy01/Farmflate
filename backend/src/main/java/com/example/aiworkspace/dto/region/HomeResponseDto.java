@@ -39,6 +39,8 @@ public class HomeResponseDto {
         private Double minTemperature;
         private Double maxTemperature;
         private Integer precipitationProbability;
+        private Double humidity;
+        private Double windSpeed;
         private String condition; // SUNNY, RAIN, CLOUDY, SNOW
         private String observedOrForecastAt;
         private Boolean isCached;
@@ -64,7 +66,8 @@ public class HomeResponseDto {
         private String analysisId;
         private String regionName;
         private Integer score;
-        private TopCropDto topCrop;
+        @Builder.Default
+        private List<TopCropDto> recommendedCrops = Collections.emptyList();
         private String analyzedAt;
     }
 
@@ -74,6 +77,7 @@ public class HomeResponseDto {
     @Builder
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class TopCropDto {
+        private Integer rank;
         private String cropCode;
         private String cropName;
         private Integer score;

@@ -1,9 +1,13 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { AlertCircle, Bot } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Bot, ChevronRight } from 'lucide-react';
 import type { TabState } from '../../types/farmflate';
 import type { FieldProfile } from '../../types/report';
 import { BottomNavigation } from '../common/BottomNavigation';
+import { displayStage } from '../../constants/displayLabels';
+
+const ALERT_SEVERITY_COLOR: Record<string, string> = { HIGH: '#DC2626', MEDIUM: '#D97706', LOW: '#8d9590' };
+const MAX_VISIBLE_ALERTS = 2;
 
 interface MyFieldListViewProps {
   fields: FieldProfile[];
@@ -24,21 +28,22 @@ export const MyFieldListView: React.FC<MyFieldListViewProps> = ({
   activeTab,
   onTabChange
 }) => {
-  const stageLabel = (stage?: string | null) => {
-    if (stage === 'before') return '심기 전';
-    if (stage === 'growing') return '재배 중';
-    return stage || '단계 정보 없음';
-  };
+  const stageLabel = displayStage;
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
       <div className="full-screen-view no-scrollbar" style={{ padding: '32px 20px 96px 20px', overflowY: 'auto' }}>
 
         {/* Top Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <h2 style={{ fontSize: '1.45rem', fontWeight: 900, color: '#191F28', margin: 0 }}>
-            마이 팜
-          </h2>
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h2 style={{ fontSize: '1.45rem', fontWeight: 900, color: '#191F28', margin: 0 }}>
+              마이 팜
+            </h2>
+          </div>
+          <div style={{ fontSize: '0.78rem', color: '#8d9590', fontWeight: 600, marginTop: 6 }}>
+            매일 아침 6시, 최신 날씨와 작물 상태로 자동 업데이트돼요
+          </div>
         </div>
 
         {/* Dynamic Farm Cards List */}
@@ -54,13 +59,27 @@ export const MyFieldListView: React.FC<MyFieldListViewProps> = ({
             </div>
           )}
           {fields.map((field) => {
-            const hasSuitability = typeof field.suitabilityReport?.suitabilityScore === 'number' || Boolean(field.suitabilityReport?.grade);
-            const badgeBg = hasSuitability ? '#E9F7EC' : '#F3F4F6';
-            const badgeColor = hasSuitability ? '#2E9F5B' : '#6F7772';
+            const dailyStatus = field.dailyStatus ?? 'NEEDS_CHECK';
+            const BADGE_STYLE: Record<string, { bg: string; color: string }> = {
+              STABLE: { bg: '#E9F7EC', color: '#2E9F5B' },
+              CAUTION: { bg: '#FEF3E2', color: '#D97706' },
+              NEEDS_CHECK: { bg: '#F3F4F6', color: '#6F7772' }
+            };
+            const badgeBg = BADGE_STYLE[dailyStatus].bg;
+            const badgeColor = BADGE_STYLE[dailyStatus].color;
             const cropName = field.cropName || '작물 정보 없음';
-            const latestReport = field.latestReport;
-            const summary = latestReport?.summary || field.suitabilityReport?.summary;
-            const suitabilityLabel = field.suitabilityReport?.grade || (typeof field.suitabilityReport?.suitabilityScore === 'number' ? `적합도 ${field.suitabilityReport.suitabilityScore}점` : '적합도 자료 없음');
+            const summary = field.dailyHeadline
+              || field.latestReport?.headlineDescription
+              || field.latestReport?.summary
+              || field.suitabilityReport?.currentManagementPoints?.[0]
+              || '내일 오전 6시에 첫 리포트가 만들어져요.';
+            const alerts = field.dailyAlerts ?? [];
+            const visibleAlerts = alerts.slice(0, MAX_VISIBLE_ALERTS);
+            const hiddenAlertCount = alerts.length - visibleAlerts.length;
+            // A1: 행동 유도형 배지 — 첫 번째 알림 제목을 우선 사용
+            const actionBadge = alerts.length > 0
+              ? alerts[0].title
+              : field.dailyStatusLabel || '확인 필요';
 
             return (
               <div
@@ -77,7 +96,7 @@ export const MyFieldListView: React.FC<MyFieldListViewProps> = ({
                   cursor: 'pointer'
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <img src="/svg-assets/crops/sprout.svg" alt="" aria-hidden="true" style={{ width: 44, height: 44, objectFit: 'contain' }} />
                     <div>
@@ -85,7 +104,7 @@ export const MyFieldListView: React.FC<MyFieldListViewProps> = ({
                         {field.fieldName}
                       </h3>
                       <div style={{ fontSize: '0.78rem', color: '#6F7772', fontWeight: 500 }}>
-                        {cropName} · {stageLabel(field.stage)}{field.cultivationStartDate ? ` · 시작 ${field.cultivationStartDate}` : ''}
+                        {cropName} · {stageLabel(field.stage)}{field.cultivationDay ? ` · 재배 ${field.cultivationDay}일차` : ''}
                       </div>
                     </div>
                   </div>
@@ -97,24 +116,53 @@ export const MyFieldListView: React.FC<MyFieldListViewProps> = ({
                     fontSize: '0.74rem',
                     fontWeight: 800
                   }}>
-                    {suitabilityLabel}
+                    {actionBadge}
                   </span>
                 </div>
 
-                <div style={{
-                  backgroundColor: '#F8FAF8',
-                  borderRadius: 14,
-                  padding: '12px 14px',
-                  fontSize: '0.82rem',
-                  fontWeight: 700,
-                  color: '#334155',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  marginBottom: 20
-                }}>
-                  <AlertCircle size={16} color={badgeColor} /> {summary || '서버에서 제공된 관리 요약이 아직 없습니다.'}
-                </div>
+                {visibleAlerts.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
+                    <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#8d9590' }}>오늘의 주의·위험</div>
+                    {visibleAlerts.map((alert) => (
+                      <div
+                        key={alert.key}
+                        style={{
+                          backgroundColor: '#F8FAF8', borderRadius: 14, padding: '10px 12px',
+                          display: 'flex', alignItems: 'center', gap: 10
+                        }}
+                      >
+                        <AlertTriangle size={17} color={ALERT_SEVERITY_COLOR[alert.severity] ?? '#D97706'} style={{ flexShrink: 0 }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#191F28' }}>{alert.title}</div>
+                          <div style={{ fontSize: '0.74rem', color: '#6F7772', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {alert.description}
+                          </div>
+                        </div>
+                        <ChevronRight size={16} color="#B0B8B4" style={{ flexShrink: 0 }} />
+                      </div>
+                    ))}
+                    {hiddenAlertCount > 0 && (
+                      <div style={{ fontSize: '0.74rem', color: '#8d9590', fontWeight: 700, textAlign: 'right' }}>
+                        +{hiddenAlertCount}개 더 확인하기
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{
+                    backgroundColor: '#F8FAF8',
+                    borderRadius: 14,
+                    padding: '12px 14px',
+                    fontSize: '0.82rem',
+                    fontWeight: 700,
+                    color: '#334155',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    marginBottom: 20
+                  }}>
+                    <AlertCircle size={16} color={badgeColor} /> {summary}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -129,12 +177,6 @@ export const MyFieldListView: React.FC<MyFieldListViewProps> = ({
           <img src="/svg-assets/ui-icons/plus.svg" alt="" style={{ width: 18, height: 18, color: '#2FA86A' }} />
           농작물 등록하기
         </motion.button>
-
-        {fields.some(field => field.latestReport?.generatedAt) && (
-          <div style={{ textAlign: 'center', marginTop: 14, fontSize: '0.74rem', color: '#8d9590', fontWeight: 600 }}>
-            서버가 제공한 최신 리포트 기준
-          </div>
-        )}
 
       </div>
 

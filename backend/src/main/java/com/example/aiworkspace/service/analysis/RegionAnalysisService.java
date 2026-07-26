@@ -60,6 +60,12 @@ public class RegionAnalysisService {
             "CROP", "추천 작물을 계산하는 중",
             "REPORT", "지역 농사 환경 점수를 산출하는 중");
     private static final String OWNER_SCOPE = "OWNER";
+    private static final String PRIMARY_PURPOSE = "PRIMARY";
+    private static final String FIELD_LINKED_PURPOSE = "FIELD_LINKED";
+
+    private static String normalizePurpose(String requested) {
+        return FIELD_LINKED_PURPOSE.equalsIgnoreCase(requested) ? FIELD_LINKED_PURPOSE : PRIMARY_PURPOSE;
+    }
 
     private final RegionRepository regionRepository;
     private final RegionAnalysisRepository analysisRepository;
@@ -129,6 +135,7 @@ public class RegionAnalysisService {
                 .userEmail(ownerEmail)
                 .analysisScope(analysisScope)
                 .scopeSubject(scopeSubject)
+                .purpose(normalizePurpose(request.getPurpose()))
                 .sidoCode(region.getSidoCode())
                 .sidoName(region.getSidoName())
                 .sigunguCode(region.getSigunguCode())
@@ -194,6 +201,7 @@ public class RegionAnalysisService {
         CropScoringEngine.AnalysisInput input = new CropScoringEngine.AnalysisInput();
         input.meanTemperature30d = asos.meanTemperature30d;
         input.soilPh = soilChemistry.ph;
+        input.soilEc = soilChemistry.ec;
         input.shortForecasts = new ArrayList<>(forecasts);
         input.forecastRiskSafetyScore = cropScoringEngine.calculateForecastRisks(forecasts).safetyScore;
         for (Map.Entry<String, SoilSuitabilityAdapter.SoilSuitabilityResult> entry : suitability.entrySet()) {
@@ -254,6 +262,7 @@ public class RegionAnalysisService {
                 .cropResults(cropResults)
                 .topRisks(risks)
                 .tips(buildOfficialTips(missingMetrics))
+                .safeWorkWindows(toSafeWorkWindows(output.decisionOutput.safeWorkWindows))
                 .sources(sources)
                 .missingMetrics(missingMetrics)
                 .analyzedAt(LocalDateTime.now().format(DateTimeFormatter.ISO_DATE_TIME))
@@ -502,8 +511,8 @@ public class RegionAnalysisService {
     public HomeResponseDto getHome(String userEmail, String userDisplayName) {
         String displayName = hasText(userDisplayName) ? userDisplayName : "Farmflate 사용자";
         Optional<RegionAnalysisEntity> latest = analysisRepository
-                .findFirstByUserEmailAndReportStatusInOrderByAnalyzedAtDesc(userEmail, List.of("COMPLETED", "PARTIAL"))
-                .or(() -> analysisRepository.findFirstByUserEmailOrderByAnalyzedAtDesc(userEmail));
+                .findFirstByUserEmailAndPurposeAndReportStatusInOrderByAnalyzedAtDesc(userEmail, PRIMARY_PURPOSE, List.of("COMPLETED", "PARTIAL"))
+                .or(() -> analysisRepository.findFirstByUserEmailAndPurposeOrderByAnalyzedAtDesc(userEmail, PRIMARY_PURPOSE));
         
         Region region = null;
         if (latest.isPresent()) {
@@ -529,15 +538,23 @@ public class RegionAnalysisService {
         } catch (RuntimeException exception) {
             report = null;
         }
-        HomeResponseDto.TopCropDto topCrop = null;
-        HomeResponseDto.TodayActionDto todayAction = null;
+        List<HomeResponseDto.TopCropDto> recommendedCrops = List.of();
         if (report != null && report.getRecommendedCrops() != null && !report.getRecommendedCrops().isEmpty()) {
-            RegionReportResponseDto.RecommendedCropDto crop = report.getRecommendedCrops().get(0);
-            topCrop = HomeResponseDto.TopCropDto.builder()
-                    .cropCode(crop.getCropCode()).cropName(crop.getCropName()).score(crop.getScore())
-                    .reason(firstOr(crop.getPositiveReasons(), "지역 분석 근거를 확인하세요."))
-                    .build();
+            recommendedCrops = report.getRecommendedCrops().stream()
+                    .sorted(Comparator.comparing(
+                            RegionReportResponseDto.RecommendedCropDto::getRank,
+                            Comparator.nullsLast(Integer::compareTo)))
+                    .limit(3)
+                    .map(crop -> HomeResponseDto.TopCropDto.builder()
+                            .rank(crop.getRank())
+                            .cropCode(crop.getCropCode())
+                            .cropName(crop.getCropName())
+                            .score(crop.getScore())
+                            .reason(firstOr(crop.getPositiveReasons(), "지역 분석 근거를 확인하세요."))
+                            .build())
+                    .toList();
         }
+        HomeResponseDto.TodayActionDto todayAction = null;
         if (report != null && report.getTopRisks() != null && !report.getTopRisks().isEmpty()) {
             RegionReportResponseDto.RiskDto risk = report.getTopRisks().get(0);
             todayAction = HomeResponseDto.TodayActionDto.builder()
@@ -552,7 +569,7 @@ public class RegionAnalysisService {
                         .analysisId(analysis.getId())
                         .regionName(analysis.getSidoName() + " " + analysis.getSigunguName())
                         .score(analysis.getRegionScore())
-                        .topCrop(topCrop)
+                        .recommendedCrops(recommendedCrops)
                         .analyzedAt(analysis.getAnalyzedAt() == null ? null : analysis.getAnalyzedAt().format(DateTimeFormatter.ISO_DATE_TIME))
                         .build())
                 .farms(Collections.emptyList())
@@ -581,6 +598,8 @@ public class RegionAnalysisService {
             Double maxTemp = today.maxTemp;
             Integer pop = today.popMax;
             Double pcp = today.pcpTotal;
+            Double humidity = today.rehAvg;
+            Double windSpeed = today.wsdMax;
 
             String condition = null;
             if (pcp != null && pcp > 5.0) condition = "RAIN";
@@ -599,6 +618,8 @@ public class RegionAnalysisService {
                     .minTemperature(minTemp != null ? (double) Math.round(minTemp * 10.0) / 10.0 : null)
                     .maxTemperature(maxTemp != null ? (double) Math.round(maxTemp * 10.0) / 10.0 : null)
                     .precipitationProbability(pop)
+                    .humidity(humidity != null ? (double) Math.round(humidity * 10.0) / 10.0 : null)
+                    .windSpeed(windSpeed != null ? (double) Math.round(windSpeed * 10.0) / 10.0 : null)
                     .condition(condition)
                     .observedOrForecastAt(timeStr)
                     .isCached(false)
@@ -741,11 +762,25 @@ public class RegionAnalysisService {
             values.add(RegionReportResponseDto.RiskDto.builder()
                     .rank(index + 1).riskCode(risk.code).severity(risk.severity == null ? null : risk.severity.name())
                     .level(risk.severity == null ? null : risk.severity.name())
-                    .title(riskTitle(risk.code)).description(riskDescription(risk))
+                    .title(riskTitle(risk.code)).description(riskDescription(risk.code))
                     .period(periodFor(risk.evidenceRefs)).affectedCrops(copyOrEmpty(risk.affectedCrops))
                     .actions(List.of(actionTitle(risk.code))).causalChain(copyOrEmpty(risk.causalChain))
                     .criticalCap(risk.criticalCap).remainingRisk(risk.remainingRisk)
                     .evidenceRefs(evidence).source(evidence.isEmpty() ? null : evidence.get(0)).build());
+        }
+        return values;
+    }
+
+    private List<RegionReportResponseDto.SafeWorkWindowDto> toSafeWorkWindows(List<CropScoringEngine.SafeWorkWindow> windows) {
+        if (windows == null || windows.isEmpty()) return List.of();
+        List<RegionReportResponseDto.SafeWorkWindowDto> values = new ArrayList<>();
+        for (CropScoringEngine.SafeWorkWindow window : windows) {
+            values.add(RegionReportResponseDto.SafeWorkWindowDto.builder()
+                    .start(window.startDate).end(window.endDate)
+                    .label(window.durationDays + "일간 작업 가능")
+                    .reason(window.rationale)
+                    .evidenceRefs(copyOrEmpty(window.evidenceRefs))
+                    .build());
         }
         return values;
     }
@@ -776,20 +811,34 @@ public class RegionAnalysisService {
     private RegionReportResponseDto.ComponentDetailDto component(RegionReportResponseDto.ComponentDetailDto source) {
         if (source == null) return null;
         return RegionReportResponseDto.ComponentDetailDto.builder().score(source.getScore()).grade(source.getGrade())
-                .status(statusForScore(source.getScore())).description(componentDescription(source.getScore())).build();
+                .status(statusForScore(source.getScore())).description(componentDescription(source.getScore()))
+                .soilPh(source.getSoilPh()).soilEc(source.getSoilEc()).build();
     }
 
     private List<String> environmentFeatures(RegionReportResponseDto.ComponentsDto components,
                                              List<RegionReportResponseDto.RiskDto> risks,
                                              List<String> missingMetrics) {
         List<String> values = new ArrayList<>();
-        if (components != null && components.getClimate() != null) values.add("기후 상태: " + components.getClimate().getStatus());
-        if (components != null && components.getSoil() != null) values.add("토양 상태: " + components.getSoil().getStatus());
-        if (components != null && components.getHazard() != null) values.add("자연재해 상태: " + components.getHazard().getStatus());
-        if (components != null && components.getCultivation() != null) values.add("재배환경 상태: " + components.getCultivation().getStatus());
+        if (components != null && components.getClimate() != null) values.add("기후 상태: " + statusKorean(components.getClimate().getStatus()));
+        if (components != null && components.getSoil() != null) values.add("토양 상태: " + statusKorean(components.getSoil().getStatus()));
+        if (components != null && components.getHazard() != null) values.add("자연재해 상태: " + statusKorean(components.getHazard().getStatus()));
+        if (components != null && components.getCultivation() != null) values.add("재배환경 상태: " + statusKorean(components.getCultivation().getStatus()));
         if (!risks.isEmpty()) values.add("핵심 위험: " + risks.get(0).getTitle());
         if (!missingMetrics.isEmpty()) values.add("일부 공공 데이터 미확인");
         return values;
+    }
+
+    /* environmentFeatures() concatenates this into a Korean sentence shown directly
+     * in the report's "환경 특징" list, so the raw status code (GOOD/CAUTION/RISK/
+     * UNAVAILABLE from statusForScore) must never leak through untranslated. */
+    private String statusKorean(String status) {
+        if (status == null) return "자료 부족";
+        return switch (status) {
+            case "GOOD" -> "양호";
+            case "CAUTION" -> "주의";
+            case "RISK" -> "위험";
+            default -> "자료 부족";
+        };
     }
 
     private List<RegionReportResponseDto.TipDto> buildOfficialTips(List<String> missingMetrics) {
@@ -933,6 +982,8 @@ public class RegionAnalysisService {
             case "WIND" -> "강풍 위험";
             case "DROUGHT" -> "건조 위험";
             case "HIGH_HUMIDITY" -> "고습 위험";
+            case "CUCUMBER_POST_TRANSPLANT_NIGHT_COLD" -> "오이 정식 초기 저온 위험";
+            case "LETTUCE_HEAT_HUMIDITY" -> "상추 고온다습 위험";
             default -> code;
         };
     }
@@ -950,9 +1001,24 @@ public class RegionAnalysisService {
         };
     }
 
-    private String riskDescription(CropScoringEngine.RiskEvent risk) {
-        if (risk.causalChain == null || risk.causalChain.isEmpty()) return "예보 기반 위험 조건이 감지되었습니다.";
-        return String.join(" → ", risk.causalChain);
+    /* risk.causalChain is an internal, English-only debugging trail (e.g.
+     * "high maximum temperature" -> "heat stress exposure") -- it must never
+     * be joined and shown to the user directly. This maps each risk code to
+     * a proper Korean sentence instead. */
+    private String riskDescription(String code) {
+        if (code == null) return "예보 기반 위험 조건이 감지되었습니다.";
+        return switch (code) {
+            case "POTATO_WATERLOGGING", "WATERLOGGING", "CONCENTRATED_RAIN" -> "집중 강수로 배수 부담이 커질 것으로 예상됩니다.";
+            case "PEAR_BLOSSOM_FROST" -> "배 개화기에 저온이 예보되어 서리 피해 위험이 있습니다.";
+            case "COLD_FROST" -> "저온이 이어질 것으로 예보되어 서리 피해가 우려됩니다.";
+            case "HEAT" -> "고온이 이어질 것으로 예보되어 작물이 열 스트레스를 받을 수 있습니다.";
+            case "WIND" -> "강한 바람이 예보되어 작물과 시설물이 흔들릴 수 있습니다.";
+            case "DROUGHT" -> "건조한 날이 이어져 토양 수분이 부족해질 수 있습니다.";
+            case "HIGH_HUMIDITY" -> "높은 습도가 이어져 병해충 발생 위험이 커질 수 있습니다.";
+            case "CUCUMBER_POST_TRANSPLANT_NIGHT_COLD" -> "오이 정식 초기에 저온이 예보되어 활착에 어려움을 겪을 수 있습니다.";
+            case "LETTUCE_HEAT_HUMIDITY" -> "상추 재배 시기에 고온다습이 이어져 생육 스트레스가 우려됩니다.";
+            default -> "예보 기반 위험 조건이 감지되었습니다.";
+        };
     }
 
     private String statusForScore(Integer score) {

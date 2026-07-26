@@ -42,6 +42,7 @@ class AgentState(TypedDict, total=False):
     selected_tools: list[str]
     tool_results: dict[str, Any]
     structured_answer: StructuredAnswer
+    deterministic_answer: StructuredAnswer
     validation_passed: bool
     final_answer: StructuredAnswer
     final_sources: list[dict[str, Any]]
@@ -297,13 +298,27 @@ class AIService:
             )
             return {"structured_answer": answer, "trace": [*state["trace"], "리포트 없음 응답 생성"]}
 
+        # Always compute the fact-only, intent-specific answer first. It is
+        # never shown if the LLM succeeds and passes grounding validation,
+        # but it is the fallback if the LLM is unavailable or hallucinates --
+        # and unlike a single generic summary, it still varies by intent, so
+        # different questions never collapse into the same canned reply.
+        deterministic_answer = self._build_deterministic_answer(fp, intent, region_analysis, tool_results)
+
         if settings.OPENAI_API_KEY and settings.LLM_PROVIDER.lower() == "openai":
             llm_answer = await self._call_openai(fp, intent, tool_results)
             if llm_answer is not None:
-                return {"structured_answer": llm_answer, "trace": [*state["trace"], "LLM 응답 생성"]}
+                return {
+                    "structured_answer": llm_answer,
+                    "deterministic_answer": deterministic_answer,
+                    "trace": [*state["trace"], "LLM 응답 생성"],
+                }
 
-        fallback_answer = self._build_deterministic_answer(fp, intent, region_analysis, tool_results)
-        return {"structured_answer": fallback_answer, "trace": [*state["trace"], "규칙 기반 응답 생성"]}
+        return {
+            "structured_answer": deterministic_answer,
+            "deterministic_answer": deterministic_answer,
+            "trace": [*state["trace"], "규칙 기반 응답 생성"],
+        }
 
     async def _call_openai(
         self, fp: FactPackage, intent: str, tool_results: dict[str, Any]
@@ -584,6 +599,14 @@ class AIService:
         return any(w in lowered for w in ("물주기", "물줘", "물주", "급수", "관수"))
 
     def _validate_facts_and_sources(self, state: AgentState) -> dict[str, Any]:
+        """Grounding check for the LLM answer. Deliberately narrow: it exists
+        to catch genuine hallucination (a fact/source id that was never sent,
+        or a crop outside our fixed 5-crop catalog), not to demand the LLM's
+        self-reported numbers/risk-title strings match a FactPackage value
+        character-for-character -- natural paraphrasing of a real number
+        (rounding, unit wording, "이번 주" vs a literal date) is not
+        hallucination, and rejecting it just to fall back to a duller answer
+        made the assistant look like it ignores every question."""
         answer = state.get("structured_answer")
         if answer is None:
             return {"validation_passed": False, "trace": [*state["trace"], "답변 없음 — 검증 실패"]}
@@ -591,39 +614,22 @@ class AIService:
         fp = state["fact_package"]
         valid_fact_keys = set(fp.facts.keys())
         valid_source_ids = {s.get("sourceId", "") for s in fp.sources if isinstance(s, dict)}
-        fact_values = set()
-        for v in fp.facts.values():
-            if isinstance(v, (int, float)):
-                fact_values.add(float(v))
-        crop_names = set()
-        risk_titles = set()
-        for k, v in fp.facts.items():
-            if k.startswith("crop.") and k.endswith(".name") and isinstance(v, str):
-                crop_names.add(v)
-            if k.startswith("risk.") and k.endswith(".title") and isinstance(v, str):
-                risk_titles.add(v)
+        known_crop_names = {profile["name"] for profile in CROP_PROFILES.values()}
 
         errors: list[str] = []
         for fid in answer.usedFactIds:
             if fid and fid not in valid_fact_keys:
                 errors.append(f"Fact '{fid}' not in FactPackage")
-        for num in answer.mentionedNumbers:
-            if float(num) not in fact_values:
-                errors.append(f"Number {num} not in fact values")
+        for sid in answer.usedSourceIds:
+            if sid and sid not in valid_source_ids:
+                errors.append(f"Source '{sid}' not in FactPackage")
         for crop in answer.mentionedCrops:
-            if crop and crop not in crop_names:
-                errors.append(f"Crop '{crop}' not in fact crops")
-        for risk in answer.mentionedRisks:
-            if risk and risk not in risk_titles:
-                errors.append(f"Risk '{risk}' not in fact risks")
+            if crop and crop not in known_crop_names:
+                errors.append(f"Crop '{crop}' is not one of the 5 supported crops")
 
         if answer.basisType in ("CURRENT_REPORT", "OFFICIAL_GUIDANCE") and not answer.usedSourceIds:
             if fp.sources:
                 errors.append("basisType requires sources but usedSourceIds is empty")
-
-        for num in answer.mentionedNumbers:
-            if num not in fact_values:
-                errors.append(f"Mentioned number {num} not in facts")
 
         passed = len(errors) == 0
         trace_msg = "Fact/Source 검증 통과" if passed else f"검증 실패: {errors}"
@@ -638,65 +644,29 @@ class AIService:
                 "trace": [*state["trace"], "검증된 답변 반환"],
             }
 
-        facts = fp.facts
-        parts: list[str] = []
-        used_ids: list[str] = []
-        mentioned_nums: list[float] = []
-        mentioned_crops_list: list[str] = []
-        mentioned_risks_list: list[str] = []
+        # The LLM answer either wasn't attempted or failed grounding
+        # validation. Use the intent-specific, fact-only answer computed
+        # earlier in _compose_structured_answer -- it is guaranteed to pass
+        # validation (built directly from facts) and, critically, still
+        # differs by intent (risk explanation vs crop recommendation vs
+        # watering guidance, etc.), so a rejected LLM answer never collapses
+        # every question into the same generic summary.
+        deterministic = state.get("deterministic_answer")
+        if deterministic is not None:
+            return {
+                "final_answer": deterministic,
+                "final_sources": fp.sources,
+                "trace": [*state["trace"], "LLM 검증 실패 — 규칙 기반 답변으로 대체"],
+            }
 
-        score = facts.get("region.score")
-        grade = facts.get("region.grade")
-        if score is not None:
-            grade_str = f"({grade})" if grade else ""
-            parts.append(f"현재 리포트의 지역 점수는 {score}점{grade_str}입니다.")
-            used_ids.append("region.score")
-            mentioned_nums.append(float(score))
-
-        crop_parts = []
-        for i in range(1, 4):
-            name = facts.get(f"crop.{i}.name")
-            cscore = facts.get(f"crop.{i}.score")
-            if name:
-                label = str(name)
-                if cscore is not None:
-                    label += f"({cscore}점)"
-                    mentioned_nums.append(float(cscore))
-                    used_ids.append(f"crop.{i}.score")
-                crop_parts.append(label)
-                used_ids.append(f"crop.{i}.name")
-                mentioned_crops_list.append(str(name))
-        if crop_parts:
-            parts.append(f"추천 작물은 {', '.join(crop_parts)}입니다.")
-
-        risk_title = facts.get("risk.1.title")
-        if risk_title:
-            parts.append(f"가장 큰 위험은 '{risk_title}'입니다.")
-            used_ids.append("risk.1.title")
-            mentioned_risks_list.append(str(risk_title))
-            risk_action = facts.get("risk.1.action.1")
-            if risk_action:
-                parts.append(f"권장 행동은 {risk_action}입니다.")
-                used_ids.append("risk.1.action.1")
-        elif score is not None:
-            parts.append("현재 기상 예보에서 확인된 주요 위험은 없습니다.")
-
-        if not parts:
-            parts.append("완료된 분석 리포트를 확인한 뒤 다시 질문해 주세요.")
-
-        fallback = StructuredAnswer(
-            answer=" ".join(parts),
+        last_resort = StructuredAnswer(
+            answer="완료된 분석 리포트를 확인한 뒤 다시 질문해 주세요.",
             basisType="CURRENT_REPORT",
-            usedFactIds=used_ids,
-            usedSourceIds=[s.get("sourceId", "") for s in fp.sources if isinstance(s, dict)],
-            mentionedNumbers=mentioned_nums,
-            mentionedCrops=mentioned_crops_list,
-            mentionedRisks=mentioned_risks_list,
         )
         return {
-            "final_answer": fallback,
+            "final_answer": last_resort,
             "final_sources": fp.sources,
-            "trace": [*state["trace"], "Deterministic fallback 반환"],
+            "trace": [*state["trace"], "리포트 없음 — 최종 안내 반환"],
         }
 
     @staticmethod

@@ -11,7 +11,7 @@ createRoot(document.getElementById('root')!).render(
     <ErrorBoundary>
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<App />} />
+          <Route path="/*" element={<App />} />
           <Route path="/oauth2/callback/kakao" element={<OAuth2Callback />} />
         </Routes>
       </BrowserRouter>

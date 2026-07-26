@@ -4,9 +4,6 @@ import com.example.aiworkspace.domain.common.BaseTimeEntity;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.util.ArrayList;
-import java.util.List;
-
 @Entity
 @Table(name = "community_posts")
 @Getter
@@ -44,11 +41,16 @@ public class CommunityPostEntity extends BaseTimeEntity {
     @Column(name = "comment_count")
     private int commentCount = 0;
 
-    @OneToMany(mappedBy = "post", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<CommunityCommentEntity> comments = new ArrayList<>();
+    @Column(name = "region_analysis_id", length = 36)
+    private String regionAnalysisId;
+
+    @Column(name = "region_label", length = 100)
+    private String regionLabel;
 
     @Builder
-    public CommunityPostEntity(String category, String tagLocation, String title, String content, String author, String authorEmail, String imageUrl, int likeCount, int commentCount) {
+    public CommunityPostEntity(String category, String tagLocation, String title, String content, String author,
+                                String authorEmail, String imageUrl, int likeCount, int commentCount,
+                                String regionAnalysisId, String regionLabel) {
         this.category = category;
         this.tagLocation = tagLocation;
         this.title = title;
@@ -58,18 +60,8 @@ public class CommunityPostEntity extends BaseTimeEntity {
         this.imageUrl = imageUrl;
         this.likeCount = likeCount;
         this.commentCount = commentCount;
+        this.regionAnalysisId = regionAnalysisId;
+        this.regionLabel = regionLabel;
     }
 
-    public void incrementLike() {
-        this.likeCount++;
-    }
-
-    public void decrementLike() {
-        this.likeCount = Math.max(0, this.likeCount - 1);
-    }
-
-    public void addComment(CommunityCommentEntity comment) {
-        this.comments.add(comment);
-        this.commentCount = this.comments.size();
-    }
 }

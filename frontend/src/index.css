@@ -18,6 +18,16 @@ body {
   box-sizing: border-box;
 }
 
+/* Loading-spinner rotation: a plain CSS animation (not JS/framer-motion driven)
+   so it keeps spinning smoothly regardless of how often the parent re-renders
+   or how briefly an element is mounted. */
+@keyframes spinner-rotate {
+  to { transform: rotate(360deg); }
+}
+.spinner-rotate {
+  animation: spinner-rotate 0.8s linear infinite;
+}
+
 /* Hide scrollbars gracefully */
 .no-scrollbar::-webkit-scrollbar {
   display: none;

@@ -45,6 +45,7 @@ public class FieldService {
     private final FarmRepository farmRepository;
     private final FieldDailyReportRepository dailyReportRepository;
     private final RegionAnalysisRepository regionAnalysisRepository;
+    private final FieldDailyReportService dailyReportService;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
@@ -52,18 +53,13 @@ public class FieldService {
     public FieldService(FarmRepository farmRepository,
                         FieldDailyReportRepository dailyReportRepository,
                         RegionAnalysisRepository regionAnalysisRepository,
-                        ObjectMapper objectMapper) {
-        this(farmRepository, dailyReportRepository, regionAnalysisRepository, objectMapper, Clock.systemDefaultZone());
-    }
-
-    public FieldService(FarmRepository farmRepository,
-                        FieldDailyReportRepository dailyReportRepository,
-                        RegionAnalysisRepository regionAnalysisRepository,
+                        FieldDailyReportService dailyReportService,
                         ObjectMapper objectMapper,
                         Clock clock) {
         this.farmRepository = farmRepository;
         this.dailyReportRepository = dailyReportRepository;
         this.regionAnalysisRepository = regionAnalysisRepository;
+        this.dailyReportService = dailyReportService;
         this.objectMapper = objectMapper;
         this.clock = clock;
     }
@@ -104,7 +100,18 @@ public class FieldService {
                 .id(registration.getId()).farmId(saved.getId()).ownerEmail(ownerEmail)
                 .reportDate(generatedAt.toLocalDate()).generationReason("REGISTRATION")
                 .generatedAt(generatedAt).payloadJson(write(registration)).build());
-        return toProfile(saved, location, suitability, registrationWithId(registration, stored.getId()));
+
+        // A field must never sit with only the bare registration summary until
+        // tomorrow's 06:30 scheduler run: generate today's real weather-narrated
+        // report immediately too, so the card shows a genuine headline right away.
+        FieldDailyReportDto latest = registrationWithId(registration, stored.getId());
+        try {
+            latest = dailyReportService.getOrCreate(saved, generatedAt.toLocalDate());
+        } catch (Exception exception) {
+            log.warn("field_daily_report.immediate_generation_failed fieldId={} error={}", saved.getId(), exception.getMessage());
+        }
+        FieldProfileResponseDto profile = toProfile(saved, location, suitability, latest);
+        return withDailyStatus(profile, saved, ownerEmail);
     }
 
     @Transactional(readOnly = true)
@@ -138,46 +145,42 @@ public class FieldService {
         return farmRepository.findByUserEmailOrderByCreatedAtDesc(ownerEmail).stream()
                 .map(field -> {
                     FieldDailyReportDto latest = latestReport(field, ownerEmail);
-                    return toProfile(field, readLocation(field.getLocationJson()), recoverSuitability(field, ownerEmail, latest), latest);
+                    FieldProfileResponseDto profile = toProfile(field, readLocation(field.getLocationJson()), recoverSuitability(field, ownerEmail, latest), latest);
+                    return withDailyStatus(profile, field, ownerEmail);
                 })
                 .toList();
     }
 
     /**
-     * Scheduler-facing entry point.  No @Scheduled annotation is used because
-     * this project has no configured operational scheduler.  A future scheduler
-     * can call this at 06:00 Asia/Seoul; generatedAt is fixed to 06:00 so the
-     * snapshot is deterministic and idempotent per field/day/reason.
+     * The card badge must reflect the field's own daily dashboard status
+     * (STABLE/CAUTION/NEEDS_CHECK), never the static suitability grade from
+     * registration time. cultivationDay is recomputed every call from today's
+     * date, never read back from the FarmEntity.daysPlanted storage column.
      */
-    @Transactional
-    public void generateDailyForActiveFields(LocalDate date) {
-        LocalDate reportDate = date == null ? LocalDate.now(clock) : date;
-        for (FarmEntity field : farmRepository.findByActiveTrue()) {
-            if (field.getId() == null || dailyReportRepository.existsByFarmIdAndReportDateAndGenerationReason(
-                    field.getId(), reportDate, "DAILY_0600")) {
-                continue;
-            }
-            try {
-                RegionAnalysisEntity analysis = regionAnalysisRepository
-                        .findByIdAndUserEmail(field.getRegionAnalysisId(), field.getUserEmail())
-                        .orElseThrow(() -> FieldException.analysisNotFound(field.getRegionAnalysisId()));
-                RegionReportResponseDto regionReport = readRegionReport(analysis);
-                CreateFieldRequestDto fieldInput = CreateFieldRequestDto.builder()
-                        .fieldName(field.getFieldName()).cropCode(field.getCropCode()).cropName(field.getCropName())
-                        .cultivationMethod(field.getCultivationMethod()).cultivationStartDate(field.getCultivationStartDate())
-                        .stage(field.getStage()).regionAnalysisId(field.getRegionAnalysisId()).build();
-                CropResolution crop = resolveCrop(fieldInput, regionReport);
-                FieldSuitabilityReportDto suitability = buildSuitability(regionReport, crop.cropCode(), crop.cropName(), fieldInput);
-                LocalDateTime generatedAt = reportDate.atTime(6, 0);
-                FieldDailyReportDto daily = dailyReport(field, suitability, reportDate, generatedAt, "DAILY_0600");
-                dailyReportRepository.save(FieldDailyReportEntity.builder()
-                        .id(daily.getId()).farmId(field.getId()).ownerEmail(field.getUserEmail())
-                        .reportDate(reportDate).generationReason("DAILY_0600")
-                        .generatedAt(generatedAt).payloadJson(write(daily)).build());
-            } catch (FieldException exception) {
-                log.warn("Skipping deterministic daily field report for field {}: {}", field.getId(), exception.getCode());
-            }
-        }
+    private FieldProfileResponseDto withDailyStatus(FieldProfileResponseDto profile, FarmEntity field, String ownerEmail) {
+        if (field.getId() == null) return profile;
+        FieldDailyReportDto daily = dailyReportRepository
+                .findFirstByFarmIdAndOwnerEmailAndGenerationReasonOrderByGeneratedAtDesc(
+                        field.getId(), ownerEmail, "DAILY_0630")
+                .flatMap(entity -> read(entity.getPayloadJson(), FieldDailyReportDto.class))
+                .orElse(null);
+        return profile.toBuilder()
+                .cultivationDay(daysPlanted(field.getCultivationStartDate()))
+                .dailyStatus(daily == null ? null : daily.getStatus())
+                .dailyStatusLabel(dailyStatusLabel(daily == null ? null : daily.getStatus()))
+                .dailyHeadline(daily == null ? null : daily.getHeadline())
+                .dailyReportDate(daily == null ? null : daily.getReportDate())
+                .dailyAlerts(daily == null ? List.of() : copyOrEmpty(daily.getAlerts()))
+                .build();
+    }
+
+    private String dailyStatusLabel(com.example.aiworkspace.dto.field.FieldDailyStatus status) {
+        if (status == null) return "확인 필요";
+        return switch (status) {
+            case STABLE -> "안정";
+            case CAUTION -> "주의";
+            case NEEDS_CHECK -> "확인 필요";
+        };
     }
 
     private FieldSuitabilityReportDto buildSuitability(RegionReportResponseDto report, String cropCode,
@@ -536,6 +539,30 @@ public class FieldService {
 
         static FieldException persistenceUnavailable() {
             return new FieldException(HttpStatus.SERVICE_UNAVAILABLE, "FIELD_REPORT_PERSISTENCE_UNAVAILABLE", "밭 리포트를 저장할 수 없습니다.");
+        }
+
+        public static FieldException fieldNotFound() {
+            return new FieldException(HttpStatus.NOT_FOUND, "FIELD_NOT_FOUND", "밭 정보를 찾을 수 없습니다.");
+        }
+
+        public static FieldException reportNotAvailable() {
+            return new FieldException(HttpStatus.NOT_FOUND, "FIELD_REPORT_NOT_AVAILABLE", "해당 날짜의 밭 리포트가 없습니다.");
+        }
+
+        public static FieldException reportBeforeCultivation() {
+            return new FieldException(HttpStatus.NOT_FOUND, "FIELD_REPORT_BEFORE_CULTIVATION", "재배 시작일 이전의 리포트는 없습니다.");
+        }
+
+        public static FieldException futureDateNotAllowed() {
+            return new FieldException(HttpStatus.BAD_REQUEST, "FIELD_FUTURE_DATE_NOT_ALLOWED", "미래 날짜의 리포트는 조회할 수 없습니다.");
+        }
+
+        public static FieldException taskNotFound() {
+            return new FieldException(HttpStatus.NOT_FOUND, "FIELD_TASK_NOT_FOUND", "해당 할 일을 찾을 수 없습니다.");
+        }
+
+        public static FieldException invalidLog(String message) {
+            return new FieldException(HttpStatus.BAD_REQUEST, "INVALID_FIELD_LOG", message);
         }
 
         public HttpStatus getHttpStatus() {

@@ -24,6 +24,7 @@ repositories {
 
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
@@ -45,4 +46,21 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+}
+
+// On Windows with a non-UTF-8 system locale (e.g. Korean CP949), javac reads
+// .java source files using the platform default charset unless told
+// otherwise, permanently corrupting any hardcoded non-ASCII (Korean) string
+// literals baked into the compiled class files. Force UTF-8 for both the
+// compiler's source reading and the running JVM's default charset.
+tasks.withType(JavaCompile).configureEach {
+	options.encoding = 'UTF-8'
+}
+
+tasks.withType(Test).configureEach {
+	systemProperty 'file.encoding', 'UTF-8'
+}
+
+tasks.named('bootRun') {
+	jvmArgs += ['-Dfile.encoding=UTF-8', '-Dsun.jnu.encoding=UTF-8']
 }

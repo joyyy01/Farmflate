@@ -1,5 +1,4 @@
 import React from 'react';
-import { motion } from 'framer-motion';
 import type { AnalysisState, FieldPreviewState } from '../../services/reportLifecycle';
 
 interface AnalyzingViewProps {
@@ -139,7 +138,7 @@ export const AnalyzingView: React.FC<AnalyzingViewProps> = ({
       boxSizing: 'border-box',
       justifyContent: 'center',
       alignItems: 'center',
-      padding: '40px 24px'
+      padding: '40px 20px'
     }}>
       <div style={{
         width: '100%',
@@ -219,16 +218,16 @@ export const AnalyzingView: React.FC<AnalyzingViewProps> = ({
                       <path d="M8 12.3l2.6 2.6L16.3 9" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   ) : isCurrent ? (
-                    <motion.div
+                    <div
+                      key={`spin-${idx}`}
+                      className="spinner-rotate"
                       style={{ width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                      animate={{ rotate: 360 }}
-                      transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
                     >
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                         <circle cx="12" cy="12" r="9.25" stroke="#D7ECDD" strokeWidth="2.2" />
                         <path d="M21.25 12A9.25 9.25 0 0 0 12 2.75" stroke="#2FA35A" strokeWidth="2.2" strokeLinecap="round" />
                       </svg>
-                    </motion.div>
+                    </div>
                   ) : (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                       <circle cx="12" cy="12" r="9.25" stroke="#D7DEDA" strokeWidth="1.6" />

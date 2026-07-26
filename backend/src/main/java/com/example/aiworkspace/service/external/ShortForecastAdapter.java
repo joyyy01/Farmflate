@@ -211,20 +211,38 @@ public class ShortForecastAdapter {
 
     @SuppressWarnings("unchecked")
     private ExternalResult<Map<String, Object>> requestPage(int nx, int ny, String baseDate, String baseTime, int page) {
-        URI uri = UriComponentsBuilder.fromHttpUrl(BASE_URL)
-                .queryParam("ServiceKey", serviceKey)
-                .queryParam("pageNo", page)
-                .queryParam("numOfRows", 1000)
-                .queryParam("dataType", "JSON")
-                .queryParam("base_date", baseDate)
-                .queryParam("base_time", baseTime)
-                .queryParam("nx", nx)
-                .queryParam("ny", ny)
-                .build()
-                .encode()
-                .toUri();
-        return ExternalAdapterSupport.executeRequest(
-                retryCount, "KMA_REQUEST_FAILED", () -> restTemplate.getForObject(uri, Map.class));
+        int retries = Math.max(0, retryCount);
+        for (int attempt = 0; ; attempt++) {
+            URI uri = UriComponentsBuilder.fromHttpUrl(BASE_URL)
+                    .queryParam("ServiceKey", serviceKey)
+                    .queryParam("pageNo", page)
+                    .queryParam("numOfRows", 1000)
+                    .queryParam("dataType", "JSON")
+                    .queryParam("base_date", baseDate)
+                    .queryParam("base_time", baseTime)
+                    .queryParam("nx", nx)
+                    .queryParam("ny", ny)
+                    .build()
+                    .encode()
+                    .toUri();
+            ExternalResult<Map<String, Object>> response = ExternalAdapterSupport.executeRequest(
+                    retryCount, "KMA_REQUEST_FAILED", () -> restTemplate.getForObject(uri, Map.class));
+            if (response.isFailure()) {
+                return response;
+            }
+            // As in AsosAdapter: a momentary KMA timeout/quota hit (resultCode
+            // 05/22) rides in on an HTTP 200 body, so the transport-level retry
+            // above never triggers for it. Retry at this boundary instead of
+            // letting a transient blip present as a missing 3-day forecast.
+            String providerCode = ExternalAdapterSupport.providerResultCode(response.value());
+            if (attempt < retries && ExternalAdapterSupport.isProviderTransientFailureCode("KMA_PROVIDER_" + providerCode)) {
+                log.info("Short forecast provider transient result {}; retrying ({}/{})",
+                        providerCode, attempt + 1, retries);
+                ExternalAdapterSupport.backoffSleep(attempt);
+                continue;
+            }
+            return response;
+        }
     }
 
     private ExternalResult<List<Map<String, Object>>> extractItems(Map<String, Object> response) {

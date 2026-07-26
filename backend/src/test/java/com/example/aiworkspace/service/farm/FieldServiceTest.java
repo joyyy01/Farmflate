@@ -17,7 +17,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
@@ -25,7 +24,6 @@ import org.springframework.http.HttpStatus;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
@@ -34,7 +32,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.never;
@@ -48,6 +45,7 @@ class FieldServiceTest {
     @Mock private FarmRepository farmRepository;
     @Mock private FieldDailyReportRepository dailyReportRepository;
     @Mock private RegionAnalysisRepository regionAnalysisRepository;
+    @Mock private FieldDailyReportService dailyReportService;
 
     private FieldService service;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -55,11 +53,11 @@ class FieldServiceTest {
     @BeforeEach
     void setUp() {
         Clock clock = Clock.fixed(Instant.parse("2026-07-24T08:30:00Z"), ZoneId.of("Asia/Seoul"));
-        service = new FieldService(farmRepository, dailyReportRepository, regionAnalysisRepository, objectMapper, clock);
+        service = new FieldService(farmRepository, dailyReportRepository, regionAnalysisRepository, dailyReportService, objectMapper, clock);
     }
 
     @Test
-    void creates_owned_field_with_stored_deterministic_suitability_and_idempotent_daily_snapshot() throws Exception {
+    void creates_owned_field_with_stored_deterministic_suitability_and_immediate_daily_report() throws Exception {
         RegionAnalysisEntity analysis = RegionAnalysisEntity.builder()
                 .id(REGION_ANALYSIS_ID)
                 .userEmail(OWNER)
@@ -70,8 +68,22 @@ class FieldServiceTest {
                 .payloadJson(objectMapper.writeValueAsString(regionReport()))
                 .build();
         when(regionAnalysisRepository.findByIdAndUserEmail(REGION_ANALYSIS_ID, OWNER)).thenReturn(Optional.of(analysis));
-        when(farmRepository.save(any(FarmEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(farmRepository.save(any(FarmEntity.class))).thenAnswer(invocation -> {
+            FarmEntity entity = invocation.getArgument(0);
+            // Real JPA save() assigns the IDENTITY-generated id; simulate that here
+            // since withDailyStatus()/getOrCreate() key their lookups off field.getId().
+            org.springframework.test.util.ReflectionTestUtils.setField(entity, "id", 11L);
+            return entity;
+        });
         when(dailyReportRepository.save(any(FieldDailyReportEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        FieldDailyReportDto immediateDaily = FieldDailyReportDto.builder()
+                .id("daily-1").fieldId("11").reportDate("2026-07-24").generatedAt("2026-07-24T08:30:00")
+                .generationReason("DAILY_0630").headline("오늘은 맑아요").build();
+        when(dailyReportService.getOrCreate(any(FarmEntity.class), any(LocalDate.class))).thenReturn(immediateDaily);
+        // withDailyStatus() re-queries by DAILY_0630 reason; simulate it finding the just-generated report.
+        when(dailyReportRepository.findFirstByFarmIdAndOwnerEmailAndGenerationReasonOrderByGeneratedAtDesc(any(), eq(OWNER), eq("DAILY_0630")))
+                .thenReturn(Optional.of(FieldDailyReportEntity.builder().id("daily-1").ownerEmail(OWNER)
+                        .payloadJson(objectMapper.writeValueAsString(immediateDaily)).build()));
 
         FieldProfileResponseDto created = service.create(OWNER, CreateFieldRequestDto.builder()
                 .fieldName("감자밭")
@@ -86,33 +98,11 @@ class FieldServiceTest {
         assertThat(created.getSuitabilityReport().getSuitabilityScore()).isEqualTo(86);
         assertThat(created.getSuitabilityReport().getConditions()).hasSize(4);
         assertThat(created.getSuitabilityReport().getKeyRisks()).extracting("riskCode").contains("POTATO_WATERLOGGING");
-        assertThat(created.getLatestReport().getGenerationReason()).isEqualTo("REGISTRATION");
+        // A field must show a real, narrated headline immediately, not the bare
+        // registration snapshot -- see FieldDailyReportService.getOrCreate() call in create().
+        assertThat(created.getLatestReport().getGenerationReason()).isEqualTo("DAILY_0630");
+        assertThat(created.getDailyHeadline()).isEqualTo("오늘은 맑아요");
         verify(regionAnalysisRepository).findByIdAndUserEmail(REGION_ANALYSIS_ID, OWNER);
-
-        FarmEntity activeField = FarmEntity.builder()
-                .id(11L)
-                .userEmail(OWNER)
-                .fieldName("감자밭")
-                .cropCode("POTATO")
-                .cropName("감자")
-                .regionAnalysisId(REGION_ANALYSIS_ID)
-                .cultivationMethod("OPEN_FIELD")
-                .cultivationStartDate(LocalDate.of(2026, 7, 1))
-                .stage("PREPARATION")
-                .active(true)
-                .build();
-        when(farmRepository.findByActiveTrue()).thenReturn(List.of(activeField));
-        when(dailyReportRepository.existsByFarmIdAndReportDateAndGenerationReason(11L, LocalDate.of(2026, 7, 24), "DAILY_0600"))
-                .thenReturn(false, true);
-
-        service.generateDailyForActiveFields(LocalDate.of(2026, 7, 24));
-        service.generateDailyForActiveFields(LocalDate.of(2026, 7, 24));
-
-        ArgumentCaptor<FieldDailyReportEntity> daily = ArgumentCaptor.forClass(FieldDailyReportEntity.class);
-        verify(dailyReportRepository, times(2)).save(daily.capture());
-        FieldDailyReportEntity generated = daily.getAllValues().get(1);
-        assertThat(generated.getGenerationReason()).isEqualTo("DAILY_0600");
-        assertThat(generated.getGeneratedAt()).isEqualTo(LocalDateTime.of(2026, 7, 24, 6, 0));
     }
 
     @Test

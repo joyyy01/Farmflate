@@ -391,6 +391,83 @@ class ExternalAdaptersContractTest {
         assertThat(attempts).hasValue(2);
     }
 
+    @Test
+    void asos_retries_once_on_provider_transient_rate_limit_code_then_succeeds() {
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        Map<String, Object> rateLimited = asosEnvelope("22", null);
+        Map<String, Object> asosItem = new LinkedHashMap<>();
+        asosItem.put("tm", "2024-01-01 00:00");
+        asosItem.put("ta", "5.0");
+        asosItem.put("rn", "0.0");
+        asosItem.put("hm", "50");
+        asosItem.put("ss", "0.5");
+        Map<String, Object> success = asosEnvelope("00", List.of(asosItem));
+        when(restTemplate.getForObject(any(URI.class), eq(Map.class))).thenReturn(rateLimited, success);
+
+        AsosAdapter adapter = new AsosAdapter(restTemplate, "fixture-key", 24, 1, noOpDbCache());
+        ExternalResult<AsosAdapter.Asos30DaySummary> result = adapter.get30DaySummary("108");
+
+        assertThat(result.status()).isEqualTo(ExternalResult.Status.SUCCESS);
+        verify(restTemplate, times(2)).getForObject(any(URI.class), eq(Map.class));
+    }
+
+    @Test
+    void asos_does_not_retry_a_terminal_provider_error_code() {
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        when(restTemplate.getForObject(any(URI.class), eq(Map.class))).thenReturn(asosEnvelope("30", null));
+
+        AsosAdapter adapter = new AsosAdapter(restTemplate, "fixture-key", 24, 1, noOpDbCache());
+        ExternalResult<AsosAdapter.Asos30DaySummary> result = adapter.get30DaySummary("108");
+
+        assertThat(result.status()).isEqualTo(ExternalResult.Status.FAILURE);
+        assertThat(result.errorCode()).isEqualTo("ASOS_PROVIDER_30");
+        verify(restTemplate, times(1)).getForObject(any(URI.class), eq(Map.class));
+    }
+
+    @Test
+    void short_forecast_retries_once_on_provider_transient_timeout_code_then_succeeds() {
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        Map<String, Object> timeoutBody = kmaEnvelope("05", null);
+        Map<String, Object> kmaItem = new LinkedHashMap<>();
+        kmaItem.put("fcstDate", "20260101");
+        kmaItem.put("category", "TMP");
+        kmaItem.put("fcstValue", "20");
+        Map<String, Object> success = kmaEnvelope("00", List.of(kmaItem));
+        when(restTemplate.getForObject(any(URI.class), eq(Map.class))).thenReturn(timeoutBody, success);
+
+        ShortForecastAdapter adapter = new ShortForecastAdapter(restTemplate, "fixture-key", 30, 1, noOpDbCache());
+        ExternalResult<List<ShortForecastAdapter.DailyForecast>> result = adapter.getForecast3Days(60, 127);
+
+        assertThat(result.status()).isEqualTo(ExternalResult.Status.SUCCESS);
+        verify(restTemplate, times(2)).getForObject(any(URI.class), eq(Map.class));
+    }
+
+    private static Map<String, Object> asosEnvelope(String resultCode, List<Map<String, Object>> items) {
+        return providerEnvelope(resultCode, items);
+    }
+
+    private static Map<String, Object> kmaEnvelope(String resultCode, List<Map<String, Object>> items) {
+        return providerEnvelope(resultCode, items);
+    }
+
+    private static Map<String, Object> providerEnvelope(String resultCode, List<Map<String, Object>> items) {
+        Map<String, Object> header = new LinkedHashMap<>();
+        header.put("resultCode", resultCode);
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("header", header);
+        if (items != null) {
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("totalCount", items.size());
+            Map<String, Object> itemsWrapper = new LinkedHashMap<>();
+            itemsWrapper.put("item", items);
+            body.put("items", itemsWrapper);
+            response.put("body", body);
+        }
+        Map<String, Object> root = new LinkedHashMap<>();
+        root.put("response", response);
+        return root;
+    }
+
     private static Stream<Arguments> badBodies() {
         return Stream.of(
                 Arguments.of(fixture("forecast-timeout.html"), "text/html"),

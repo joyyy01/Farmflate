@@ -156,28 +156,43 @@ public class AsosAdapter {
 
     @SuppressWarnings("unchecked")
     private ExternalResult<AsosPage> fetchPage(String stationId, LocalDate startDate, LocalDate endDate, int pageNo) {
-        URI uri = UriComponentsBuilder.fromHttpUrl(BASE_URL)
-                .queryParam("ServiceKey", serviceKey)
-                .queryParam("pageNo", pageNo)
-                .queryParam("numOfRows", 999)
-                .queryParam("dataType", "JSON")
-                .queryParam("dataCd", "ASOS")
-                .queryParam("dateCd", "HR")
-                .queryParam("startDt", startDate.format(DATE_FMT))
-                .queryParam("startHh", "00")
-                .queryParam("endDt", endDate.format(DATE_FMT))
-                .queryParam("endHh", "23")
-                .queryParam("stnIds", stationId)
-                .build()
-                .encode()
-                .toUri();
-        ExternalResult<Map<String, Object>> response = ExternalAdapterSupport.executeRequest(
-                retryCount, "ASOS_REQUEST_FAILED", () -> restTemplate.getForObject(uri, Map.class));
-        if (response.isFailure()) {
-            log.warn("ASOS API call failed for station {}: {}", stationId, response.errorCode());
-            return ExternalResult.failure(response.errorCode(), response.metrics());
+        int retries = Math.max(0, retryCount);
+        for (int attempt = 0; ; attempt++) {
+            URI uri = UriComponentsBuilder.fromHttpUrl(BASE_URL)
+                    .queryParam("ServiceKey", serviceKey)
+                    .queryParam("pageNo", pageNo)
+                    .queryParam("numOfRows", 999)
+                    .queryParam("dataType", "JSON")
+                    .queryParam("dataCd", "ASOS")
+                    .queryParam("dateCd", "HR")
+                    .queryParam("startDt", startDate.format(DATE_FMT))
+                    .queryParam("startHh", "00")
+                    .queryParam("endDt", endDate.format(DATE_FMT))
+                    .queryParam("endHh", "23")
+                    .queryParam("stnIds", stationId)
+                    .build()
+                    .encode()
+                    .toUri();
+            ExternalResult<Map<String, Object>> response = ExternalAdapterSupport.executeRequest(
+                    retryCount, "ASOS_REQUEST_FAILED", () -> restTemplate.getForObject(uri, Map.class));
+            if (response.isFailure()) {
+                log.warn("ASOS API call failed for station {}: {}", stationId, response.errorCode());
+                return ExternalResult.failure(response.errorCode(), response.metrics());
+            }
+            // The provider answers a momentary timeout or quota hit with an
+            // ordinary HTTP 200 body (resultCode 05/22), not an HTTP failure,
+            // so executeRequest's transport retry never sees it. Retry once
+            // more here before giving up, instead of surfacing a transient
+            // blip as a permanently missing weather metric.
+            String providerCode = ExternalAdapterSupport.providerResultCode(response.value());
+            if (attempt < retries && ExternalAdapterSupport.isProviderTransientFailureCode("ASOS_PROVIDER_" + providerCode)) {
+                log.info("ASOS provider transient result {} for station {}; retrying ({}/{})",
+                        providerCode, stationId, attempt + 1, retries);
+                ExternalAdapterSupport.backoffSleep(attempt);
+                continue;
+            }
+            return extractPage(response.value());
         }
-        return extractPage(response.value());
     }
 
     private ExternalResult<AsosPage> extractPage(Map<String, Object> response) {

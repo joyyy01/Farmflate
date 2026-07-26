@@ -56,9 +56,13 @@ public class CropScoringEngine {
         public final double phOptimalMin;
         public final double phOptimalMax;
         public final double phCautionMargin;
+        /** Upper bound of non-saline soil EC(dS/m); crops differ in salinity tolerance. */
+        public final double ecOptimalMax;
+        public final double ecCautionMargin;
         public final double wSoilSuitability;
         public final double wSoilPh;
         public final double wSeasonalTemp;
+        public final double wSoilEc;
         /** Retained for the legacy score surface; base fitness does not use it. */
         public final double wForecastRisk;
         public final boolean tempVerified;
@@ -68,17 +72,20 @@ public class CropScoringEngine {
         public CropProfile(String cropCode, String displayName,
                            Double tempOptMin, Double tempOptMax, double tempCautionMargin, Double tempTarget,
                            double phOptMin, double phOptMax, double phCautionMargin,
-                           double wSuit, double wPh, double wTemp, double wRisk,
+                           double ecOptMax, double ecCautionMargin,
+                           double wSuit, double wPh, double wTemp, double wEc, double wRisk,
                            boolean tempVerified) {
             this(cropCode, displayName, tempOptMin, tempOptMax, tempCautionMargin, tempTarget,
-                    phOptMin, phOptMax, phCautionMargin, wSuit, wPh, wTemp, wRisk,
+                    phOptMin, phOptMax, phCautionMargin, ecOptMax, ecCautionMargin,
+                    wSuit, wPh, wTemp, wEc, wRisk,
                     tempVerified, PROFILE_SOURCE, PROFILE_REVIEW_STATUS);
         }
 
         public CropProfile(String cropCode, String displayName,
                            Double tempOptMin, Double tempOptMax, double tempCautionMargin, Double tempTarget,
                            double phOptMin, double phOptMax, double phCautionMargin,
-                           double wSuit, double wPh, double wTemp, double wRisk,
+                           double ecOptMax, double ecCautionMargin,
+                           double wSuit, double wPh, double wTemp, double wEc, double wRisk,
                            boolean tempVerified, String sourceRef, String reviewStatus) {
             this.cropCode = cropCode;
             this.displayName = displayName;
@@ -89,9 +96,12 @@ public class CropScoringEngine {
             this.phOptimalMin = phOptMin;
             this.phOptimalMax = phOptMax;
             this.phCautionMargin = phCautionMargin;
+            this.ecOptimalMax = ecOptMax;
+            this.ecCautionMargin = ecCautionMargin;
             this.wSoilSuitability = wSuit;
             this.wSoilPh = wPh;
             this.wSeasonalTemp = wTemp;
+            this.wSoilEc = wEc;
             this.wForecastRisk = wRisk;
             this.tempVerified = tempVerified;
             this.sourceRef = sourceRef;
@@ -99,17 +109,28 @@ public class CropScoringEngine {
         }
     }
 
+    /**
+     * Per-crop weights are intentionally NOT uniform: tree fruit (사과/배) leans on
+     * soil suitability and seasonal temperature (frost/chilling risk over a long
+     * root life), while shallow-rooted leafy/vine crops (상추/오이) are weighted
+     * more heavily on soil EC(염류 농도) and temperature since they show salinity
+     * and heat/cold stress far faster. 감자 leans on soil suitability (tuber
+     * formation needs loose, well-drained soil) and tolerates EC/pH swings more
+     * than the others. These relative weightings are MVP hypotheses (see
+     * {@link #PROFILE_REVIEW_STATUS}), not an official agronomic citation.
+     */
     private static final List<CropProfile> PROFILES = List.of(
             new CropProfile("APPLE", "사과", 18.0, 24.0, 5.0, null,
-                    5.8, 6.3, 0.5, 0.50, 0.20, 0.20, 0.10, true),
+                    5.8, 6.3, 0.5, 1.5, 0.5, 0.45, 0.20, 0.25, 0.10, 0.10, true),
             new CropProfile("PEAR", "배", null, null, 5.0, 20.0,
-                    5.5, 6.5, 0.5, 0.50, 0.20, 0.20, 0.10, true),
+                    5.5, 6.5, 0.5, 1.5, 0.5, 0.45, 0.20, 0.25, 0.10, 0.10, true),
             new CropProfile("CUCUMBER", "오이", 20.0, 25.0, 5.0, null,
-                    5.5, 6.8, 0.5, 0.50, 0.20, 0.20, 0.10, true),
-            new CropProfile("POTATO", "감자", null, null, 0.0, null,
-                    5.0, 6.0, 0.5, 0.50, 0.20, 0.00, 0.10, false),
+                    5.5, 6.8, 0.5, 1.2, 0.4, 0.35, 0.15, 0.30, 0.20, 0.10, true),
+            // 생육적온 15~21°C: 농촌진흥청 감자 표준영농교본 기준(MVP 가설, 공식 인용 검증 대기).
+            new CropProfile("POTATO", "감자", 15.0, 21.0, 5.0, null,
+                    5.0, 6.0, 0.5, 1.8, 0.5, 0.50, 0.15, 0.20, 0.15, 0.10, true),
             new CropProfile("LETTUCE", "상추", 15.0, 20.0, 5.0, null,
-                    6.6, 7.2, 0.5, 0.50, 0.20, 0.20, 0.10, true)
+                    6.6, 7.2, 0.5, 1.0, 0.3, 0.30, 0.20, 0.25, 0.25, 0.10, true)
     );
 
     // ─── Input ────────────────────────────────────────────────────────────
@@ -117,6 +138,8 @@ public class CropScoringEngine {
     public static class AnalysisInput {
         public Double meanTemperature30d;
         public Double soilPh;
+        /** Raw EC(전기전도도) reading; not used in scoring, only surfaced for display. */
+        public Double soilEc;
         /** Compatibility input from the existing short-forecast adapter. */
         public int forecastRiskSafetyScore = 100;
         public Map<String, Double> soilSuitabilityScores = new HashMap<>();
@@ -474,7 +497,7 @@ public class CropScoringEngine {
         int legacyForecastSafety = forecastDays.isEmpty()
                 ? clampInt(input.forecastRiskSafetyScore, 0, 100)
                 : calculateLegacySafety(riskEvents);
-        output.components = buildComponents(topRecommended, legacyForecastSafety);
+        output.components = buildComponents(topRecommended, legacyForecastSafety, input.soilPh, input.soilEc);
         output.confidence = toLegacyConfidence(confidence);
         return output;
     }
@@ -492,8 +515,11 @@ public class CropScoringEngine {
         crop.forecastRiskSafetyScore = clampInt(input.forecastRiskSafetyScore, 0, 100);
 
         Double suitability = validScore(input.soilSuitabilityScores.get(profile.cropCode));
-        Double ph = scoreRange(input.soilPh, profile.phOptimalMin, profile.phOptimalMax, profile.phCautionMargin);
+        Double sanitizedPh = sanitizePh(input.soilPh);
+        Double sanitizedEc = sanitizeEc(input.soilEc);
+        Double ph = scoreRange(sanitizedPh, profile.phOptimalMin, profile.phOptimalMax, profile.phCautionMargin);
         Double temperature = temperatureScore(profile, input.meanTemperature30d);
+        Double ec = scoreUpperBound(sanitizedEc, profile.ecOptimalMax, profile.ecCautionMargin);
         crop.soilSuitabilityStatScore = suitability;
         crop.soilPhScore = ph;
         crop.seasonalTemperatureScore = temperature;
@@ -505,6 +531,8 @@ public class CropScoringEngine {
                 qualityFor(input, "soilPh", 0.80));
         addContribution(contributions, "seasonalTemperature", temperature, profile.wSeasonalTemp,
                 qualityFor(input, "seasonalTemperature", 0.90));
+        addContribution(contributions, "soilEc", ec, profile.wSoilEc,
+                qualityFor(input, "soilEc", 0.75));
         crop.contributions = contributions;
 
         double availableWeight = contributions.stream().mapToDouble(contribution -> contribution.weight).sum();
@@ -560,8 +588,11 @@ public class CropScoringEngine {
     }
 
     private Integer criticalBaseCap(CropProfile profile, AnalysisInput input) {
-        boolean criticalPh = input.soilPh != null
-                && (input.soilPh < profile.phOptimalMin - 1.5 || input.soilPh > profile.phOptimalMax + 1.5);
+        Double ph = sanitizePh(input.soilPh);
+        Double ec = sanitizeEc(input.soilEc);
+        boolean criticalPh = ph != null
+                && (ph < profile.phOptimalMin - 1.5 || ph > profile.phOptimalMax + 1.5);
+        boolean criticalEc = ec != null && ec > profile.ecOptimalMax + profile.ecCautionMargin * 3;
         boolean criticalTemperature = false;
         if (input.meanTemperature30d != null && profile.tempOptimalMin != null && profile.tempOptimalMax != null) {
             criticalTemperature = input.meanTemperature30d < profile.tempOptimalMin - 8.0
@@ -570,7 +601,7 @@ public class CropScoringEngine {
         if (input.meanTemperature30d != null && profile.tempTarget != null) {
             criticalTemperature = Math.abs(input.meanTemperature30d - profile.tempTarget) > 10.0;
         }
-        return criticalPh || criticalTemperature ? 49 : null;
+        return criticalPh || criticalEc || criticalTemperature ? 49 : null;
     }
 
     private int compareCropResults(CropResult first, CropResult second) {
@@ -952,10 +983,11 @@ public class CropScoringEngine {
 
     private DataConfidence calculateDataConfidence(AnalysisInput input) {
         List<ConfidenceMetric> metrics = List.of(
-                new ConfidenceMetric("soilSuitability", 0.50,
+                new ConfidenceMetric("soilSuitability", 0.45,
                         input.soilSuitabilityScores.values().stream().anyMatch(Objects::nonNull), 0.80),
-                new ConfidenceMetric("soilPh", 0.20, input.soilPh != null, 0.80),
+                new ConfidenceMetric("soilPh", 0.15, sanitizePh(input.soilPh) != null, 0.80),
                 new ConfidenceMetric("seasonalTemperature", 0.20, input.meanTemperature30d != null, 0.90),
+                new ConfidenceMetric("soilEc", 0.10, sanitizeEc(input.soilEc) != null, 0.75),
                 new ConfidenceMetric("forecast", 0.10,
                         !(input.shortForecasts.isEmpty() && input.midTermForecasts.isEmpty()), 1.00)
         );
@@ -1145,6 +1177,14 @@ public class CropScoringEngine {
                 .mapToDouble(Double::doubleValue).sum();
     }
 
+    /**
+     * Graduated deviation scoring: 100 inside the optimal range, then decaying
+     * continuously with distance measured in caution-margin units (1 margin
+     * beyond the range ≈ 70, 2 margins ≈ 40 — matching the old step function
+     * at those two points) down to a 5-point floor. This distinguishes a
+     * slightly-out-of-range reading from a badly-out-of-range one instead of
+     * flattening every out-of-range value to the same score.
+     */
     private Double scoreRange(Double value, double optimumMin, double optimumMax, double cautionMargin) {
         if (value == null) {
             return null;
@@ -1152,10 +1192,8 @@ public class CropScoringEngine {
         if (value >= optimumMin && value <= optimumMax) {
             return 100.0;
         }
-        if (value >= optimumMin - cautionMargin && value <= optimumMax + cautionMargin) {
-            return 70.0;
-        }
-        return 40.0;
+        double distance = value < optimumMin ? optimumMin - value : value - optimumMax;
+        return decayByMargin(distance, cautionMargin);
     }
 
     private Double scoreTarget(Double value, double target, double innerMargin, double outerMargin) {
@@ -1166,10 +1204,33 @@ public class CropScoringEngine {
         if (difference <= innerMargin) {
             return 100.0;
         }
-        if (difference <= outerMargin) {
-            return 70.0;
+        return decayByMargin(difference - innerMargin, outerMargin);
+    }
+
+    /** One-sided version of {@link #scoreRange} for metrics with only an upper safety bound (e.g. soil EC). */
+    private Double scoreUpperBound(Double value, double optimumMax, double cautionMargin) {
+        if (value == null) {
+            return null;
         }
-        return 40.0;
+        if (value <= optimumMax) {
+            return 100.0;
+        }
+        return decayByMargin(value - optimumMax, cautionMargin);
+    }
+
+    private double decayByMargin(double distance, double cautionMargin) {
+        double marginUnits = cautionMargin <= 0 ? distance : distance / cautionMargin;
+        return clamp(100.0 - 30.0 * marginUnits, 5.0, 100.0);
+    }
+
+    /** Soil pH outside a physically plausible range indicates a bad reading; treat it as missing rather than scoring it. */
+    private Double sanitizePh(Double value) {
+        return value != null && Double.isFinite(value) && value >= 3.0 && value <= 10.0 ? value : null;
+    }
+
+    /** Negative or implausibly large EC(dS/m) indicates a bad reading; treat it as missing rather than scoring it. */
+    private Double sanitizeEc(Double value) {
+        return value != null && Double.isFinite(value) && value >= 0 && value <= 20.0 ? value : null;
     }
 
     private void generateReasons(CropResult crop, List<MetricContribution> contributions) {
@@ -1198,11 +1259,15 @@ public class CropScoringEngine {
             case "seasonalTemperature" -> positive
                     ? "최근 30일 평균 기온이 생육 적온에 적합해요."
                     : "최근 30일 평균 기온이 생육 적온을 벗어나 주의가 필요해요.";
+            case "soilEc" -> positive
+                    ? "토양 염류 농도(EC)가 안정적인 수준이에요."
+                    : "토양 염류 농도(EC)가 다소 높아 시비량 조절이 필요해요.";
             default -> positive ? "환경 조건이 양호합니다." : "추가 확인이 필요해요.";
         };
     }
 
-    private RegionReportResponseDto.ComponentsDto buildComponents(List<CropResult> topCrops, int forecastSafety) {
+    private RegionReportResponseDto.ComponentsDto buildComponents(List<CropResult> topCrops, int forecastSafety,
+                                                                    Double soilPh, Double soilEc) {
         if (topCrops.isEmpty()) {
             return null;
         }
@@ -1228,6 +1293,8 @@ public class CropScoringEngine {
                 .soil(RegionReportResponseDto.ComponentDetailDto.builder()
                         .score((int) Math.round(soilAverage))
                         .grade(gradeFromScore((int) Math.round(soilAverage)))
+                        .soilPh(soilPh)
+                        .soilEc(soilEc)
                         .build())
                 .hazard(RegionReportResponseDto.HazardComponentDetailDto.builder()
                         .safetyScore(forecastSafety)

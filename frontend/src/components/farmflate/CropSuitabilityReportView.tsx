@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Share2, CheckCircle, AlertTriangle } from 'lucide-react';
 import type { FieldSuitabilityPreview } from '../../types/report';
+import { displayGrade as translateGrade, displaySuitabilityStatus as translateStatus } from '../../constants/displayLabels';
 
 interface CropSuitabilityReportViewProps {
   fieldName?: string;
@@ -11,35 +12,6 @@ interface CropSuitabilityReportViewProps {
   onRegisterCrop: () => void;
   onOpenTips: () => void;
 }
-
-const gradeLabels: Record<string, string> = {
-  EXCELLENT: '최적',
-  VERY_GOOD: '양호',
-  GOOD: '양호',
-  MODERATE: '보통',
-  CAUTION: '주의',
-  HIGH: '위험',
-  WARNING: '경고',
-  UNAVAILABLE: '자료 부족'
-};
-
-const translateGrade = (grade?: string | null): string => {
-  if (grade && gradeLabels[grade.toUpperCase()]) return gradeLabels[grade.toUpperCase()];
-  return '자료 부족';
-};
-
-const statusLabels: Record<string, string> = {
-  GOOD: '양호',
-  CAUTION: '주의',
-  RISK: '위험',
-  UNAVAILABLE: '자료 부족',
-  INPUT_RECORDED: '입력 기준'
-};
-
-const translateStatus = (status?: string | null): string => {
-  if (status && statusLabels[status.toUpperCase()]) return statusLabels[status.toUpperCase()];
-  return '자료 부족';
-};
 
 export const CropSuitabilityReportView: React.FC<CropSuitabilityReportViewProps> = ({
   fieldName = '우리집 텃밭',
@@ -73,6 +45,28 @@ export const CropSuitabilityReportView: React.FC<CropSuitabilityReportViewProps>
 
   // Explanation from suitabilityReport.summary
   const explanation = suitability?.summary ?? '자료 부족';
+
+  const [shareCopied, setShareCopied] = useState(false);
+  const handleShare = async () => {
+    const shareText = `${fieldName} · ${targetCropName} 적합도 리포트\n적합도 점수: ${numericScore != null ? `${numericScore}점` : '자료 부족'}${grade ? ` (${translateGrade(grade)})` : ''}\n${explanation}`;
+    if (typeof navigator.share === 'function') {
+      try {
+        await navigator.share({ title: `${targetCropName} 적합도 리포트`, text: shareText });
+      } catch {
+        // user cancelled the native share sheet -- not an error worth surfacing
+      }
+      return;
+    }
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(shareText);
+        setShareCopied(true);
+        setTimeout(() => setShareCopied(false), 2000);
+      } catch {
+        // clipboard permission denied -- silently no-op, nothing else we can do
+      }
+    }
+  };
 
   // Risks from suitabilityReport.keyRisks
   const displayRisks = (suitability?.keyRisks ?? []).slice(0, 3).map(r => ({
@@ -135,9 +129,16 @@ export const CropSuitabilityReportView: React.FC<CropSuitabilityReportViewProps>
           <h1 style={{ fontSize: '1.1rem', fontWeight: 850, color: '#202a24', margin: 0, textAlign: 'center' }}>
             농작물 적합도 리포트
           </h1>
-          <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#202a24', padding: 0, justifySelf: 'end' }}>
-            <Share2 size={20} />
-          </button>
+          <div style={{ position: 'relative', justifySelf: 'end' }}>
+            <button onClick={handleShare} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#202a24', padding: 0 }} aria-label="리포트 공유하기">
+              <Share2 size={20} />
+            </button>
+            {shareCopied && (
+              <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 6, backgroundColor: '#191F28', color: '#FFFFFF', fontSize: '0.72rem', fontWeight: 700, padding: '6px 10px', borderRadius: 8, whiteSpace: 'nowrap', zIndex: 10 }}>
+                복사되었어요
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Field & Crop Subtitle */}

@@ -25,18 +25,30 @@ export interface PostComment {
   timeAgo: string;
 }
 
+export type CommunityAttachmentType = 'IMAGE' | 'FILE' | 'LINK';
+
+export interface CommunityAttachment {
+  id: string;
+  type: CommunityAttachmentType;
+  name: string;
+  contentType?: string | null;
+  sizeBytes?: number | null;
+  url: string;
+  order: number;
+}
+
 export interface CommunityPost {
   id: string;
-  category: string;
-  tagLocation?: string;
+  regionLabel: string;
   title: string;
   content: string;
   author: string;
+  profileType?: string;
   timeAgo: string;
   commentCount: number;
   likeCount: number;
   isLiked?: boolean;
   isSaved?: boolean;
-  imageUrl?: string;
+  attachments: CommunityAttachment[];
   comments?: PostComment[];
 }

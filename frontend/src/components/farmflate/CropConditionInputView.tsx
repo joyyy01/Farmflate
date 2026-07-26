@@ -17,20 +17,34 @@ interface CropConditionInputViewProps {
   onStartAnalysis: (input: CropRegistrationInput) => void;
   onOpenExplore: () => void;
   selectedRegionName: string;
+  /* Carries the in-progress form across a region-change round trip: the
+     Explore screen unmounts this view, so plain useState would otherwise
+     reset to blank when the user returns from picking a new region. */
+  draft?: Partial<CropRegistrationInput>;
+  onDraftChange?: (input: CropRegistrationInput) => void;
 }
 
 export const CropConditionInputView: React.FC<CropConditionInputViewProps> = ({
   onBack,
   onStartAnalysis,
   onOpenExplore,
-  selectedRegionName
+  selectedRegionName,
+  draft,
+  onDraftChange
 }) => {
-  const [fieldName, setFieldName] = useState('');
-  const [selectedCrop, setSelectedCrop] = useState('감자');
-  const [stage, setStage] = useState<'before' | 'growing'>('before');
-  const [farmType, setFarmType] = useState<'outdoor' | 'indoor'>('outdoor');
-  const [rawDateIso, setRawDateIso] = useState(new Date().toISOString().substring(0, 10));
+  const [fieldName, setFieldName] = useState(draft?.fieldName ?? '');
+  const [selectedCrop, setSelectedCrop] = useState(draft?.cropName ?? '감자');
+  const [stage, setStage] = useState<'before' | 'growing'>((draft?.stage as 'before' | 'growing') ?? 'before');
+  const [farmType, setFarmType] = useState<'outdoor' | 'indoor'>((draft?.farmType as 'outdoor' | 'indoor') ?? 'outdoor');
+  const [rawDateIso, setRawDateIso] = useState(draft?.startDate ?? new Date().toISOString().substring(0, 10));
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+
+  const emitDraft = (next: Partial<CropRegistrationInput>) => {
+    onDraftChange?.({
+      fieldName, cropName: selectedCrop, stage, farmType, startDate: rawDateIso,
+      ...next
+    });
+  };
 
   const startDate = new Date(`${rawDateIso}T00:00:00`).toLocaleDateString('ko-KR', {
     year: 'numeric', month: 'long', day: 'numeric'
@@ -88,7 +102,7 @@ export const CropConditionInputView: React.FC<CropConditionInputViewProps> = ({
             type="text"
             placeholder="예: 우리집 텃밭"
             value={fieldName}
-            onChange={e => setFieldName(e.target.value)}
+            onChange={e => { setFieldName(e.target.value); emitDraft({ fieldName: e.target.value }); }}
             style={{
               width: '100%',
               height: 50,
@@ -123,7 +137,7 @@ export const CropConditionInputView: React.FC<CropConditionInputViewProps> = ({
             {crops.map(crop => (
               <button
                 key={crop.name}
-                onClick={() => setSelectedCrop(crop.name)}
+                onClick={() => { setSelectedCrop(crop.name); emitDraft({ cropName: crop.name }); }}
                 style={{
                   display: 'flex', flexDirection: 'column', alignItems: 'center',
                   gap: 6, padding: '10px 6px', borderRadius: 16,
@@ -151,7 +165,7 @@ export const CropConditionInputView: React.FC<CropConditionInputViewProps> = ({
           </label>
           <div style={{ display: 'flex', gap: 0, border: '1px solid #E5E8EB', borderRadius: 12, overflow: 'hidden' }}>
             <button
-              onClick={() => setStage('before')}
+              onClick={() => { setStage('before'); emitDraft({ stage: 'before' }); }}
               style={{
                 flex: 1, padding: '12px', border: 'none',
                 backgroundColor: stage === 'before' ? '#FFFFFF' : '#F4F6F8',
@@ -163,7 +177,7 @@ export const CropConditionInputView: React.FC<CropConditionInputViewProps> = ({
               심기 전
             </button>
             <button
-              onClick={() => setStage('growing')}
+              onClick={() => { setStage('growing'); emitDraft({ stage: 'growing' }); }}
               style={{
                 flex: 1, padding: '12px', border: 'none',
                 borderLeft: '1px solid #E5E8EB',
@@ -185,7 +199,7 @@ export const CropConditionInputView: React.FC<CropConditionInputViewProps> = ({
           </label>
           <div style={{ display: 'flex', gap: 0, border: '1px solid #E5E8EB', borderRadius: 12, overflow: 'hidden' }}>
             <button
-              onClick={() => setFarmType('outdoor')}
+              onClick={() => { setFarmType('outdoor'); emitDraft({ farmType: 'outdoor' }); }}
               style={{
                 flex: 1, padding: '12px', border: 'none',
                 backgroundColor: farmType === 'outdoor' ? '#FFFFFF' : '#F4F6F8',
@@ -197,7 +211,7 @@ export const CropConditionInputView: React.FC<CropConditionInputViewProps> = ({
               노지
             </button>
             <button
-              onClick={() => setFarmType('indoor')}
+              onClick={() => { setFarmType('indoor'); emitDraft({ farmType: 'indoor' }); }}
               style={{
                 flex: 1, padding: '12px', border: 'none',
                 borderLeft: '1px solid #E5E8EB',
@@ -240,7 +254,7 @@ export const CropConditionInputView: React.FC<CropConditionInputViewProps> = ({
       <DatePickerSheet
         isOpen={isDatePickerOpen}
         value={rawDateIso}
-        onSelect={setRawDateIso}
+        onSelect={(value) => { setRawDateIso(value); emitDraft({ startDate: value }); }}
         onClose={() => setIsDatePickerOpen(false)}
       />
 

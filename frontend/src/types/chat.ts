@@ -21,8 +21,18 @@ export interface ChatRequest {
   context?: {
     regionAnalysisId?: string | null;
     fieldId?: string | null;
+    reportDate?: string | null;
     route?: string;
   };
+}
+
+export type ChatRoute = 'home' | 'field_dashboard' | 'community' | 'mypage' | 'region_report';
+
+export interface AIChatContext {
+  route: ChatRoute;
+  regionAnalysisId: string | null;
+  fieldId: string | null;
+  reportDate: string | null;
 }
 
 export interface StructuredAnswer {

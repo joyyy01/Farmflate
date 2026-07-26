@@ -110,6 +110,30 @@ final class ExternalAdapterSupport {
         return "301".equals(code);
     }
 
+    /**
+     * True when a provider's own parsed envelope reports a transient
+     * condition -- data.go.kr's common result codes "05" (SERVICETIMEOUT_ERROR)
+     * and "22" (LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR) -- rather
+     * than a structural, authorization, or parameter problem.  These arrive as
+     * ordinary HTTP 200 responses with an error body, so {@link #executeRequest}
+     * never sees them as a retryable transport failure: only the caller, after
+     * inspecting the parsed envelope's result code, can retry them. Terminal
+     * codes (bad service key, invalid parameters, etc.) intentionally do not
+     * match so a retry is never attempted where it cannot help.
+     */
+    static boolean isProviderTransientFailureCode(String errorCode) {
+        return errorCode != null && (errorCode.endsWith("_05") || errorCode.endsWith("_22"));
+    }
+
+    /** Bounded linear backoff between provider-transient-failure retries. */
+    static void backoffSleep(int attempt) {
+        try {
+            Thread.sleep(Math.min(2000L, 300L * (attempt + 1)));
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     @SuppressWarnings("unchecked")
     static Map<String, Object> map(Object value) {
         return value instanceof Map<?, ?> raw ? (Map<String, Object>) raw : null;

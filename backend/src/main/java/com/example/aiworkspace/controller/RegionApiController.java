@@ -78,26 +78,6 @@ public class RegionApiController {
         return ResponseEntity.ok(regionAnalysisService.getReport(email, analysisId));
     }
 
-    @ExceptionHandler(RegionAnalysisService.RegionAnalysisException.class)
-    public ResponseEntity<ApiErrorResponse> handleRegionAnalysisException(
-            RegionAnalysisService.RegionAnalysisException exception) {
-        return ResponseEntity.status(exception.getHttpStatus())
-                .body(new ApiErrorResponse(exception.getCode(), exception.getMessage()));
-    }
-
-    @ExceptionHandler({
-            MethodArgumentNotValidException.class,
-            MethodArgumentTypeMismatchException.class,
-            HttpMessageNotReadableException.class
-    })
-    public ResponseEntity<ApiErrorResponse> handleInvalidRegionRequest(Exception exception) {
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(new ApiErrorResponse("INVALID_REGION_REQUEST", "요청한 지역 분석 정보가 올바르지 않습니다."));
-    }
-
-    private record ApiErrorResponse(String code, String message) {
-    }
-
     private void validateRequest(RegionAnalysisRequestDto request) {
         if (request == null
                 || !hasTextWithin(request.getSidoCode(), 20)

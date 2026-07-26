@@ -42,6 +42,13 @@ public class RegionAnalysisEntity extends BaseTimeEntity {
     @Column(name = "scope_subject", nullable = false, length = 255)
     private String scopeSubject;
 
+    /** PRIMARY (the user's representative region shown on Home/My Page) or
+     * FIELD_LINKED (created only to back one field's suitability scoring —
+     * must never be picked up by "latest analysis for this user" lookups). */
+    @Column(name = "purpose", nullable = false, length = 20)
+    @Builder.Default
+    private String purpose = "PRIMARY";
+
     @Column(name = "sido_code", nullable = false, length = 20)
     private String sidoCode;
 
