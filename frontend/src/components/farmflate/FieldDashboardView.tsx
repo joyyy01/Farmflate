@@ -31,15 +31,6 @@ const STATUS_STYLE: Record<FieldDashboardResponse['report']['status'], { bg: str
 
 const SEVERITY_COLOR: Record<string, string> = { HIGH: '#DC2626', MEDIUM: '#D97706', LOW: '#8d9590' };
 
-/** Task key → the log category it most naturally corresponds to, so "기록 남기기" can preselect it. */
-const TASK_LOG_CATEGORY: Record<string, FieldLogCategory> = {
-  CHECK_SOIL_MOISTURE: 'WATERING',
-  CHECK_LEAF_CONDITION: 'LEAF_CHECK',
-  CHECK_DRAINAGE: 'OTHER',
-  CHECK_SUPPORT_STAKES: 'OTHER',
-  CHECK_FIELD_DIRECTLY: 'OTHER'
-};
-
 /** Task key → icon component (B7: icon by task type, not badge). */
 const TASK_ICON: Record<string, React.FC<{ size?: number; color?: string }>> = {
   CHECK_SOIL_MOISTURE: Droplet,
@@ -169,12 +160,6 @@ export const FieldDashboardView: React.FC<FieldDashboardViewProps> = ({ field, o
   const [logError, setLogError] = useState<string | null>(null);
   const [expandedTerm, setExpandedTerm] = useState<string | null>(null);
   const logSectionRef = useRef<HTMLHeadingElement>(null);
-
-  const startLogForTask = (taskKey: string) => {
-    setLogCategory(TASK_LOG_CATEGORY[taskKey] ?? 'OTHER');
-    setShowLogForm(true);
-    requestAnimationFrame(() => logSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
-  };
 
   const reload = () => {
     let current = true;
@@ -368,14 +353,6 @@ export const FieldDashboardView: React.FC<FieldDashboardViewProps> = ({ field, o
                         >
                           확인했어요
                         </button>
-                        {task.badge === 'MORNING_RECOMMENDED' && (
-                          <button
-                            onClick={() => startLogForTask(task.key)}
-                            style={{ backgroundColor: '#FFFFFF', color: '#2FA86A', border: '1px solid #BFE3CD', borderRadius: 10, padding: '8px 14px', fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer' }}
-                          >
-                            기록 남기기
-                          </button>
-                        )}
                       </div>
                     )}
                   </div>
