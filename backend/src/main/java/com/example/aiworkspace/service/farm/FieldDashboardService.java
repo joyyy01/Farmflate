@@ -52,6 +52,7 @@ public class FieldDashboardService {
     private static final Map<FieldDailyStatus, String> STATUS_LABELS = Map.of(
             FieldDailyStatus.STABLE, "안정",
             FieldDailyStatus.CAUTION, "주의",
+            FieldDailyStatus.DANGER, "위험",
             FieldDailyStatus.NEEDS_CHECK, "확인 필요");
 
     private static final Map<FieldLogCategory, String> CATEGORY_LABELS = Map.of(
@@ -119,12 +120,13 @@ public class FieldDashboardService {
                 .cultivationStartDate(field.getCultivationStartDate() == null ? null : field.getCultivationStartDate().toString())
                 .cultivationDay(cultivationDay).stage(field.getStage()).build();
 
-        Integer statusScore = computeStatusScore(reportDto.getStatus(), reportDto.getAlerts());
+        FieldDailyStatus effectiveStatus = effectiveStatus(reportDto.getStatus(), reportDto.getAlerts());
+        Integer statusScore = computeStatusScore(effectiveStatus, reportDto.getAlerts());
         FieldDashboardResponseDto.ReportSummaryDto reportSummary = FieldDashboardResponseDto.ReportSummaryDto.builder()
                 .id(reportId).reportDate(selectedDate.toString())
                 .generatedAt(generatedAt.format(DateTimeFormatter.ISO_DATE_TIME))
                 .generationReason(FieldDailyReportService.GENERATION_REASON)
-                .status(reportDto.getStatus()).headline(reportDto.getHeadline()).headlineDescription(reportDto.getHeadlineDescription())
+                .status(effectiveStatus).headline(reportDto.getHeadline()).headlineDescription(reportDto.getHeadlineDescription())
                 .historical(historical).taskCountBeforeAcknowledgement(taskCountBeforeAck)
                 .statusScore(statusScore).statusScoreZone(statusScoreZone(statusScore)).build();
 
@@ -261,14 +263,23 @@ public class FieldDashboardService {
             for (FieldAlertDto alert : alerts) {
                 String severity = alert.getSeverity() == null ? "" : alert.getSeverity().toUpperCase(Locale.ROOT);
                 score += switch (severity) {
-                    case "HIGH" -> 20;
-                    case "MEDIUM" -> 12;
-                    case "LOW" -> 6;
-                    default -> 8;
+                    case "HIGH" -> 75;
+                    case "MEDIUM" -> 45;
+                    case "LOW" -> 20;
+                    default -> 35;
                 };
             }
         }
+        if (status == FieldDailyStatus.DANGER) score = Math.max(score, 70);
+        if (status == FieldDailyStatus.CAUTION) score = Math.max(score, 35);
         return Math.max(0, Math.min(100, score));
+    }
+
+    private FieldDailyStatus effectiveStatus(FieldDailyStatus persistedStatus, List<FieldAlertDto> alerts) {
+        if (alerts != null && alerts.stream().anyMatch(alert -> "HIGH".equalsIgnoreCase(alert.getSeverity()))) {
+            return FieldDailyStatus.DANGER;
+        }
+        return persistedStatus == null ? FieldDailyStatus.NEEDS_CHECK : persistedStatus;
     }
 
     private String statusScoreZone(Integer score) {

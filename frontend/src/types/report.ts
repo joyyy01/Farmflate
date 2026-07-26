@@ -163,7 +163,7 @@ export interface FieldProfile {
   suitabilityReport?: FieldSuitabilityReport | null;
   latestReport?: LatestFieldReport | null;
   cultivationDay?: number | null;
-  dailyStatus?: 'STABLE' | 'CAUTION' | 'NEEDS_CHECK' | null;
+  dailyStatus?: 'STABLE' | 'CAUTION' | 'DANGER' | 'NEEDS_CHECK' | null;
   dailyStatusLabel?: string | null;
   dailyHeadline?: string | null;
   dailyReportDate?: string | null;
@@ -241,7 +241,7 @@ export interface FieldSuitabilityPreview {
   suitabilityReport?: FieldSuitabilityReport | null;
 }
 
-export type FieldDailyStatus = 'STABLE' | 'CAUTION' | 'NEEDS_CHECK';
+export type FieldDailyStatus = 'STABLE' | 'CAUTION' | 'DANGER' | 'NEEDS_CHECK';
 export type FieldTaskBadge = 'MORNING_RECOMMENDED' | 'CHECK_ANYTIME';
 export type FieldLogCategory =
   | 'WATERING'

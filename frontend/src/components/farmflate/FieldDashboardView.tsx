@@ -26,7 +26,8 @@ const LOG_CATEGORIES: FieldLogCategory[] = ['WATERING', 'FERTILIZING', 'LEAF_CHE
 const STATUS_STYLE: Record<FieldDashboardResponse['report']['status'], { bg: string; color: string; border: string }> = {
   STABLE: { bg: '#EDF7ED', color: '#2FA86A', border: '#D4EDDA' },
   CAUTION: { bg: '#FEF7E8', color: '#D97706', border: '#FCE8C1' },
-  NEEDS_CHECK: { bg: '#FDEDEC', color: '#DC2626', border: '#F6CFCB' }
+  DANGER: { bg: '#FDEDEC', color: '#DC2626', border: '#F6CFCB' },
+  NEEDS_CHECK: { bg: '#F1F5F3', color: '#64756C', border: '#DDE7E1' }
 };
 
 const SEVERITY_COLOR: Record<string, string> = { HIGH: '#DC2626', MEDIUM: '#D97706', LOW: '#8d9590' };

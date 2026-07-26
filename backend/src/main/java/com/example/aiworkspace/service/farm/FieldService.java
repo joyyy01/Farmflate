@@ -153,7 +153,7 @@ public class FieldService {
 
     /**
      * The card badge must reflect the field's own daily dashboard status
-     * (STABLE/CAUTION/NEEDS_CHECK), never the static suitability grade from
+     * (STABLE/CAUTION/DANGER/NEEDS_CHECK), never the static suitability grade from
      * registration time. cultivationDay is recomputed every call from today's
      * date, never read back from the FarmEntity.daysPlanted storage column.
      */
@@ -164,10 +164,11 @@ public class FieldService {
                         field.getId(), ownerEmail, "DAILY_0630")
                 .flatMap(entity -> read(entity.getPayloadJson(), FieldDailyReportDto.class))
                 .orElse(null);
+        com.example.aiworkspace.dto.field.FieldDailyStatus dailyStatus = effectiveDailyStatus(daily);
         return profile.toBuilder()
                 .cultivationDay(daysPlanted(field.getCultivationStartDate()))
-                .dailyStatus(daily == null ? null : daily.getStatus())
-                .dailyStatusLabel(dailyStatusLabel(daily == null ? null : daily.getStatus()))
+                .dailyStatus(dailyStatus)
+                .dailyStatusLabel(dailyStatusLabel(dailyStatus))
                 .dailyHeadline(daily == null ? null : daily.getHeadline())
                 .dailyReportDate(daily == null ? null : daily.getReportDate())
                 .dailyAlerts(daily == null ? List.of() : copyOrEmpty(daily.getAlerts()))
@@ -179,8 +180,18 @@ public class FieldService {
         return switch (status) {
             case STABLE -> "안정";
             case CAUTION -> "주의";
+            case DANGER -> "위험";
             case NEEDS_CHECK -> "확인 필요";
         };
+    }
+
+    private com.example.aiworkspace.dto.field.FieldDailyStatus effectiveDailyStatus(FieldDailyReportDto daily) {
+        if (daily == null) return null;
+        if (daily.getAlerts() != null && daily.getAlerts().stream()
+                .anyMatch(alert -> "HIGH".equalsIgnoreCase(alert.getSeverity()))) {
+            return com.example.aiworkspace.dto.field.FieldDailyStatus.DANGER;
+        }
+        return daily.getStatus();
     }
 
     private FieldSuitabilityReportDto buildSuitability(RegionReportResponseDto report, String cropCode,

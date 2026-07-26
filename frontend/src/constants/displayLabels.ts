@@ -10,6 +10,7 @@ export const STAGE_LABELS: Record<string, string> = {
 export const FIELD_STATUS_LABELS = {
   STABLE: '안정',
   CAUTION: '주의',
+  DANGER: '위험',
   NEEDS_CHECK: '확인 필요',
 } as const;
 

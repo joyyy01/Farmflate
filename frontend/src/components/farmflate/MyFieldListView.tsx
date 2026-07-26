@@ -19,9 +19,10 @@ const CROP_ICON_BY_NAME: Record<string, string> = {
   '배': '/svg-assets/crops/pear.svg'
 };
 
-const STATUS_TONE: Record<string, 'stable' | 'caution' | 'check'> = {
+const STATUS_TONE: Record<string, 'stable' | 'caution' | 'danger' | 'check'> = {
   STABLE: 'stable',
   CAUTION: 'caution',
+  DANGER: 'danger',
   NEEDS_CHECK: 'check'
 };
 

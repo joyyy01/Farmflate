@@ -23,6 +23,10 @@ public class FieldGuidanceRuleEngine {
 
     public static final String RULE_VERSION = "field-guidance-rules-v1";
     private static final int MAX_TASKS = 2;
+    private static final double CAUTION_TEMPERATURE_C = 30.0;
+    private static final double DANGER_TEMPERATURE_C = 35.0;
+    private static final double CAUTION_WIND_MS = 9.0;
+    private static final double DANGER_WIND_MS = 13.0;
 
     public record FieldGuidanceInput(
             String cropCode,
@@ -64,8 +68,10 @@ public class FieldGuidanceRuleEngine {
         Double rainfall = weather.getRainfallMm();
         Double windSpeed = weather.getWindSpeed();
 
-        if (maxTemp != null && maxTemp >= 30.0) {
-            alerts.add(alert("HIGH_TEMPERATURE", "MEDIUM", "오후 고온 주의",
+        if (maxTemp != null && maxTemp >= CAUTION_TEMPERATURE_C) {
+            boolean dangerTemperature = maxTemp >= DANGER_TEMPERATURE_C;
+            alerts.add(alert("HIGH_TEMPERATURE", dangerTemperature ? "HIGH" : "MEDIUM",
+                    dangerTemperature ? "폭염 위험" : "오후 고온 주의",
                     "오늘 최고기온이 " + format(maxTemp) + "℃까지 오를 전망이에요."));
             candidateTasks.add(task("CHECK_LEAF_CONDITION", "오후에 잎 처짐을 확인하세요",
                     "고온 시간대에 잎이 처질 수 있어요. 필요하면 차광을 준비하세요.", FieldTaskBadge.CHECK_ANYTIME));
@@ -80,8 +86,9 @@ public class FieldGuidanceRuleEngine {
             reasoning.add("오늘 예상 강수량 " + format(rainfall) + "mm");
         }
 
-        if (windSpeed != null && windSpeed >= 9.0) {
-            alerts.add(alert("STRONG_WIND", "MEDIUM", "강풍 주의",
+        if (windSpeed != null && windSpeed >= CAUTION_WIND_MS) {
+            boolean dangerWind = windSpeed >= DANGER_WIND_MS;
+            alerts.add(alert("STRONG_WIND", dangerWind ? "HIGH" : "MEDIUM", dangerWind ? "강풍 위험" : "강풍 주의",
                     "오늘 풍속이 초속 " + format(windSpeed) + "m까지 강해질 수 있어요."));
             candidateTasks.add(task("CHECK_SUPPORT_STAKES", "지지대를 확인하세요",
                     "바람이 강해질 수 있어요. 어린 작물이나 지지대가 흔들리지 않는지 확인하세요.", FieldTaskBadge.CHECK_ANYTIME));
@@ -96,11 +103,17 @@ public class FieldGuidanceRuleEngine {
         }
 
         List<FieldTaskDto> tasks = dedupeAndLimit(candidateTasks);
-        FieldDailyStatus status = alerts.isEmpty() ? FieldDailyStatus.STABLE : FieldDailyStatus.CAUTION;
+        FieldDailyStatus status = alerts.isEmpty()
+                ? FieldDailyStatus.STABLE
+                : alerts.stream().anyMatch(alert -> "HIGH".equalsIgnoreCase(alert.getSeverity()))
+                    ? FieldDailyStatus.DANGER
+                    : FieldDailyStatus.CAUTION;
 
         String headline = alerts.isEmpty()
                 ? "오늘은 특별한 주의 없이 안정적이에요"
-                : "오늘은 " + alerts.get(0).getTitle() + "가 필요해요";
+                : status == FieldDailyStatus.DANGER
+                    ? "오늘은 " + alerts.get(0).getTitle() + "에 즉시 대비하세요"
+                    : "오늘은 " + alerts.get(0).getTitle() + "가 필요해요";
         String headlineDescription = tasks.isEmpty()
                 ? "오늘 예보 기준으로 추가 조치가 필요하지 않아요."
                 : tasks.get(0).getDescription();
