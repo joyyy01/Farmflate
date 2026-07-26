@@ -9,7 +9,6 @@ import type {
   RegionIdentity,
   RegionReport,
   RiskEvent,
-  SafeWorkWindow,
   SourceReference,
   TerminalAnalysisStatus
 } from '../types/report.ts';
@@ -122,14 +121,6 @@ const normalizeRisk = (input: UnknownRecord): RiskEvent => {
   };
 };
 
-const normalizeSafeWindow = (input: UnknownRecord): SafeWorkWindow => ({
-  start: asString(input.start),
-  end: asString(input.end),
-  label: asString(input.label),
-  reason: asString(input.reason),
-  confidence: asNumber(input.confidence)
-});
-
 const normalizeAction = (input: UnknownRecord): PrioritizedAction => ({
   rank: asNumber(input.rank),
   title: asString(input.title),
@@ -191,7 +182,6 @@ export const normalizeRegionReport = (input: unknown, knownStatus?: AnalysisStat
     recommendedCrops: asRecordArray(input.recommendedCrops).map(normalizeCrop),
     cropResults: asRecordArray(input.cropResults).map(normalizeCropDecision),
     topRisks: asRecordArray(input.topRisks ?? input.riskEvents).map(normalizeRisk),
-    safeWorkWindows: asRecordArray(input.safeWorkWindows).map(normalizeSafeWindow),
     prioritizedActions: asRecordArray(input.prioritizedActions).map(normalizeAction),
     tips: asRecordArray(input.tips).map(normalizeAction),
     sources: asRecordArray(input.sources).map(normalizeSource),

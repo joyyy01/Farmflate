@@ -276,7 +276,6 @@ public class RegionAnalysisService {
                 .cropResults(cropResults)
                 .topRisks(risks)
                 .tips(buildOfficialTips(missingMetrics))
-                .safeWorkWindows(toSafeWorkWindows(output.decisionOutput.safeWorkWindows))
                 .sources(sources)
                 .missingMetrics(missingMetrics)
                 .analyzedAt(LocalDateTime.now().format(DateTimeFormatter.ISO_DATE_TIME))
@@ -789,20 +788,6 @@ public class RegionAnalysisService {
                     .actions(List.of(actionTitle(risk.code))).causalChain(copyOrEmpty(risk.causalChain))
                     .criticalCap(risk.criticalCap).remainingRisk(risk.remainingRisk)
                     .evidenceRefs(evidence).source(evidence.isEmpty() ? null : evidence.get(0)).build());
-        }
-        return values;
-    }
-
-    private List<RegionReportResponseDto.SafeWorkWindowDto> toSafeWorkWindows(List<CropScoringEngine.SafeWorkWindow> windows) {
-        if (windows == null || windows.isEmpty()) return List.of();
-        List<RegionReportResponseDto.SafeWorkWindowDto> values = new ArrayList<>();
-        for (CropScoringEngine.SafeWorkWindow window : windows) {
-            values.add(RegionReportResponseDto.SafeWorkWindowDto.builder()
-                    .start(window.startDate).end(window.endDate)
-                    .label(window.durationDays + "일간 작업 가능")
-                    .reason(window.rationale)
-                    .evidenceRefs(copyOrEmpty(window.evidenceRefs))
-                    .build());
         }
         return values;
     }

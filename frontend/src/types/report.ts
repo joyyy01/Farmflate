@@ -85,14 +85,6 @@ export interface RiskEvent {
   evidenceRefs: SourceReference[];
 }
 
-export interface SafeWorkWindow {
-  start?: string | null;
-  end?: string | null;
-  label?: string | null;
-  reason?: string | null;
-  confidence?: number | null;
-}
-
 export interface PrioritizedAction {
   rank?: number | null;
   title?: string | null;
@@ -127,7 +119,6 @@ export interface RegionReport {
   recommendedCrops: RecommendedCrop[];
   cropResults: CropDecision[];
   topRisks: RiskEvent[];
-  safeWorkWindows: SafeWorkWindow[];
   prioritizedActions: PrioritizedAction[];
   tips: PrioritizedAction[];
   sources: SourceReference[];

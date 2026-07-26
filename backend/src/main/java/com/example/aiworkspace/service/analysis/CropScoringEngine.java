@@ -244,14 +244,6 @@ public class CropScoringEngine {
         public List<String> affectedCrops = new ArrayList<>();
     }
 
-    public static class SafeWorkWindow {
-        public String startDate;
-        public String endDate;
-        public int durationDays;
-        public List<String> evidenceRefs = new ArrayList<>();
-        public String rationale;
-    }
-
     public static class PrioritizedAction {
         public int rank;
         public String code;
@@ -281,7 +273,6 @@ public class CropScoringEngine {
         public DataConfidence dataConfidence;
         public List<CropResult> cropResults = new ArrayList<>();
         public List<RiskEvent> riskEvents = new ArrayList<>();
-        public List<SafeWorkWindow> safeWorkWindows = new ArrayList<>();
         public List<PrioritizedAction> prioritizedActions = new ArrayList<>();
         public EvidenceReceipt evidenceReceipt;
         public String ruleVersion;
@@ -469,7 +460,6 @@ public class CropScoringEngine {
         decision.cropResults = allResults;
         decision.riskEvents = riskEvents;
         decision.dataConfidence = confidence;
-        decision.safeWorkWindows = buildSafeWorkWindows(forecastDays);
         decision.prioritizedActions = buildPrioritizedActions(riskEvents);
         decision.evidenceReceipt = buildEvidenceReceipt(input, forecastDays, riskEvents);
         if (!topRecommended.isEmpty()) {
@@ -868,46 +858,6 @@ public class CropScoringEngine {
             }
         }
         return knownDays == 0 ? 70 : total / knownDays;
-    }
-
-    // ─── Safe work windows and actions ─────────────────────────────────────
-
-    private List<SafeWorkWindow> buildSafeWorkWindows(List<ForecastDay> days) {
-        List<SafeWorkWindow> windows = new ArrayList<>();
-        List<ForecastDay> open = new ArrayList<>();
-        for (ForecastDay day : days.stream().limit(11).collect(Collectors.toList())) {
-            if (isSafeWorkDay(day)) {
-                open.add(day);
-            } else if (!open.isEmpty()) {
-                windows.add(toWorkWindow(open));
-                open = new ArrayList<>();
-            }
-        }
-        if (!open.isEmpty()) {
-            windows.add(toWorkWindow(open));
-        }
-        return windows;
-    }
-
-    private boolean isSafeWorkDay(ForecastDay day) {
-        if (!hasText(day.date) || day.minTemp == null || day.maxTemp == null
-                || day.precipitation == null || day.windSpeed == null) {
-            return false;
-        }
-        if (day.minTemp <= 5 || day.maxTemp >= 33 || day.precipitation >= 15 || day.windSpeed >= 9) {
-            return false;
-        }
-        return day.humidity == null || day.humidity < 85;
-    }
-
-    private SafeWorkWindow toWorkWindow(List<ForecastDay> days) {
-        SafeWorkWindow window = new SafeWorkWindow();
-        window.startDate = days.get(0).date;
-        window.endDate = days.get(days.size() - 1).date;
-        window.durationDays = days.size();
-        window.evidenceRefs = days.stream().map(day -> "forecast:" + day.date).collect(Collectors.toList());
-        window.rationale = "강수·강풍·극한 기온 조건이 없는 작업 가능 구간";
-        return window;
     }
 
     private List<PrioritizedAction> buildPrioritizedActions(List<RiskEvent> riskEvents) {

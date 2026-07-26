@@ -101,11 +101,6 @@ export const RegionRisksView: React.FC<RegionRisksViewProps> = ({
             </motion.div>
           ))}
         </div>
-
-        <div style={{ marginTop: 24 }}>
-          <h3 style={{ fontSize: '1rem', fontWeight: 850, color: '#191F28', margin: '0 0 10px' }}>안전 작업 창</h3>
-          {(report?.safeWorkWindows ?? []).length === 0 ? <p style={{ margin: 0, color: '#6E7671', fontSize: '0.84rem' }}>제공된 안전 작업 창이 없습니다.</p> : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{(report?.safeWorkWindows ?? []).map((window, index) => <div key={`${window.start ?? 'window'}-${index}`} style={{ backgroundColor: '#F8FAF8', borderRadius: 14, padding: '12px 14px', border: '1px solid #EAEFEA' }}><strong style={{ fontSize: '0.84rem', color: '#191F28' }}>{window.label ?? '작업 가능 시간'}</strong><p style={{ margin: '4px 0 0', color: '#6E7671', fontSize: '0.78rem' }}>{window.start ?? '자료 부족'} ~ {window.end ?? '자료 부족'}{window.reason ? ` · ${window.reason}` : ''}</p></div>)}</div>}
-        </div>
       </div>
 
       {/* Fixed Bottom CTA Button */}

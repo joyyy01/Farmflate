@@ -17,6 +17,9 @@ from app.schemas.chat import (
     AgentTaskResponse,
     ChatRequest,
     ChatResponse,
+    FieldGuidanceRequest,
+    FieldGuidanceResponse,
+    FieldGuidanceTask,
     FactPackage,
     GroundingSource,
     StructuredAnswer,
@@ -129,6 +132,51 @@ class AIService:
             result=response.reply,
             steps_taken=response.agent_steps,
             sources=response.sources,
+        )
+
+    async def generate_field_guidance(self, request: FieldGuidanceRequest) -> FieldGuidanceResponse:
+        """Return a strict, fact-only field-report contract for the Java narrator.
+
+        The previous integration sent a JSON-only prompt through the
+        conversational task endpoint. That endpoint correctly produced chat
+        prose, which the Java narrator then rejected as malformed JSON. This
+        endpoint only reshapes verified rule-engine candidates, so it cannot
+        invent a task or a numeric condition.
+        """
+        facts = request.facts if isinstance(request.facts, dict) else {}
+        raw_tasks = facts.get("tasks") if isinstance(facts.get("tasks"), list) else []
+        tasks: list[FieldGuidanceTask] = []
+        for raw_task in raw_tasks:
+            if not isinstance(raw_task, dict):
+                continue
+            key = str(raw_task.get("key") or "").strip()
+            title = str(raw_task.get("title") or "").strip()
+            description = str(raw_task.get("description") or "").strip()
+            if key and title and description:
+                tasks.append(FieldGuidanceTask(key=key, title=title[:120], description=description[:300]))
+
+        raw_alerts = facts.get("alerts") if isinstance(facts.get("alerts"), list) else []
+        alert_titles = [
+            str(alert.get("title") or "").strip()
+            for alert in raw_alerts
+            if isinstance(alert, dict) and str(alert.get("title") or "").strip()
+        ]
+        crop_name = str(facts.get("cropName") or "작물").strip() or "작물"
+        headline = (alert_titles[0] if alert_titles else (tasks[0].title if tasks else f"오늘 {crop_name} 상태를 확인하세요"))[:80]
+        headline_description = (
+            tasks[0].description if tasks
+            else "현재 확인된 환경 정보를 바탕으로 작물 상태를 점검해 주세요."
+        )[:300]
+        summary_items = [task.title for task in tasks[:2]] or alert_titles[:2]
+        reasoning_summary = (
+            "검증된 환경 분석 결과를 바탕으로 " + " · ".join(summary_items) + "을 우선 안내합니다."
+            if summary_items else "검증된 환경 분석 결과를 바탕으로 오늘의 작물 상태를 안내합니다."
+        )[:500]
+        return FieldGuidanceResponse(
+            headline=headline,
+            headlineDescription=headline_description,
+            tasks=tasks,
+            reasoningSummary=reasoning_summary,
         )
 
     def _chat_request_to_fact_package(self, request: ChatRequest) -> FactPackage:

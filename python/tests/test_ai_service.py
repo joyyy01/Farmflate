@@ -2,7 +2,7 @@ import asyncio
 import unittest
 from unittest.mock import patch
 
-from app.schemas.chat import FactPackage, StructuredAnswer
+from app.schemas.chat import FactPackage, FieldGuidanceRequest, StructuredAnswer
 from app.services import ai_service
 from app.services.ai_service import AIService
 
@@ -63,6 +63,20 @@ class AIServiceSafetyAndContextTest(unittest.TestCase):
         self.assertEqual(result["structured_answer"], field_answer)
         field_builder.assert_called_once_with(package, {"score": 12})
         region_builder.assert_not_called()
+
+    def test_field_guidance_keeps_only_verified_rule_tasks_in_its_json_contract(self) -> None:
+        response = asyncio.run(self.service.generate_field_guidance(FieldGuidanceRequest(facts={
+            "cropName": "상추",
+            "tasks": [
+                {"key": "CHECK_SOIL", "title": "토양 수분 확인", "description": "표면과 5cm 깊이의 수분을 확인하세요."},
+                {"key": "", "title": "삭제 대상", "description": "키가 없는 작업"},
+            ],
+            "alerts": [{"title": "오후 고온 주의"}],
+        })))
+
+        self.assertEqual(response.headline, "오후 고온 주의")
+        self.assertEqual([task.key for task in response.tasks], ["CHECK_SOIL"])
+        self.assertIn("토양 수분 확인", response.reasoningSummary)
 
 
 if __name__ == "__main__":

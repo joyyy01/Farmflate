@@ -83,39 +83,23 @@ public class PythonFieldGuidanceNarrator implements FieldGuidanceNarrator {
     }
 
     private JsonNode callAgent(Map<String, Object> factPackage) {
-        String url = pythonServerUrl + "/api/v1/agent/task";
+        String url = pythonServerUrl + "/api/v1/agent/field-guidance";
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.set("X-Farmflate-Internal-Key", internalApiKey);
 
-        String task = "다음 JSON 사실만 근거로 삼아, 아래 형식의 JSON만 응답하세요. 새로운 숫자나 작업을 만들지 마세요.\n"
-                + "형식: {\"headline\":string,\"headlineDescription\":string,"
-                + "\"tasks\":[{\"key\":string,\"title\":string,\"description\":string}],\"reasoningSummary\":string}\n"
-                + "사실: " + writeJson(factPackage);
-
-        Map<String, Object> body = Map.of("task", task, "context", Map.of());
+        Map<String, Object> body = Map.of("facts", factPackage);
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
 
         ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.POST, entity, Map.class);
         if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
             throw new NarrationException("AGENT_CALL_FAILED");
         }
-        Object result = response.getBody().get("result");
-        if (!(result instanceof String resultText)) {
-            throw new NarrationException("AGENT_RESULT_MISSING");
-        }
         try {
-            return objectMapper.readTree(extractJson(resultText));
+            return objectMapper.valueToTree(response.getBody());
         } catch (Exception exception) {
             throw new NarrationException("AGENT_RESULT_NOT_JSON");
         }
-    }
-
-    private String extractJson(String text) {
-        int start = text.indexOf('{');
-        int end = text.lastIndexOf('}');
-        if (start < 0 || end <= start) throw new NarrationException("AGENT_RESULT_NOT_JSON");
-        return text.substring(start, end + 1);
     }
 
     private NarratedGuidance validate(JsonNode result, FieldGuidanceRuleEngine.FieldGuidanceResult validated) {
@@ -159,14 +143,6 @@ public class PythonFieldGuidanceNarrator implements FieldGuidanceNarrator {
     private String textOrNull(JsonNode node, String field) {
         JsonNode value = node.path(field);
         return value.isTextual() && !value.asText().isBlank() ? value.asText().trim() : null;
-    }
-
-    private String writeJson(Object value) {
-        try {
-            return objectMapper.writeValueAsString(value);
-        } catch (Exception exception) {
-            return "{}";
-        }
     }
 
     public static class NarrationException extends RuntimeException {

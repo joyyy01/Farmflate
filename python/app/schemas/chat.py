@@ -135,3 +135,20 @@ class AgentTaskResponse(BaseModel):
     result: str
     steps_taken: list[str]
     sources: list[GroundingSource] = Field(default_factory=list)
+
+
+class FieldGuidanceTask(BaseModel):
+    key: str
+    title: str
+    description: str
+
+
+class FieldGuidanceRequest(BaseModel):
+    facts: dict[str, Any] = Field(default_factory=dict)
+
+
+class FieldGuidanceResponse(BaseModel):
+    headline: str
+    headlineDescription: str
+    tasks: list[FieldGuidanceTask] = Field(default_factory=list)
+    reasoningSummary: str
