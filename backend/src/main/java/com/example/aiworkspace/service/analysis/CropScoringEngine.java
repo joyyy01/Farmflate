@@ -1315,17 +1315,11 @@ public class CropScoringEngine {
     }
 
     public String gradeFromScore(int score) {
-        if (score >= 85) return "VERY_GOOD";
-        if (score >= 70) return "GOOD";
-        if (score >= 55) return "MODERATE";
-        if (score >= 40) return "CAUTION";
-        return "POOR";
+        return RegionScoreBand.classify(score).grade();
     }
 
     private String regionSummaryText(int score) {
-        if (score >= 80) return "농사 환경이 양호한 편이에요";
-        if (score >= 60) return "일부 조건을 확인하면 재배할 수 있어요";
-        return "작물 선택 전 추가 확인이 필요해요";
+        return RegionScoreBand.classify(score).summary();
     }
 
     private RegionReportResponseDto.SourceDto weatherSource(String date) {

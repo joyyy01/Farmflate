@@ -13,6 +13,7 @@ import com.example.aiworkspace.dto.field.FieldSuitabilityPreviewDto;
 import com.example.aiworkspace.dto.field.FieldSuitabilityReportDto;
 import com.example.aiworkspace.dto.region.RegionReportResponseDto;
 import com.example.aiworkspace.service.analysis.LocationResolution;
+import com.example.aiworkspace.service.analysis.RegionScoreBand;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -432,11 +433,7 @@ public class FieldService {
     }
 
     private String grade(Integer score) {
-        if (score == null) return "UNAVAILABLE";
-        if (score >= 85) return "VERY_GOOD";
-        if (score >= 70) return "GOOD";
-        if (score >= 55) return "MODERATE";
-        return "CAUTION";
+        return RegionScoreBand.gradeFor(score);
     }
 
     private String status(Integer score) {

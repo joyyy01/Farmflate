@@ -132,7 +132,7 @@ class FieldServiceTest {
 
         assertThat(listed.getSuitabilityReport()).isNotNull();
         assertThat(listed.getSuitabilityReport().getSuitabilityScore()).isEqualTo(86);
-        assertThat(listed.getSuitabilityReport().getGrade()).isEqualTo("VERY_GOOD");
+        assertThat(listed.getSuitabilityReport().getGrade()).isEqualTo("GOOD");
         assertThat(listed.getSuitabilityReport().getConditions()).hasSize(4);
         assertThat(listed.getSuitabilityReport().getKeyRisks()).extracting("riskCode").contains("POTATO_WATERLOGGING");
         assertThat(listed.getLatestReport().getPrioritizedActions()).containsExactly("배수로를 점검하세요.");

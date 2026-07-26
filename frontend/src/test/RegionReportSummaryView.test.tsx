@@ -27,6 +27,7 @@ describe('RegionReportSummaryView', () => {
   it('explains score meanings and the representative legal-dong sample scope', () => {
     render(<RegionReportSummaryView regionName="전북특별자치도 고창군" report={report} onBack={vi.fn()} onNext={vi.fn()} onOpenAIChat={vi.fn()} />);
 
+    expect(screen.getByText('전반적으로 재배가 가능하지만 일부 환경 관리가 필요합니다.')).toBeInTheDocument();
     expect(screen.getByText('토양과 평년 기후처럼 쉽게 바뀌지 않는 기본 조건이 이 지역에 얼마나 맞는지 보여줘요.')).toBeInTheDocument();
     expect(screen.getByText('앞으로의 날씨와 재배 시기가 지금 시작하기에 얼마나 알맞은지 보여줘요.')).toBeInTheDocument();
     expect(screen.getByText('대상 법정동 7곳 중 대표 2곳을 표본으로 확인했고, 공공 토양 자료가 있는 1곳을 분석에 반영했어요.')).toBeInTheDocument();

@@ -12,6 +12,14 @@ export interface RegionReportSummaryViewProps {
   onOpenAIChat: () => void;
 }
 
+const summaryForRegionScore = (score: number | null): string | null => {
+  if (typeof score !== 'number') return null;
+  if (score >= 80) return '현재 조건에서 재배를 시작하기 좋은 환경입니다.';
+  if (score >= 60) return '전반적으로 재배가 가능하지만 일부 환경 관리가 필요합니다.';
+  if (score >= 40) return '재배 전 위험요인을 확인하고 보완 계획을 세워야 합니다.';
+  return '현재 조건에서는 재배 부담이 크므로 추가 확인이 필요합니다.';
+};
+
 export const RegionReportSummaryView: React.FC<RegionReportSummaryViewProps> = ({
   regionName,
   report,
@@ -24,7 +32,7 @@ export const RegionReportSummaryView: React.FC<RegionReportSummaryViewProps> = (
   const numericScore = hasScore ? score : 0;
   const displayScore = hasScore ? (Number.isInteger(score) ? String(score) : score.toFixed(1)) : null;
   const isPartialWithoutScore = report?.status === 'PARTIAL' && !hasScore;
-  const cleanSummary = formatReportText(report?.summary);
+  const cleanSummary = summaryForRegionScore(score) ?? formatReportText(report?.summary);
   const confidence = report?.dataConfidence;
   const legalDongCoverage = (report?.sources ?? [])
     .flatMap(source => source.transformations ?? [])

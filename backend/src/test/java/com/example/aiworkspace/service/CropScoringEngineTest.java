@@ -5,6 +5,7 @@ import com.example.aiworkspace.service.external.ShortForecastAdapter;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -133,6 +134,27 @@ class CropScoringEngineTest {
 
         assertThat(lettuce.calculable).isTrue();
         assertThat(lettuce.totalScore).isGreaterThan(0.0);
+    }
+
+    @Test
+    void region_score_uses_the_planned_four_bands_for_both_grade_and_farmer_message() throws Exception {
+        assertThat(cropScoringEngine.gradeFromScore(80)).isEqualTo("GOOD");
+        assertThat(regionSummaryText(80)).isEqualTo("현재 조건에서 재배를 시작하기 좋은 환경입니다.");
+
+        assertThat(cropScoringEngine.gradeFromScore(79)).isEqualTo("MODERATE");
+        assertThat(regionSummaryText(60)).isEqualTo("전반적으로 재배가 가능하지만 일부 환경 관리가 필요합니다.");
+
+        assertThat(cropScoringEngine.gradeFromScore(59)).isEqualTo("CAUTION");
+        assertThat(regionSummaryText(40)).isEqualTo("재배 전 위험요인을 확인하고 보완 계획을 세워야 합니다.");
+
+        assertThat(cropScoringEngine.gradeFromScore(39)).isEqualTo("POOR");
+        assertThat(regionSummaryText(39)).isEqualTo("현재 조건에서는 재배 부담이 크므로 추가 확인이 필요합니다.");
+    }
+
+    private String regionSummaryText(int score) throws Exception {
+        Method method = CropScoringEngine.class.getDeclaredMethod("regionSummaryText", int.class);
+        method.setAccessible(true);
+        return (String) method.invoke(cropScoringEngine, score);
     }
 
     private CropScoringEngine.AnalysisInput completeNormalizedInput() {
