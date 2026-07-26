@@ -99,6 +99,42 @@ class CropScoringEngineTest {
         });
     }
 
+    @Test
+    void cucumber_remains_calculable_when_soil_suitability_and_temperature_exactly_meet_the_minimum_weight() {
+        CropScoringEngine.AnalysisInput input = new CropScoringEngine.AnalysisInput();
+        input.meanTemperature30d = 21.0;
+        input.soilSuitabilityScores.put("CUCUMBER", 47.0);
+        input.dataQualityScores.put("soilSuitability", 100.0);
+        input.dataQualityScores.put("seasonalTemperature", 100.0);
+
+        CropScoringEngine.AnalysisOutput output = cropScoringEngine.analyze(input);
+        CropScoringEngine.CropResult cucumber = output.allCropResults.stream()
+                .filter(crop -> "CUCUMBER".equals(crop.cropCode))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(cucumber.calculable).isTrue();
+        assertThat(cucumber.totalScore).isGreaterThan(0.0);
+    }
+
+    @Test
+    void lettuce_uses_partial_soil_data_when_suitability_and_temperature_are_available() {
+        CropScoringEngine.AnalysisInput input = new CropScoringEngine.AnalysisInput();
+        input.meanTemperature30d = 18.0;
+        input.soilSuitabilityScores.put("LETTUCE", 63.0);
+        input.dataQualityScores.put("soilSuitability", 100.0);
+        input.dataQualityScores.put("seasonalTemperature", 100.0);
+
+        CropScoringEngine.AnalysisOutput output = cropScoringEngine.analyze(input);
+        CropScoringEngine.CropResult lettuce = output.allCropResults.stream()
+                .filter(crop -> "LETTUCE".equals(crop.cropCode))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(lettuce.calculable).isTrue();
+        assertThat(lettuce.totalScore).isGreaterThan(0.0);
+    }
+
     private CropScoringEngine.AnalysisInput completeNormalizedInput() {
         CropScoringEngine.AnalysisInput input = new CropScoringEngine.AnalysisInput();
         input.meanTemperature30d = 21.0;

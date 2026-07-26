@@ -19,7 +19,7 @@ import { CommunityCreatePostView } from './components/farmflate/CommunityCreateP
 import { MyPageView } from './components/farmflate/MyPageView';
 import { ApiError, ApiService } from './services/api';
 import type { FieldProfile, FieldSuitabilityPreview, HomeData, RegionAnalysisRequest, RegionReport } from './services/api';
-import { canOpenReport, stateFromAnalysisStatus, type AnalysisState, type FieldPreviewState } from './services/reportLifecycle';
+import { canOpenReport, needsFreshCropAnalysis, stateFromAnalysisStatus, type AnalysisState, type FieldPreviewState } from './services/reportLifecycle';
 import { AIChatModal } from './components/farmflate/AIChatModal';
 import { useDailyRefresh } from './hooks/useDailyRefresh';
 import type { NavigationFlow } from './types/navigation';
@@ -721,7 +721,7 @@ export function App() {
      analysis (suitability scoring reads from it), but never shows the
      analyzing/report screens -- it stays on the explore screen with a small
      inline loading state, then returns straight to the registration form. */
-  const submitFieldRegionChange = async (input: Omit<RegionAnalysisRequest, 'idempotencyKey'>) => {
+  const submitFieldRegionChange = async (input: Omit<RegionAnalysisRequest, 'idempotencyKey'>): Promise<RegionReport | null> => {
     setFieldRegionError(null);
     setIsResolvingFieldRegion(true);
     const request: RegionAnalysisRequest = { ...input, idempotencyKey: crypto.randomUUID(), purpose: 'FIELD_LINKED' };
@@ -751,17 +751,34 @@ export function App() {
       localStorage.setItem('farmflate_district', report.region.sigunguName);
       setExploreMode('analyze');
       setViewStep('condition');
+      return report;
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
         localStorage.removeItem('jwtToken');
         localStorage.removeItem('token');
         setHomeLoadError('로그인이 만료되었습니다. 다시 로그인해 주세요.');
         setViewStep('landing', { replace: true });
-        return;
+        return null;
       }
       setFieldRegionError(error instanceof ApiError ? error.message : (error instanceof Error ? error.message : '지역 정보를 확인하지 못했습니다.'));
+      return null;
     } finally {
       setIsResolvingFieldRegion(false);
+    }
+  };
+
+  const refreshStaleCropRegistrationAnalysis = async () => {
+    if (!apiReport || !pendingCropRegistration) {
+      returnToCropCondition();
+      return;
+    }
+    const report = await submitFieldRegionChange({
+      ...apiReport.region,
+      forceRefresh: true,
+      purpose: 'FIELD_LINKED'
+    });
+    if (report) {
+      await handleStartCropConditionAnalysis(pendingCropRegistration, report);
     }
   };
 
@@ -782,8 +799,9 @@ export function App() {
     }
   };
 
-  const handleStartCropConditionAnalysis = async (input: CropRegistrationInput) => {
-    if (!isFieldRegistrationFlow || !apiReport || !canOpenReport(analysisState)) {
+  const handleStartCropConditionAnalysis = async (input: CropRegistrationInput, reportOverride?: RegionReport) => {
+    const activeReport = reportOverride ?? apiReport;
+    if (!isFieldRegistrationFlow || !activeReport || !canOpenReport(analysisState)) {
       returnToMyField();
       return;
     }
@@ -804,7 +822,7 @@ export function App() {
     }, 1400);
 
     try {
-      const crop = apiReport.cropResults.find(item => item.cropName === input.cropName);
+      const crop = activeReport.cropResults.find(item => item.cropName === input.cropName);
       if (!crop || !crop.cropCode) {
         stopCropStepAdvance();
         setFieldPreviewState({
@@ -816,10 +834,14 @@ export function App() {
       }
       if (crop.calculable === false) {
         stopCropStepAdvance();
+        const needsRefresh = needsFreshCropAnalysis(crop);
         setFieldPreviewState({
           kind: 'ERROR',
-          message: crop.notCalculableReason ?? `선택한 작물(${input.cropName})은(는) 현재 지역 분석에서 적합도 계산이 불가능합니다.`,
-          retryable: false
+          code: needsRefresh ? 'STALE_CROP_ANALYSIS' : 'CROP_NOT_CALCULABLE',
+          message: needsRefresh
+            ? '이전 분석 규칙으로 저장된 결과입니다. 최신 공공데이터와 계산 규칙으로 다시 분석할게요.'
+            : (crop.notCalculableReason ?? `선택한 작물(${input.cropName})은(는) 현재 지역 분석에서 적합도 계산이 불가능합니다.`),
+          retryable: needsRefresh
         });
         return;
       }
@@ -830,7 +852,7 @@ export function App() {
         cultivationMethod: input.farmType,
         cultivationStartDate: input.startDate,
         stage: input.stage,
-        regionAnalysisId: apiReport.analysisId
+        regionAnalysisId: activeReport.analysisId
       });
       stopCropStepAdvance();
       setFieldPreview(preview);
@@ -1011,6 +1033,10 @@ export function App() {
             state={isFieldRegistrationFlow || pendingCropRegistration ? fieldPreviewState : analysisState}
             onRetry={() => {
               if (fieldPreviewState.kind === 'ERROR' || fieldPreviewState.kind === 'UNAUTHORIZED') {
+                if (fieldPreviewState.kind === 'ERROR' && fieldPreviewState.code === 'STALE_CROP_ANALYSIS') {
+                  void refreshStaleCropRegistrationAnalysis();
+                  return;
+                }
                 if (pendingCropRegistration) {
                   void handleStartCropConditionAnalysis(pendingCropRegistration);
                 }

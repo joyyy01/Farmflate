@@ -525,10 +525,9 @@ public class CropScoringEngine {
                 qualityFor(input, "soilEc", 0.75));
         crop.contributions = contributions;
 
-        double availableWeight = contributions.stream().mapToDouble(contribution -> contribution.weight).sum();
         boolean hasSuitability = suitability != null;
         boolean hasTemperatureOrPh = temperature != null || ph != null;
-        if (availableWeight < 0.65 || !hasSuitability || !hasTemperatureOrPh) {
+        if (!hasSuitability || !hasTemperatureOrPh) {
             crop.calculable = false;
             crop.totalScore = 0;
             crop.notCalculableReason = "필수 데이터(토양적성 통계 및 기온 또는 pH)가 부족합니다.";

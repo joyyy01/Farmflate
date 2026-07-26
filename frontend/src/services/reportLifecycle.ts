@@ -22,6 +22,20 @@ export type AnalysisState =
   | { kind: 'ERROR'; message: string; code?: string | null; retryable: boolean; pendingAction?: 'REGION_ANALYSIS' | 'FIELD_PREVIEW' | 'FIELD_CREATE' }
   | { kind: 'UNAUTHORIZED'; message: string; pendingAction: 'REGION_ANALYSIS' | 'FIELD_PREVIEW' | 'FIELD_CREATE' };
 
+/**
+ * Reports created by an older scoring rule can contain a non-calculable crop
+ * even though both independent inputs needed for a partial score are present.
+ * Refresh that persisted snapshot once instead of trapping the user in the
+ * same registration error.
+ */
+export const needsFreshCropAnalysis = (crop: Pick<CropDecision,
+  'calculable' | 'soilSuitabilityScore' | 'seasonalTemperatureScore' | 'soilPhScore'>
+): boolean => crop.calculable === false
+  && typeof crop.soilSuitabilityScore === 'number'
+  && Number.isFinite(crop.soilSuitabilityScore)
+  && ((typeof crop.seasonalTemperatureScore === 'number' && Number.isFinite(crop.seasonalTemperatureScore))
+    || (typeof crop.soilPhScore === 'number' && Number.isFinite(crop.soilPhScore)));
+
 type UnknownRecord = Record<string, unknown>;
 
 const isRecord = (value: unknown): value is UnknownRecord => typeof value === 'object' && value !== null && !Array.isArray(value);
