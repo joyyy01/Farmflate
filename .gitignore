@@ -42,3 +42,9 @@ handover*.md
 scratch/
 brain/
 
+# Local verification scripts and agent planning notes
+/test_ai_retest.py
+/test_e2e.py
+/docs/superpowers/plans/
+/docs/superpowers/specs/
+
