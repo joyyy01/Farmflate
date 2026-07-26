@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import type { RegionReport } from '../../services/api';
-import { formatReportDate, formatReportText } from '../../utils/reportDisplay';
+import { formatReportPeriod, formatReportText } from '../../utils/reportDisplay';
 
 interface RegionRisksViewProps {
   report?: RegionReport | null;
@@ -93,7 +93,7 @@ export const RegionRisksView: React.FC<RegionRisksViewProps> = ({
                     {risk.desc}
                   </p>
 
-                  {risk.period && <p style={{ fontSize: '0.76rem', color: '#8E9892', margin: '0 0 8px' }}>위험 기간: {formatReportDate(risk.period.start)} ~ {formatReportDate(risk.period.end)}</p>}
+                  {risk.period && <p style={{ fontSize: '0.76rem', color: '#8E9892', margin: '0 0 8px' }}>위험 기간: {formatReportPeriod(risk.period.start, risk.period.end)}</p>}
                   {risk.actions.length > 0 && <p style={{ fontSize: '0.78rem', color: '#526157', margin: '0 0 8px' }}>권장 행동: {risk.actions.join(' · ')}</p>}
                   {risk.sourceUrl && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button onClick={() => window.open(risk.sourceUrl || undefined, '_blank', 'noopener,noreferrer')} style={{ backgroundColor: '#FFFFFF', border: '1px solid #D1DFD7', borderRadius: 10, padding: '7px 12px', fontSize: '0.78rem', fontWeight: 700, color: '#191F28', cursor: 'pointer' }}>원문 보기 →</button></div>}
                 </div>

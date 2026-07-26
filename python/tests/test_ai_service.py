@@ -280,6 +280,33 @@ class AIServiceSafetyAndContextTest(unittest.TestCase):
         self.assertIn("차광", response.answer.answer)
         self.assertNotIn("31", response.answer.answer)
 
+    def test_current_status_question_keeps_the_visible_field_crop_ahead_of_stale_region_risks(self) -> None:
+        package = FactPackage(
+            requestId="test-request",
+            question="현재 상태가 나온 이유를 설명해 주세요.",
+            context={"visibleData": [{"key": "field.reasoning.1", "label": "왜 이렇게 안내했나요?", "section": "field"}]},
+            facts={
+                "field.crop.name": "감자",
+                "field.reasoning.1": "고온 예보와 건조한 토양 상태를 함께 반영했습니다.",
+                "field.alert.1.title": "오후 고온 주의",
+                "field.task.1.title": "흙의 마른 정도 확인",
+                "risk.1.title": "상추 고온다습 위험",
+            },
+        )
+        stale_region_answer = StructuredAnswer(answer="상추 재배 시기의 고온다습 위험입니다.")
+
+        with (
+            patch.object(ai_service.settings, "OPENAI_API_KEY", "test-key"),
+            patch.object(ai_service.settings, "LLM_PROVIDER", "openai"),
+            patch.object(self.service, "_call_openai", new=AsyncMock(return_value=stale_region_answer)) as llm_call,
+        ):
+            response = asyncio.run(self.service.run_agent(AgentRunRequest(fact_package=package)))
+
+        self.assertIn("감자", response.answer.answer)
+        self.assertIn("오후 고온 주의", response.answer.answer)
+        self.assertNotIn("상추", response.answer.answer)
+        llm_call.assert_not_awaited()
+
 
 if __name__ == "__main__":
     unittest.main()

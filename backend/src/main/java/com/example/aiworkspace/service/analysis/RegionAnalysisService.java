@@ -962,10 +962,34 @@ public class RegionAnalysisService {
     }
 
     private RegionReportResponseDto.PeriodDto periodFor(List<String> refs) {
-        List<String> dates = refs == null ? List.of() : refs.stream().filter(ref -> ref.startsWith("forecast:"))
-                .map(ref -> ref.substring("forecast:".length())).sorted().toList();
+        List<LocalDate> dates = refs == null ? List.of() : refs.stream()
+                .filter(ref -> ref.startsWith("forecast:"))
+                .map(ref -> ref.substring("forecast:".length()))
+                .map(this::parseForecastDate)
+                .flatMap(Optional::stream)
+                .sorted()
+                .toList();
         if (dates.isEmpty()) return null;
-        return RegionReportResponseDto.PeriodDto.builder().start(dates.get(0)).end(dates.get(dates.size() - 1)).build();
+        return RegionReportResponseDto.PeriodDto.builder()
+                .start(dates.get(0).toString())
+                .end(dates.get(dates.size() - 1).toString())
+                .build();
+    }
+
+    private Optional<LocalDate> parseForecastDate(String value) {
+        if (!hasText(value)) return Optional.empty();
+        String normalized = value.trim();
+        try {
+            if (normalized.matches("\\d{8}")) {
+                return Optional.of(LocalDate.parse(normalized, DateTimeFormatter.BASIC_ISO_DATE));
+            }
+            if (normalized.matches("\\d{4}-\\d{2}-\\d{2}")) {
+                return Optional.of(LocalDate.parse(normalized));
+            }
+        } catch (RuntimeException ignored) {
+            log.debug("Ignoring invalid forecast evidence date: {}", normalized);
+        }
+        return Optional.empty();
     }
 
     private String buildSummary(String sigunguName, int score, List<RegionReportResponseDto.RiskDto> risks,

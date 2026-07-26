@@ -29,6 +29,17 @@ class ScreenToolsTest(unittest.TestCase):
         self.assertEqual(result.status, "ambiguous")
         self.assertIn("종합 적합도", result.clarification or "")
 
+    def test_resolves_current_status_reason_to_the_visible_field_reasoning(self) -> None:
+        result = resolve_visible_target(
+            "현재 상태가 나온 이유를 설명해 주세요.",
+            [{"key": "field.reasoning.1", "label": "왜 이렇게 안내했나요?", "section": "field"}],
+            {"field.reasoning.1": "고온 예보와 건조한 토양 상태를 함께 반영했습니다."},
+            [],
+        )
+
+        self.assertEqual(result.status, "resolved")
+        self.assertEqual(result.fact_keys, ("field.reasoning.1",))
+
     def test_compares_only_the_visible_crop_facts(self) -> None:
         result = compare_visible_crops(
             ("crop.1", "crop.2"),

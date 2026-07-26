@@ -99,7 +99,9 @@ def resolve_visible_target(
         candidates = [ref for ref in refs if ref["key"].startswith(("risk.", "field.alert."))]
     elif "점수" in normalized:
         candidates = [ref for ref in refs if "score" in ref["key"].lower() or "점수" in ref["label"]]
-    elif any(token in normalized for token in ("왜이렇게", "안내이유", "분석근거")):
+    elif any(token in normalized for token in (
+        "왜이렇게", "안내이유", "분석근거", "현재상태", "상태이유", "나온이유",
+    )):
         candidates = [ref for ref in refs if ref["key"].startswith("field.reasoning.")]
     else:
         candidates = [

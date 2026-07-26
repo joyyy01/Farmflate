@@ -56,3 +56,43 @@ export const formatReportDate = (value?: string | null, fallback = '날짜 정�
   if (iso) return `${iso[1]}년 ${Number(iso[2])}월 ${Number(iso[3])}일`;
   return formatReportText(normalized, fallback);
 };
+
+const calendarDateKey = (value?: string | null): string | null => {
+  const normalized = value?.trim();
+  if (!normalized) return null;
+
+  const match = normalized.match(/^(\d{4})(?:-|)(\d{2})(?:-|)(\d{2})$/);
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  const isValid = date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day;
+
+  return isValid ? `${match[1]}-${match[2]}-${match[3]}` : null;
+};
+
+/**
+ * Provider responses can contain forecast evidence in a non-chronological
+ * order. Keep unknown values visible, but never present two valid dates in an
+ * impossible order to the farmer.
+ */
+export const formatReportPeriod = (
+  start?: string | null,
+  end?: string | null,
+  fallback = '날짜 정보 없음',
+): string => {
+  const startKey = calendarDateKey(start);
+  const endKey = calendarDateKey(end);
+  const [orderedStart, orderedEnd] = startKey && endKey && startKey > endKey
+    ? [end, start]
+    : [start, end];
+
+  const values = [orderedStart, orderedEnd].filter((value): value is string => Boolean(value?.trim()));
+  if (values.length === 0) return fallback;
+
+  return values.map(value => formatReportDate(value, fallback)).join(' ~ ');
+};
