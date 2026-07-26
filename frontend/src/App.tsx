@@ -539,10 +539,6 @@ export function App() {
       setViewStep('report_summary');
     } catch (err) {
       console.warn('Failed to load confirmed report:', err);
-      // Restore whatever analysis state existed before this attempt so a transient
-      // failure here doesn't leave analysisState stuck at SUBMITTING (which would
-      // otherwise block canOpenReport() from ever passing again) or wrongly
-      // invalidate an already-valid, previously-loaded report.
       setAnalysisState(previousAnalysisState);
       if (sourceStep !== 'explore') {
         safeSetViewStep(sourceStep);
@@ -1121,6 +1117,7 @@ export function App() {
             userName={userName}
             analyzedRegion={apiReport?.region?.sidoName && apiReport?.region?.sigunguName ? `${apiReport.region.sidoName} ${apiReport.region.sigunguName}` : undefined}
             homeData={homeData}
+            fields={myFields}
             loadError={homeLoadError}
             onGoToExplore={() => {
               setExploreReturnStep('dashboard');

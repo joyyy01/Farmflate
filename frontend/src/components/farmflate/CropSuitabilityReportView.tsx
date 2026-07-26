@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Share2, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Share2, CheckCircle, AlertTriangle } from 'lucide-react';
 import type { FieldSuitabilityPreview } from '../../types/report';
 import { displayGrade as translateGrade, displaySuitabilityStatus as translateStatus } from '../../constants/displayLabels';
+import { BackButton } from '../common/BackButton';
 
 interface CropSuitabilityReportViewProps {
   fieldName?: string;
@@ -123,9 +124,7 @@ export const CropSuitabilityReportView: React.FC<CropSuitabilityReportViewProps>
           borderBottom: '1px solid #ecefed',
           marginBottom: 16
         }}>
-          <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#202a24', padding: 0 }}>
-            <ArrowLeft size={22} />
-          </button>
+          <BackButton onClick={onBack} style={{ color: '#202a24' }} />
           <h1 style={{ fontSize: '1.1rem', fontWeight: 850, color: '#202a24', margin: 0, textAlign: 'center' }}>
             농작물 적합도 리포트
           </h1>

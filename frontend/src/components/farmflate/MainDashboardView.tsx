@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { AlertTriangle, MoveRight, Bot } from 'lucide-react';
 import type { TabState } from '../../types/farmflate';
+import type { FieldProfile } from '../../types/report';
 import { BottomNavigation } from '../common/BottomNavigation';
 import type { HomeData } from '../../services/api';
 import { WEATHER_ILLUSTRATIONS, snapshotFromBackend } from '../../services/weatherService';
@@ -11,6 +12,7 @@ interface MainDashboardViewProps {
   userName?: string;
   analyzedRegion?: string;
   homeData?: HomeData | null;
+  fields?: FieldProfile[];
   loadError?: string | null;
   onGoToExplore: () => void;
   onOpenReport?: () => void;
@@ -20,10 +22,16 @@ interface MainDashboardViewProps {
   isNewUser?: boolean;
 }
 
+const topicParticle = (value: string) => {
+  const lastCode = value.trim().charCodeAt(value.trim().length - 1);
+  return lastCode >= 0xAC00 && lastCode <= 0xD7A3 && (lastCode - 0xAC00) % 28 !== 0 ? '은' : '는';
+};
+
 export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
   userName = '사용자님',
   analyzedRegion,
   homeData,
+  fields = [],
   loadError,
   onGoToExplore,
   onOpenReport,
@@ -48,10 +56,16 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
   const humidity = weather?.humidity ?? null;
   const wind = weather?.windSpeed ?? null;
 
-  // Today's Action / Risk parameters from Backend API
-  const hasAction = Boolean(homeData?.todayAction?.title || homeData?.todayAction?.reason);
-  const actionTitle = homeData?.todayAction?.title || '제공된 조치 제목이 없습니다.';
-  const actionReason = homeData?.todayAction?.reason || '제공된 조치 근거가 없습니다.';
+  // The home summary is grounded in each registered field's backend-generated daily status.
+  const attentionFields = fields.filter(field => field.dailyStatus === 'CAUTION' || field.dailyStatus === 'DANGER');
+  const attentionFieldCount = attentionFields.length;
+  const visibleAttentionFields = attentionFields.slice(0, 2);
+  const hiddenAttentionFieldCount = attentionFieldCount - visibleAttentionFields.length;
+  const attentionSummary = attentionFieldCount === 0
+    ? '오늘은 주의해야 할 밭이 없어요.'
+    : hiddenAttentionFieldCount > 0
+      ? `${visibleAttentionFields.map(field => `${field.fieldName}(${field.dailyStatus === 'DANGER' ? '위험' : '주의'})`).join(', ')} 외 ${hiddenAttentionFieldCount}개 밭을 확인해 주세요.`
+      : `${visibleAttentionFields.map(field => `${field.fieldName}${topicParticle(field.fieldName)} ${field.dailyStatus === 'DANGER' ? '위험' : '주의'}`).join(', ')} 상태예요.`;
 
   // Latest Region Analysis: TOP 1-3 recommended crops
   const recommendedCrops = homeData?.latestRegionAnalysis?.recommendedCrops ?? [];
@@ -59,9 +73,9 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
   const handleReportViewClick = () => {
     if (onOpenReport) {
       onOpenReport();
-    } else {
-      onGoToExplore();
+      return;
     }
+    onGoToExplore();
   };
 
   return (
@@ -210,32 +224,22 @@ export const MainDashboardView: React.FC<MainDashboardViewProps> = ({
               </div>
             </div>
           </motion.div>
-        ) : hasAction ? (
+        ) : (
           <div style={{ position: 'relative', width: '100%', minHeight: 154, border: '1px solid #FFE0A8', borderRadius: 20, backgroundColor: '#FFF8E8', padding: '20px', marginBottom: 20, boxSizing: 'border-box', overflow: 'hidden' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#FF7F2B', fontSize: '0.86rem', fontWeight: 850, marginBottom: 8 }}>
-              <AlertTriangle size={18} color="#FF7F2B" /> 오늘 조치사항 ({shortRegion})
+              <AlertTriangle size={18} color="#FF7F2B" /> {attentionFieldCount > 0 ? `오늘 주의해야 할 밭이 ${attentionFieldCount}개 있어요` : '오늘 주의해야 할 밭이 없어요'}
             </div>
-            <div style={{ fontSize: '0.85rem', lineHeight: 1.5, color: '#626A65', marginBottom: 14 }}>
-              <strong style={{ display: 'block', color: '#191F28', fontSize: '0.94rem', marginBottom: 3, fontWeight: 850 }}>
-                {actionTitle}
-              </strong>
-              {actionReason}
+            <div style={{ position: 'relative', zIndex: 1, fontSize: '0.85rem', lineHeight: 1.5, color: '#626A65', marginBottom: 14 }}>
+              {attentionSummary}
             </div>
-            <button onClick={handleReportViewClick} style={{ height: 34, padding: '0 16px', border: '1px solid #FFCFB1', borderRadius: 18, backgroundColor: '#FFFFFF', color: '#FF7D31', fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer' }}>
+            <button onClick={handleReportViewClick} style={{ position: 'relative', zIndex: 1, height: 34, padding: '0 16px', border: '1px solid #FFCFB1', borderRadius: 18, backgroundColor: '#FFFFFF', color: '#FF7D31', fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer' }}>
               지역 리포트 보기 ›
             </button>
-          </div>
-        ) : (
-          <div style={{ position: 'relative', width: '100%', minHeight: 120, border: '1px solid #E5E8EB', borderRadius: 20, backgroundColor: '#F8FAF8', padding: '20px', marginBottom: 20, boxSizing: 'border-box' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#6E7671', fontSize: '0.86rem', fontWeight: 850, marginBottom: 8 }}>
-              <AlertTriangle size={18} color="#6E7671" /> 오늘 조치사항 없음 ({shortRegion})
-            </div>
-            <div style={{ fontSize: '0.85rem', lineHeight: 1.5, color: '#6E7671', marginBottom: 14 }}>
-              현재 지역 예보에서 바로 조치할 위험이 확인되지 않았어요.
-            </div>
-            <button onClick={handleReportViewClick} style={{ height: 34, padding: '0 16px', border: '1px solid #DDE2E6', borderRadius: 18, backgroundColor: '#FFFFFF', color: '#4B5563', fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer' }}>
-              지역 리포트 보기 ›
-            </button>
+            <img
+              src="/svg-assets/weather/water-drop-alert.svg"
+              alt=""
+              style={{ position: 'absolute', right: 16, bottom: 14, width: 68, height: 68, objectFit: 'contain', pointerEvents: 'none' }}
+            />
           </div>
         )}
 

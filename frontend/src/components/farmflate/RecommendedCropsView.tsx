@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, ChevronRight } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import type { RegionReport } from '../../services/api';
+import { BackButton } from '../common/BackButton';
 
 interface RecommendedCropsViewProps {
   districtName?: string;
@@ -51,9 +52,7 @@ export const RecommendedCropsView: React.FC<RecommendedCropsViewProps> = ({
           borderBottom: '1px solid #ECEFED',
           marginBottom: 16
         }}>
-          <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#202A24', padding: 0 }}>
-            <ArrowLeft size={22} />
-          </button>
+          <BackButton onClick={onBack} style={{ color: '#202A24' }} />
           <h1 style={{ fontSize: '1.1rem', fontWeight: 850, color: '#202A24', margin: 0, textAlign: 'center' }}>
             추천 작물 리스트
           </h1>

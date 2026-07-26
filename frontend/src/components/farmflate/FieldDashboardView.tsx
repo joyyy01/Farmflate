@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
-  ArrowLeft, ChevronDown, ChevronRight, RefreshCw, Droplet, Search,
+  ChevronDown, ChevronRight, RefreshCw, Droplet, Search,
   AlertTriangle, Lightbulb, Bot, Shield, ClipboardList
 } from 'lucide-react';
 import type { FieldProfile } from '../../types/report';
@@ -12,6 +12,7 @@ import { displayStage, FIELD_STATUS_LABELS, LOG_CATEGORY_LABELS } from '../../co
 import { seasonalThemeFromReportDate } from './fieldDashboardTheme';
 import { buildFieldVisibleData } from '../../services/visibleDataContext';
 import { formatFieldReasoningSummary } from '../../services/fieldReasoning';
+import { BackButton } from '../common/BackButton';
 
 interface FieldDashboardViewProps {
   field: FieldProfile;
@@ -236,9 +237,7 @@ export const FieldDashboardView: React.FC<FieldDashboardViewProps> = ({ field, o
   if (error || !dashboard) {
     return (
       <div className="full-screen-view field-dashboard field-dashboard--error">
-        <button onClick={onBack} className="field-dashboard__back-button">
-          <ArrowLeft size={22} color="#191F28" />
-        </button>
+        <BackButton onClick={onBack} className="field-dashboard__back-button" />
         <div role="alert" className="field-dashboard__error-card">
           {error || '표시할 밭 정보가 없습니다.'}
         </div>
@@ -255,9 +254,7 @@ export const FieldDashboardView: React.FC<FieldDashboardViewProps> = ({ field, o
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
       <div className="full-screen-view no-scrollbar field-dashboard">
 
-        <button onClick={onBack} className="field-dashboard__back-button">
-          <ArrowLeft size={22} color="#191F28" />
-        </button>
+        <BackButton onClick={onBack} className="field-dashboard__back-button" />
 
         <header className="field-dashboard__header">
           <div className="field-dashboard__title-wrap">

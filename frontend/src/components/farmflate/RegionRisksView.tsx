@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import type { RegionReport } from '../../services/api';
 import { formatReportPeriod, formatReportText } from '../../utils/reportDisplay';
+import { BackButton } from '../common/BackButton';
 
 interface RegionRisksViewProps {
   report?: RegionReport | null;
@@ -32,9 +33,7 @@ export const RegionRisksView: React.FC<RegionRisksViewProps> = ({
       <div className="no-scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '32px 20px 24px 20px' }}>
         
         {/* Back button */}
-        <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginBottom: 24, display: 'flex' }}>
-          <img src="/svg-assets/ui-icons/back.svg" alt="뒤로가기" style={{ width: 24, height: 24 }} />
-        </button>
+        <BackButton onClick={onBack} style={{ marginBottom: 24 }} />
 
         {/* Dynamic Title based on actual identified risks count */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 32 }}>

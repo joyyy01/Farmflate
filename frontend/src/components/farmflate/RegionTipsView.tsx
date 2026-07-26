@@ -1,7 +1,8 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, CheckCircle2, ChevronRight } from 'lucide-react';
+import { CheckCircle2, ChevronRight } from 'lucide-react';
 import type { RegionReport } from '../../services/api';
+import { BackButton } from '../common/BackButton';
 
 interface RegionTipsViewProps {
   districtName: string;
@@ -82,9 +83,7 @@ export const RegionTipsView: React.FC<RegionTipsViewProps> = ({
       <div className="no-scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '24px 20px 24px 20px' }}>
 
         {/* Back button */}
-        <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginBottom: 24, display: 'flex' }}>
-          <ArrowLeft size={24} color="#191F28" />
-        </button>
+        <BackButton onClick={onBack} style={{ marginBottom: 24 }} />
 
         {/* Header Title */}
         <div style={{ marginBottom: 32 }}>

@@ -1,8 +1,9 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, AlertTriangle } from 'lucide-react';
 import type { RegionReport } from '../../services/api';
 import { formatReportLabel, formatReportText } from '../../utils/reportDisplay';
+import { BackButton } from '../common/BackButton';
 
 export interface RegionReportSummaryViewProps {
   regionName: string;
@@ -68,9 +69,7 @@ export const RegionReportSummaryView: React.FC<RegionReportSummaryViewProps> = (
           borderBottom: '1px solid #F0F2F1',
           marginBottom: 20
         }}>
-          <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#202A24', padding: 0 }}>
-            <ArrowLeft size={22} />
-          </button>
+          <BackButton onClick={onBack} style={{ color: '#202A24' }} />
           <h1 style={{ fontSize: '1.1rem', fontWeight: 850, color: '#202A24', margin: 0, textAlign: 'center' }}>
             지역 환경 리포트
           </h1>

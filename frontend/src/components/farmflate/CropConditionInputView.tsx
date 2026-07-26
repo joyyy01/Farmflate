@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, MapPin } from 'lucide-react';
+import { MapPin } from 'lucide-react';
 import { DuotoneIcon } from '../common/DuotoneIcon';
 import { DatePickerSheet } from '../common/DatePickerSheet';
+import { BackButton } from '../common/BackButton';
 
 export interface CropRegistrationInput {
   fieldName: string;
@@ -64,9 +65,7 @@ export const CropConditionInputView: React.FC<CropConditionInputViewProps> = ({
       <div>
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-          <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#191F28', padding: 0 }}>
-            <ArrowLeft size={22} />
-          </button>
+          <BackButton onClick={onBack} style={{ color: '#191F28' }} />
           <h2 style={{ fontSize: '1.2rem', fontWeight: 900, color: '#191F28' }}>
             농작물 등록
           </h2>

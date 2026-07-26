@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, ChevronDown, MapPin } from 'lucide-react';
+import { ChevronDown, MapPin } from 'lucide-react';
 import { ApiError, ApiService } from '../../services/api';
 import type { RegionAnalysisRequest, RegionDto } from '../../services/api';
 import { SigunguPickerSheet } from '../common/SigunguPickerSheet';
+import { BackButton } from '../common/BackButton';
 
 interface RegionExploreViewProps {
   onBack: () => void;
@@ -93,9 +94,7 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
           borderBottom: '1px solid #F0F2F1',
           marginBottom: 20
         }}>
-          <button onClick={onBack} disabled={isSubmitting} style={{ background: 'none', border: 'none', cursor: isSubmitting ? 'default' : 'pointer', color: '#202A24', padding: 0, opacity: isSubmitting ? 0.4 : 1 }}>
-            <ArrowLeft size={22} />
-          </button>
+          <BackButton onClick={onBack} disabled={isSubmitting} style={{ color: '#202A24' }} />
           <h1 style={{ fontSize: '1.1rem', fontWeight: 850, color: '#202A24', margin: 0, textAlign: 'center' }}>
             {mode === 'change' ? '지역 변경' : '지역 탐색'}
           </h1>
