@@ -3,10 +3,9 @@ import { motion } from 'framer-motion';
 
 interface LandingViewProps {
   errorMessage?: string | null;
-  onOpenPreview?: () => void;
 }
 
-export const LandingView: React.FC<LandingViewProps> = ({ errorMessage, onOpenPreview }) => {
+export const LandingView: React.FC<LandingViewProps> = ({ errorMessage }) => {
   const handleKakaoLogin = () => {
     const base = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080/api').replace(/\/api\/?$/, '');
     window.location.href = `${base}/oauth2/authorization/kakao`;
@@ -148,18 +147,6 @@ export const LandingView: React.FC<LandingViewProps> = ({ errorMessage, onOpenPr
           </svg>
           카카오로 시작하기
         </motion.button>
-        {onOpenPreview && (
-          <button
-            onClick={onOpenPreview}
-            style={{
-              marginTop: 10, background: 'none', border: 'none',
-              fontSize: '0.78rem', color: '#6E7671', cursor: 'pointer',
-              textDecoration: 'underline', fontWeight: 600
-            }}
-          >
-            (개발 모드) 로그인 없이 대시보드 둘러보기
-          </button>
-        )}
         {errorMessage && (
           <p role="alert" style={{ margin: '10px 0 0', color: '#B54708', fontSize: '0.78rem', fontWeight: 650, textAlign: 'center' }}>
             {errorMessage}

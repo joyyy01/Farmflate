@@ -166,7 +166,6 @@ export function App() {
   };
   const [activeTab, setActiveTab] = useState<TabState>('home');
   const [isAIChatOpen, setIsAIChatOpen] = useState(false);
-  const [isPreviewMode, setIsPreviewMode] = useState(false);
 
   /* Explore Screen Context (Fresh Region Analysis vs Changing an Existing Selection) */
   const [exploreMode, setExploreMode] = useState<'analyze' | 'change'>('analyze');
@@ -255,7 +254,6 @@ export function App() {
   const [communityLoadError, setCommunityLoadError] = useState<string | null>(null);
   const [communityComposeError, setCommunityComposeError] = useState<string | null>(null);
   const pollTimerRef = useRef<number | null>(null);
-  const previewModeRef = useRef(false);
   const isAddingFieldRef = useRef(false);
   const lastDisplayedStepRef = useRef(0);
   const activeAnalysisRunRef = useRef(0);
@@ -287,39 +285,11 @@ export function App() {
     setFieldLoadError(null);
     setCommunityLoadError(null);
     setCommunityComposeError(null);
-    previewModeRef.current = false;
-    setIsPreviewMode(false);
     setIsNewUser(true);
     setActiveTab('home');
 
     // 3. Navigate back to Landing screen
     setViewStep('landing', { replace: true });
-  };
-
-  const openPreviewDashboard = () => {
-    previewModeRef.current = true;
-    setIsPreviewMode(true);
-    setActiveTab('home');
-    setIsAIChatOpen(false);
-    setUserName('사용자님');
-    setUserEmail('미인증 계정');
-    setSelectedProvince('');
-    setSelectedDistrict('');
-    setSelectedCropName('감자');
-    setApiReport(null);
-    setAnalysisState({ kind: 'IDLE' });
-    setLastAnalysisRequest(null);
-    setPendingCropRegistration(null);
-    setNavigationFlow({ kind: 'NONE' });
-    setHomeData(null);
-    setMyFields([]);
-    setPosts([]);
-    setHomeLoadError(null);
-    setFieldLoadError(null);
-    setCommunityLoadError(null);
-    setCommunityComposeError(null);
-    setIsNewUser(false);
-    setViewStep('dashboard', { replace: true });
   };
 
   const returnToMyField = () => {
@@ -399,7 +369,6 @@ export function App() {
     }
 
     const clearInvalidSession = (error: ApiError) => {
-      if (previewModeRef.current) return;
       localStorage.removeItem('jwtToken');
       localStorage.removeItem('token');
       if (!isCurrent) return;
@@ -414,7 +383,7 @@ export function App() {
       }
       try {
         const resData = await ApiService.getHome();
-        if (!isCurrent || previewModeRef.current) return;
+        if (!isCurrent) return;
         setHomeData(resData);
         setHomeLoadError(null);
         if (resData.user?.displayName) {
@@ -456,17 +425,17 @@ export function App() {
         }
 
         void ApiService.getCommunityPosts()
-          .then(data => { if (isCurrent && !previewModeRef.current) { setPosts(normalizeCommunityPosts(data)); setCommunityLoadError(null); } })
-          .catch(error => { if (isCurrent && !previewModeRef.current) setCommunityLoadError(error instanceof Error ? error.message : '게시글을 불러오지 못했습니다.'); });
+          .then(data => { if (isCurrent) { setPosts(normalizeCommunityPosts(data)); setCommunityLoadError(null); } })
+          .catch(error => { if (isCurrent) setCommunityLoadError(error instanceof Error ? error.message : '게시글을 불러오지 못했습니다.'); });
         void ApiService.getFields()
-          .then(data => { if (isCurrent && !previewModeRef.current) { setMyFields(data); setFieldLoadError(null); } })
-          .catch(error => { if (isCurrent && !previewModeRef.current) setFieldLoadError(error instanceof Error ? error.message : '밭 정보를 불러오지 못했습니다.'); });
+          .then(data => { if (isCurrent) { setMyFields(data); setFieldLoadError(null); } })
+          .catch(error => { if (isCurrent) setFieldLoadError(error instanceof Error ? error.message : '밭 정보를 불러오지 못했습니다.'); });
       } catch (error) {
         if (error instanceof ApiError && error.status === 401) {
           clearInvalidSession(error);
           return;
         }
-        if (isCurrent && !previewModeRef.current) {
+        if (isCurrent) {
           if (error instanceof ApiError && error.status === 403) {
             setHomeLoadError('접근 권한이 없습니다.');
           } else {
@@ -492,10 +461,9 @@ export function App() {
      background without touching viewStep/routing. Used by the daily 6am refresh
      below; the initial session bootstrap above has its own richer version. */
   const refreshHomeReport = async () => {
-    if (!checkHasToken() || previewModeRef.current) return;
+    if (!checkHasToken()) return;
     try {
       const resData = await ApiService.getHome();
-      if (previewModeRef.current) return;
       setHomeData(resData);
       setHomeLoadError(null);
       if (resData.user?.displayName) {
@@ -508,7 +476,6 @@ export function App() {
       }
       if (resData.latestRegionAnalysis?.analysisId) {
         const report = await ApiService.getRegionReport(resData.latestRegionAnalysis.analysisId, 'COMPLETED');
-        if (previewModeRef.current) return;
         setApiReport(report);
         setAnalysisState(stateFromAnalysisStatus({ analysisId: resData.latestRegionAnalysis.analysisId, status: report.status || 'COMPLETED' }, report));
       }
@@ -977,7 +944,7 @@ export function App() {
   };
 
   return (
-    <div className="mobile-wrapper min-h-screen bg-white" data-preview-mode={isPreviewMode ? 'true' : undefined}>
+    <div className="mobile-wrapper min-h-screen bg-white">
       <Routes>
         {/* 0. Splash Screen */}
         <Route path={VIEW_STEP_PATH.splash} element={
@@ -990,7 +957,7 @@ export function App() {
 
         {/* 1. Landing Screen (Kakao OAuth Login) */}
         <Route path={VIEW_STEP_PATH.landing} element={
-          <LandingView errorMessage={homeLoadError} onOpenPreview={openPreviewDashboard} />
+          <LandingView errorMessage={homeLoadError} />
         } />
 
         {/* 2. Region Search Screen */}
