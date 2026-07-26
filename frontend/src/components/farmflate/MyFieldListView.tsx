@@ -4,7 +4,7 @@ import { AlertCircle, AlertTriangle, Bot, ChevronRight } from 'lucide-react';
 import type { TabState } from '../../types/farmflate';
 import type { FieldProfile } from '../../types/report';
 import { BottomNavigation } from '../common/BottomNavigation';
-import { displayStage } from '../../constants/displayLabels';
+import { displayFieldDailyStatus, displayStage } from '../../constants/displayLabels';
 
 const ALERT_SEVERITY_COLOR: Record<string, string> = { HIGH: '#DC2626', MEDIUM: '#D97706', LOW: '#8d9590' };
 const MAX_VISIBLE_ALERTS = 2;
@@ -84,10 +84,8 @@ export const MyFieldListView: React.FC<MyFieldListViewProps> = ({
             const alerts = field.dailyAlerts ?? [];
             const visibleAlerts = alerts.slice(0, MAX_VISIBLE_ALERTS);
             const hiddenAlertCount = alerts.length - visibleAlerts.length;
-            // A1: 행동 유도형 배지 — 첫 번째 알림 제목을 우선 사용
-            const actionBadge = alerts.length > 0
-              ? alerts[0].title
-              : field.dailyStatusLabel || '확인 필요';
+            // 카드 뱃지는 세부 경고가 아닌 일일 상태(안정/확인 필요/주의/위험)만 보여준다.
+            const statusBadge = displayFieldDailyStatus(dailyStatus);
 
             return (
               <div
@@ -117,8 +115,8 @@ export const MyFieldListView: React.FC<MyFieldListViewProps> = ({
                       </p>
                     </div>
                   </div>
-                  <span className={`farm-status-chip farm-status-chip--${statusTone}`} title={actionBadge}>
-                    {actionBadge}
+                  <span className={`farm-status-chip farm-status-chip--${statusTone}`} title={statusBadge}>
+                    {statusBadge}
                   </span>
                 </div>
 
