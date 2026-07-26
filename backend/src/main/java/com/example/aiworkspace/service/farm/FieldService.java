@@ -102,7 +102,7 @@ public class FieldService {
                 .generatedAt(generatedAt).payloadJson(write(registration)).build());
 
         // A field must never sit with only the bare registration summary until
-        // tomorrow's 06:30 scheduler run: generate today's real weather-narrated
+        // tomorrow's 06:00 scheduler run: generate today's real weather-narrated
         // report immediately too, so the card shows a genuine headline right away.
         FieldDailyReportDto latest = registrationWithId(registration, stored.getId());
         try {

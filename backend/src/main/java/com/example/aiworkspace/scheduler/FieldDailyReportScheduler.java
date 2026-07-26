@@ -25,7 +25,7 @@ public class FieldDailyReportScheduler {
     private final FieldDailyReportService reportService;
     private final Clock clock;
 
-    @Scheduled(cron = "0 30 6 * * *", zone = "Asia/Seoul")
+    @Scheduled(cron = "0 0 6 * * *", zone = "Asia/Seoul")
     public void generateDailyReports() {
         LocalDate today = LocalDate.now(clock);
         log.info("field_daily_report scheduled run starting for {}", today);
