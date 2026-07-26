@@ -25,6 +25,14 @@ export const RegionReportSummaryView: React.FC<RegionReportSummaryViewProps> = (
   const displayScore = hasScore ? (Number.isInteger(score) ? String(score) : score.toFixed(1)) : null;
   const isPartialWithoutScore = report?.status === 'PARTIAL' && !hasScore;
   const cleanSummary = formatReportText(report?.summary);
+  const confidence = report?.dataConfidence;
+  const legalDongCoverage = (report?.sources ?? [])
+    .flatMap(source => source.transformations ?? [])
+    .map(value => value.match(/^LEGAL_DONG_SAMPLE_COVERAGE(?:\[[^\]]+\])?:(\d+)\/(\d+)_OF_(\d+)$/))
+    .find((match): match is RegExpMatchArray => match !== null);
+  const legalDongSampleMessage = legalDongCoverage
+    ? `대상 법정동 ${legalDongCoverage[3]}곳 중 대표 ${legalDongCoverage[2]}곳을 표본으로 확인했고, 공공 토양 자료가 있는 ${legalDongCoverage[1]}곳을 분석에 반영했어요.`
+    : '토양 자료는 지역 단위 참고값으로 제공돼요. 실제 밭의 조건과 다를 수 있어요.';
 
   const climateGrade = formatReportLabel(report?.components?.climate?.grade ?? undefined);
   const soilGrade = formatReportLabel(report?.components?.soil?.grade ?? undefined);
@@ -169,11 +177,22 @@ export const RegionReportSummaryView: React.FC<RegionReportSummaryViewProps> = (
           }}>
             {cleanSummary}
           </p>
-          <div style={{ width: '100%', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
-            <div style={{ background: '#FFFFFF', borderRadius: 10, padding: '9px 10px' }}><span style={{ display: 'block', fontSize: '0.7rem', color: '#6E7671' }}>계절 준비도</span><strong style={{ fontSize: '0.86rem', color: '#202A24' }}>{report?.seasonReadiness === null || report?.seasonReadiness === undefined ? '자료 부족' : `${report.seasonReadiness}점`}</strong></div>
-            <div style={{ background: '#FFFFFF', borderRadius: 10, padding: '9px 10px' }}><span style={{ display: 'block', fontSize: '0.7rem', color: '#6E7671' }}>데이터 신뢰도</span><strong style={{ fontSize: '0.86rem', color: '#202A24' }}>{report?.dataConfidence.score === null || report?.dataConfidence.score === undefined ? '자료 부족' : `${report.dataConfidence.score}점`}</strong><span style={{ marginLeft: 4, fontSize: '0.68rem', color: '#6E7671' }}>{formatReportLabel(report?.dataConfidence.level, '')}</span></div>
+          <div style={{ width: '100%', marginTop: 12, padding: '12px 13px', borderRadius: 12, background: '#EFF8F1', color: '#405248' }}>
+            <strong style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, color: '#267446', marginBottom: 7 }}>점수는 이렇게 읽어요</strong>
+            <p style={{ margin: 0, fontSize: '0.75rem', lineHeight: 1.55 }}>토양과 평년 기후처럼 쉽게 바뀌지 않는 기본 조건이 이 지역에 얼마나 맞는지 보여줘요.</p>
+            <p style={{ margin: '5px 0 0', fontSize: '0.75rem', lineHeight: 1.55 }}>앞으로의 날씨와 재배 시기가 지금 시작하기에 얼마나 알맞은지 보여줘요.</p>
           </div>
-          {report?.dataConfidence.message && <p style={{ width: '100%', margin: '10px 0 0', color: '#A66B19', fontSize: '0.75rem', lineHeight: 1.45 }}>결정 제한: {report.dataConfidence.message}</p>}
+          <div style={{ width: '100%', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
+            <div style={{ background: '#FFFFFF', borderRadius: 10, padding: '9px 10px' }}><span style={{ display: 'block', fontSize: '0.7rem', color: '#6E7671' }}>이번 계절 준비도</span><strong style={{ fontSize: '0.86rem', color: '#202A24' }}>{report?.seasonReadiness === null || report?.seasonReadiness === undefined ? '자료 부족' : `${report.seasonReadiness}점`}</strong></div>
+            <div style={{ background: '#FFFFFF', borderRadius: 10, padding: '9px 10px' }}><span style={{ display: 'block', fontSize: '0.7rem', color: '#6E7671' }}>자료 신뢰도</span><strong style={{ fontSize: '0.86rem', color: '#202A24' }}>{confidence?.score === null || confidence?.score === undefined ? '자료 부족' : `${confidence.score}점`}</strong><span style={{ marginLeft: 4, fontSize: '0.68rem', color: '#6E7671' }}>{formatReportLabel(confidence?.level, '')}</span></div>
+          </div>
+          <p style={{ width: '100%', margin: '9px 0 0', color: '#59675F', fontSize: '0.73rem', lineHeight: 1.5 }}>자료 신뢰도는 공공 기상·토양 자료가 현재 지역을 얼마나 충분히 반영하는지 알려주는 참고값이에요.</p>
+          <div style={{ width: '100%', marginTop: 10, padding: '11px 12px', border: '1px solid #E3EDE5', borderRadius: 12, background: '#FBFDFC' }}>
+            <strong style={{ display: 'block', color: '#405248', fontSize: '0.76rem', fontWeight: 800, marginBottom: 5 }}>법정동 표본과 자료 범위</strong>
+            <p style={{ margin: 0, color: '#59675F', fontSize: '0.74rem', lineHeight: 1.5 }}>{legalDongSampleMessage}</p>
+            <p style={{ margin: '5px 0 0', color: '#6E7671', fontSize: '0.72rem', lineHeight: 1.5 }}>지역 참고값이므로 실제 밭의 토양검사 결과와 차이가 날 수 있어요.</p>
+          </div>
+          {confidence?.message && <p style={{ width: '100%', margin: '10px 0 0', color: '#A66B19', fontSize: '0.75rem', lineHeight: 1.45 }}>자료 해석 안내: {confidence.message}</p>}
         </motion.div>
 
         {/* 4 Category Status Chips */}

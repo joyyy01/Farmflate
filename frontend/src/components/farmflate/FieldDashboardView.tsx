@@ -391,7 +391,7 @@ export const FieldDashboardView: React.FC<FieldDashboardViewProps> = ({ field, o
             <h3 className="field-section-title">오늘의 주의·위험</h3>
             {dashboard.alerts.length === 0 ? (
               <div className="field-alert-list__empty">
-                오늘 예보에서 특별한 주의·위험이 확인되지 않았어요.
+                현재 특별한 위험은 없어요.
               </div>
             ) : (
               <div className="field-alert-list">

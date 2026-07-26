@@ -27,6 +27,7 @@ public class FieldGuidanceRuleEngine {
     private static final double DANGER_TEMPERATURE_C = 35.0;
     private static final double CAUTION_WIND_MS = 9.0;
     private static final double DANGER_WIND_MS = 13.0;
+    private static final double CAUTION_HUMIDITY_PERCENT = 85.0;
 
     public record FieldGuidanceInput(
             String cropCode,
@@ -67,6 +68,7 @@ public class FieldGuidanceRuleEngine {
         Double maxTemp = weather.getMaxTemperature();
         Double rainfall = weather.getRainfallMm();
         Double windSpeed = weather.getWindSpeed();
+        Double humidity = weather.getHumidity();
 
         if (maxTemp != null && maxTemp >= CAUTION_TEMPERATURE_C) {
             boolean dangerTemperature = maxTemp >= DANGER_TEMPERATURE_C;
@@ -97,9 +99,19 @@ public class FieldGuidanceRuleEngine {
         boolean recentWatering = hasRecentLog(input.recentLogs(), "WATERING");
         boolean isDry = rainfall != null && rainfall < 1.0;
         if (isDry && !recentWatering) {
+            alerts.add(alert("DRY_CONDITION", "MEDIUM", "건조 가능성",
+                    "오늘 비가 거의 없고 최근 물주기 기록도 없어 흙이 마를 수 있어요."));
             candidateTasks.add(task("CHECK_SOIL_MOISTURE", "흙의 마른 정도를 확인하세요",
                     "최근 비가 적어요. 흙을 직접 확인한 뒤 말랐을 때만 물을 주세요.", FieldTaskBadge.MORNING_RECOMMENDED));
-            reasoning.add(recentWatering ? "최근 2일 물주기 기록 있음" : "최근 2일 물주기 기록 없음");
+            reasoning.add("오늘 예상 강수량 " + format(rainfall) + "mm, 최근 2일 물주기 기록 없음");
+        }
+
+        if (humidity != null && humidity >= CAUTION_HUMIDITY_PERCENT) {
+            alerts.add(alert("HIGH_HUMIDITY", "MEDIUM", "높은 습도로 병해충 확인 필요",
+                    "오늘 평균 습도가 " + format(humidity) + "%로 높아 병해충이 생기기 쉬워요."));
+            candidateTasks.add(task("CHECK_PEST_AND_AIRFLOW", "잎 뒷면과 통풍 상태를 확인하세요",
+                    "습한 날에는 병해충이 늘 수 있어요. 잎 뒷면과 밭의 통풍 상태를 함께 살펴보세요.", FieldTaskBadge.CHECK_ANYTIME));
+            reasoning.add("오늘 예상 습도 " + format(humidity) + "%");
         }
 
         List<FieldTaskDto> tasks = dedupeAndLimit(candidateTasks);

@@ -61,4 +61,16 @@ describe('FieldDashboardView', () => {
     await screen.findByText('흙 상태 확인 후 물주기 결정');
     expect(screen.queryByRole('button', { name: '기록 남기기' })).not.toBeInTheDocument();
   });
+
+  it('shows a clear safe-state message when the forecast has no alerts', async () => {
+    vi.spyOn(ApiService, 'getFieldDashboard').mockResolvedValue({
+      ...dashboard,
+      report: { ...dashboard.report, status: 'STABLE', headline: '오늘은 특별한 주의 없이 안정적이에요' },
+      alerts: []
+    });
+
+    render(<FieldDashboardView field={field} onBack={vi.fn()} onOpenAIChat={vi.fn()} />);
+
+    expect(await screen.findByText('현재 특별한 위험은 없어요.')).toBeInTheDocument();
+  });
 });
