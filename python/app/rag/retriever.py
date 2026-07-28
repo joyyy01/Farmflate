@@ -1,41 +1,37 @@
 from __future__ import annotations
 
 from app.core.config import settings
-from app.rag.embeddings import OpenAIEmbeddingClient
 from app.rag.models import RetrievalResult
 from app.rag.repository import RagRepository
 
 
-class HybridRetriever:
-    def __init__(
-        self,
-        repository: RagRepository | None = None,
-        embeddings: OpenAIEmbeddingClient | None = None,
-    ) -> None:
+class PostgresRagRetriever:
+    """Approved-knowledge retrieval backed only by PostgreSQL full-text search."""
+
+    def __init__(self, repository: RagRepository | None = None) -> None:
         self._repository = repository or (RagRepository(settings.RAG_DATABASE_URL) if settings.RAG_DATABASE_URL else None)
-        self._embeddings = embeddings or OpenAIEmbeddingClient()
 
     @property
     def available(self) -> bool:
-        return bool(settings.RAG_ENABLED and settings.RAG_DATABASE_URL and settings.OPENAI_API_KEY)
+        return self._repository is not None
 
     async def retrieve(self, query: str, *, language: str | None = "ko") -> RetrievalResult:
         normalized = query.strip()
         if not self.available or not normalized:
             return RetrievalResult(chunks=[], query=normalized, insufficient_evidence=True)
-        embedding = (await self._embeddings.embed([normalized]))[0]
-        chunks = await self._repository.hybrid_search(
+        chunks = await self._repository.search(
             query_text=normalized,
-            embedding=embedding,
             top_k=settings.RAG_TOP_K,
-            vector_candidates=settings.RAG_VECTOR_CANDIDATES,
-            lexical_candidates=settings.RAG_LEXICAL_CANDIDATES,
-            rrf_k=settings.RAG_RRF_K,
             language=language,
         )
-        accepted = [chunk for chunk in chunks if chunk.score >= settings.RAG_MIN_SCORE]
-        return RetrievalResult(chunks=accepted, query=normalized, insufficient_evidence=not accepted)
+        return RetrievalResult(chunks=chunks, query=normalized, insufficient_evidence=not chunks)
+
+    async def close(self) -> None:
+        if self._repository is not None:
+            await self._repository.close()
 
 
-PostgresRagRetriever = HybridRetriever
-rag_retriever = HybridRetriever()
+# Retain the prior import name for callers while the implementation is now
+# deliberately PostgreSQL FTS-only.
+HybridRetriever = PostgresRagRetriever
+rag_retriever = PostgresRagRetriever()

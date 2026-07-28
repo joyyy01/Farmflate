@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from app.agent.contracts import ToolCitation, ToolResult
-from app.rag.retriever import HybridRetriever, rag_retriever
+from app.core.config import settings
+from app.rag.retriever import PostgresRagRetriever, rag_retriever
 from app.schemas.chat import FactPackage
 
 
@@ -38,22 +40,32 @@ TOOL_DEFINITIONS = [
 class AgentToolExecutor:
     _SECTION_PREFIXES = {
         "summary": ("region.",),
-        "climate": ("climate.", "weather."),
-        "soil": ("soil.", "field.soil."),
-        "hazard": ("risk.", "field.alert."),
+        "climate": ("climate.", "weather.", "component.climate."),
+        "soil": ("soil.", "field.soil.", "component.soil."),
+        "hazard": ("risk.", "field.alert.", "component.hazard."),
         "crop": ("crop.",),
         "field": ("field.",),
     }
 
-    def __init__(self, retriever: HybridRetriever = rag_retriever) -> None:
+    def __init__(self, retriever: PostgresRagRetriever = rag_retriever) -> None:
         self._retriever = retriever
 
     async def execute(self, *, name: str, arguments: dict[str, Any], fact_package: FactPackage) -> ToolResult:
         if name == "read_authorized_context":
             return self._read_authorized_context(arguments, fact_package)
         if name == "search_approved_knowledge":
-            return await self._search_approved_knowledge(arguments)
+            return await self._execute_knowledge_search(arguments)
         return ToolResult(status="tool_not_allowed")
+
+    async def _execute_knowledge_search(self, arguments: dict[str, Any]) -> ToolResult:
+        try:
+            return await asyncio.wait_for(
+                self._search_approved_knowledge(arguments), timeout=settings.AGENT_TOOL_TIMEOUT_SECONDS
+            )
+        except TimeoutError:
+            return ToolResult(status="tool_timeout")
+        except Exception:
+            return ToolResult(status="tool_unavailable")
 
     def _read_authorized_context(self, arguments: dict[str, Any], fact_package: FactPackage) -> ToolResult:
         section = arguments.get("section")
@@ -64,6 +76,7 @@ class AgentToolExecutor:
             key: value for key, value in fact_package.facts.items()
             if not prefixes or key.startswith(prefixes)
         }
+        selected_fact_keys = tuple(facts)
         citations = [
             ToolCitation(
                 citation_id=f"fact:{source.get('sourceId')}",
@@ -71,7 +84,19 @@ class AgentToolExecutor:
                 source_url=source.get("sourceUrl"),
             )
             for source in fact_package.sources
-            if isinstance(source, dict) and source.get("sourceId")
+            if (
+                isinstance(source, dict)
+                and source.get("sourceId")
+                # Existing source records without provenance remain readable by
+                # older routes, but cannot support a completed grounded claim.
+                and isinstance(source.get("factKeyPrefixes"), list)
+                and any(
+                    isinstance(prefix, str)
+                    and prefix
+                    and any(fact_key.startswith(prefix) for fact_key in selected_fact_keys)
+                    for prefix in source["factKeyPrefixes"]
+                )
+            )
         ]
         return ToolResult(status="ok", payload={"section": section, "facts": facts}, citations=citations)
 

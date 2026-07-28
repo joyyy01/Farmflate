@@ -126,10 +126,8 @@ const normalizeFieldAlert = (value: unknown) => {
 };
 
 const getAuthHeaders = (): HeadersInit => {
-  const token = typeof localStorage === 'undefined' ? null : (localStorage.getItem('jwtToken') || localStorage.getItem('token'));
   return {
-    Accept: 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {})
+    Accept: 'application/json'
   };
 };
 
@@ -161,7 +159,7 @@ const toApiError = (response: Response, body: unknown): ApiError => {
 const requestJson = async <T>(path: string, init?: RequestInit): Promise<T> => {
   let response: Response;
   try {
-    response = await fetch(`${SPRING_BACKEND_URL}${path}`, init);
+    response = await fetch(`${SPRING_BACKEND_URL}${path}`, { ...init, credentials: 'include' });
   } catch (error) {
     // The browser's native fetch failure message (e.g. "Failed to fetch",
     // "NetworkError when attempting to fetch resource") is always in English
@@ -380,6 +378,14 @@ const sidosCache: { data: RegionDto[] | null } = { data: null };
 const sigungusCacheMap = new Map<string, RegionDto[]>();
 
 export const ApiService = {
+  async getKakaoLoginAvailability(): Promise<{ configured: boolean }> {
+    return requestJson<{ configured: boolean }>('/auth/kakao/availability', { headers: getAuthHeaders() });
+  },
+
+  async logout(): Promise<void> {
+    await requestJson<void>('/auth/logout', { method: 'POST', headers: getAuthHeaders() });
+  },
+
   async getHome(): Promise<HomeData> {
     return requestJson<HomeData>('/home', { headers: getAuthHeaders() });
   },

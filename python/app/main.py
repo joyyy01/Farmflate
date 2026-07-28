@@ -1,12 +1,28 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
+from app.core.outbound_http import outbound_http_client
 from app.api.v1.router import api_router
+from app.rag.retriever import rag_retriever
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    settings.validate_runtime()
+    await outbound_http_client.start()
+    try:
+        yield
+    finally:
+        await rag_retriever.close()
+        await outbound_http_client.close()
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    openapi_url=f"{settings.API_V1_STR}/openapi.json"
+    openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    lifespan=lifespan,
 )
 # CORS configuration
 app.add_middleware(
@@ -24,16 +40,11 @@ def health_check():
         "status": "ok",
         "service": "Python AI Server",
         "version": settings.VERSION,
-        "rag": "enabled" if settings.RAG_ENABLED else "disabled",
+        "rag": "enabled" if settings.RAG_DATABASE_URL else "disabled",
     }
 
 # Include API v1 Router
 app.include_router(api_router, prefix=settings.API_V1_STR)
-
-
-@app.on_event("startup")
-async def validate_runtime_configuration() -> None:
-    settings.validate_runtime()
 
 if __name__ == "__main__":
     import uvicorn

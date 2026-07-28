@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+from unittest.mock import patch
 
-from app.agent.contracts import AgentDraft, ToolCall
+import pytest
+
+from app.agent.contracts import AgentDraft, ToolCall, ToolResult
 from app.agent.runner import GroundedAgent
+from app.core.config import settings
 from app.schemas.chat import FactPackage
 
 
@@ -19,6 +23,22 @@ class ContextThenAnswerModel:
             answer="현재 밭 상태는 주의입니다.",
             claims=[{"text": "현재 밭 상태는 주의입니다.", "citation_ids": ["fact:field-report-1"]}],
             citation_ids=["fact:field-report-1"],
+            status="completed",
+        )
+
+
+class ComponentClimateThenAnswerModel:
+    def __init__(self) -> None:
+        self.turn = 0
+
+    async def next_turn(self, **_: object) -> ToolCall | AgentDraft:
+        self.turn += 1
+        if self.turn == 1:
+            return ToolCall(call_id="call-1", name="read_authorized_context", arguments={"section": "climate"})
+        return AgentDraft(
+            answer="저장된 지역 분석에서 기후 점수는 87점입니다.",
+            claims=[{"text": "기후 점수는 87점입니다.", "citation_ids": ["fact:region-report"]}],
+            citation_ids=["fact:region-report"],
             status="completed",
         )
 
@@ -58,14 +78,28 @@ class HistoryCapturingModel:
         return AgentDraft(answer="추가 정보가 필요합니다.", claims=[], citation_ids=[], status="needs_context")
 
 
+class RepeatingToolCallModel:
+    async def next_turn(self, **_: object) -> ToolCall:
+        return ToolCall(call_id="call", name="read_authorized_context", arguments={"section": "all"})
+
+
+class RecordingToolExecutor:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def execute(self, **_: object) -> ToolResult:
+        self.calls += 1
+        return ToolResult(status="ok")
+
+
 def test_agent_returns_only_citations_supplied_by_its_executed_tools() -> None:
     package = FactPackage(
         requestId="request-1",
         question="내 밭 상태를 알려줘",
         facts={"field.status": "CAUTION"},
         sources=[
-            {"sourceId": "field-report-1", "provider": "Farmflate"},
-            {"sourceId": "field-report-2", "provider": "Farmflate"},
+            {"sourceId": "field-report-1", "provider": "Farmflate", "factKeyPrefixes": ["field."]},
+            {"sourceId": "field-report-2", "provider": "Farmflate", "factKeyPrefixes": ["field."]},
         ],
     )
 
@@ -74,6 +108,22 @@ def test_agent_returns_only_citations_supplied_by_its_executed_tools() -> None:
     assert result.status == "completed"
     assert result.citation_ids == ["fact:field-report-1"]
     assert result.answer == "현재 밭 상태는 주의입니다."
+
+
+def test_agent_completes_with_component_climate_facts_and_their_provenance_source() -> None:
+    package = FactPackage(
+        requestId="request-component-climate",
+        question="지역 기후 점수 근거를 알려줘",
+        facts={"component.climate.score": 87},
+        sources=[
+            {"sourceId": "region-report", "provider": "Farmflate", "factKeyPrefixes": ["component.climate."]},
+        ],
+    )
+
+    result = asyncio.run(GroundedAgent(model=ComponentClimateThenAnswerModel()).run(package))
+
+    assert result.status == "completed"
+    assert result.citation_ids == ["fact:region-report"]
 
 
 def test_agent_refuses_a_completed_answer_with_a_citation_no_tool_returned() -> None:
@@ -93,8 +143,8 @@ def test_agent_rejects_when_claim_citations_are_not_exposed_in_the_response_cont
         question="내 밭 상태를 알려줘",
         facts={"field.status": "CAUTION"},
         sources=[
-            {"sourceId": "field-report-1", "provider": "Farmflate"},
-            {"sourceId": "field-report-2", "provider": "Farmflate"},
+            {"sourceId": "field-report-1", "provider": "Farmflate", "factKeyPrefixes": ["field."]},
+            {"sourceId": "field-report-2", "provider": "Farmflate", "factKeyPrefixes": ["field."]},
         ],
     )
 
@@ -115,3 +165,26 @@ def test_agent_passes_sanitized_conversation_context_to_the_model() -> None:
 
     assert result.status == "needs_context"
     assert model.history == package.history
+
+
+def test_agent_caps_tool_steps_at_two_before_stopping() -> None:
+    tools = RecordingToolExecutor()
+    result = asyncio.run(
+        GroundedAgent(model=RepeatingToolCallModel(), tools=tools).run(
+            FactPackage(requestId="request-5", question="근거를 찾아줘")
+        )
+    )
+
+    assert result.status == "needs_context"
+    assert tools.calls == 2
+    assert result.trace[-1] == "tool_limit"
+
+
+def test_runtime_rejects_any_tool_step_limit_other_than_two() -> None:
+    with (
+        patch.object(settings, "INTERNAL_API_KEY", "internal-test-key"),
+        patch.object(settings, "RAG_DATABASE_URL", "postgresql://rag:secret@db/rag"),
+        patch.object(settings, "AGENT_MAX_TOOL_CALLS", 3),
+    ):
+        with pytest.raises(RuntimeError, match="AGENT_MAX_TOOL_CALLS"):
+            settings.validate_runtime()

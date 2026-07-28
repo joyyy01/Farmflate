@@ -1,21 +1,12 @@
 import { useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 export default function OAuth2Callback() {
   const navigate = useNavigate();
-  const location = useLocation();
 
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const token = params.get('token');
-
-    if (token) {
-      localStorage.setItem('jwtToken', token);
-      navigate('/', { replace: true });
-    } else {
-      navigate('/', { replace: true });
-    }
-  }, [location, navigate]);
+    navigate('/', { replace: true });
+  }, [navigate]);
 
   return (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', flexDirection: 'column' }}>

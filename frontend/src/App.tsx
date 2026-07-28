@@ -152,7 +152,6 @@ const normalizeCommunityPosts = (data: unknown): CommunityPost[] => {
 };
 
 export function App() {
-  const checkHasToken = () => !!(localStorage.getItem('jwtToken') || localStorage.getItem('token'));
   const navigate = useNavigate();
   const location = useLocation();
   // App is rendered as the element of the outer "/*" route (see main.tsx), so
@@ -197,18 +196,15 @@ export function App() {
 
   /* Clean Unauthenticated Default States (No Hardcoded Private Names) */
   const [isNewUser, setIsNewUser] = useState<boolean>(() => {
-    if (!checkHasToken()) return true;
     const cached = localStorage.getItem('farmflate_is_new_user');
     return cached !== null ? JSON.parse(cached) : true;
   });
 
   const [userName, setUserName] = useState<string>(() => {
-    if (!checkHasToken()) return '사용자님';
     return localStorage.getItem('farmflate_user_name') || '사용자님';
   });
 
   const [userEmail, setUserEmail] = useState<string>(() => {
-    if (!checkHasToken()) return '미인증 계정';
     return localStorage.getItem('farmflate_user_email') || '미인증 계정';
   });
 
@@ -261,7 +257,12 @@ export function App() {
   const cropStepRef = useRef(0);
 
   /* Full 100% Reliable Logout Reset Handler */
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await ApiService.logout();
+    } catch {
+      // The local session still needs to close if the access cookie has already expired.
+    }
     // 1. Wipe all local storage & tokens
     localStorage.clear();
 
@@ -358,29 +359,22 @@ export function App() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const token = params.get('token');
     const targetView = params.get('view');
     const bootPathname = window.location.pathname;
     let isCurrent = true;
 
-    if (token) {
-      localStorage.setItem('jwtToken', token);
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
+    localStorage.removeItem('jwtToken');
+    localStorage.removeItem('token');
 
-    const clearInvalidSession = (error: ApiError) => {
+    const clearInvalidSession = () => {
       localStorage.removeItem('jwtToken');
       localStorage.removeItem('token');
       if (!isCurrent) return;
-      setHomeLoadError(error.message);
+      setHomeLoadError(null);
       setViewStep('landing', { replace: true });
     };
 
     const initializeAuthenticatedSession = async () => {
-      if (!checkHasToken()) {
-        if (isCurrent) setViewStep('landing', { replace: true });
-        return;
-      }
       try {
         const resData = await ApiService.getHome();
         if (!isCurrent) return;
@@ -432,7 +426,7 @@ export function App() {
           .catch(error => { if (isCurrent) setFieldLoadError(error instanceof Error ? error.message : '밭 정보를 불러오지 못했습니다.'); });
       } catch (error) {
         if (error instanceof ApiError && error.status === 401) {
-          clearInvalidSession(error);
+          clearInvalidSession();
           return;
         }
         if (isCurrent) {
@@ -461,7 +455,7 @@ export function App() {
      background without touching viewStep/routing. Used by the daily 6am refresh
      below; the initial session bootstrap above has its own richer version. */
   const refreshHomeReport = async () => {
-    if (!checkHasToken()) return;
+    if (!homeData?.user?.email) return;
     try {
       const resData = await ApiService.getHome();
       setHomeData(resData);
@@ -944,11 +938,7 @@ export function App() {
       <Routes>
         {/* 0. Splash Screen */}
         <Route path={VIEW_STEP_PATH.splash} element={
-          <SplashView onComplete={() => {
-            if (!checkHasToken()) {
-              safeSetViewStep('landing');
-            }
-          }} />
+          <SplashView onComplete={() => undefined} />
         } />
 
         {/* 1. Landing Screen (Kakao OAuth Login) */}

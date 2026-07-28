@@ -1,6 +1,6 @@
 import unittest
 
-from app.services.screen_tools import compare_visible_crops, resolve_visible_target
+from app.services.screen_context import compare_visible_crops, resolve_visible_target
 
 
 class ScreenToolsTest(unittest.TestCase):

@@ -1,3 +1,5 @@
+from urllib.parse import urlparse
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -6,6 +8,10 @@ class Settings(BaseSettings):
         case_sensitive=True,
         env_file=".env",
         env_file_encoding="utf-8",
+        # The repository shares one .env file between Spring and Python.
+        # Python must validate its own settings without rejecting unrelated
+        # backend-only variables from that file.
+        extra="ignore",
     )
 
     PROJECT_NAME: str = "AI Agent & Chatbot Server"
@@ -23,7 +29,6 @@ class Settings(BaseSettings):
 
     # Internal API authentication (Spring Boot → Python)
     INTERNAL_API_KEY: str = ""
-    APP_ENV: str = "local"
 
     # AI Model Keys
     LLM_PROVIDER: str = "openai"
@@ -32,36 +37,31 @@ class Settings(BaseSettings):
     OPENAI_MODEL: str = "gpt-4o-mini"
     LLM_TIMEOUT_SECONDS: float = 12.0
 
-    # Production RAG controls. The database URL is intentionally unset by
-    # default: the deterministic agent remains available until an operator has
-    # provisioned the dedicated rag schema and least-privilege role.
-    RAG_ENABLED: bool = False
+    # PostgreSQL is the RAG system of record and retrieval engine.
     RAG_DATABASE_URL: str = ""
-    # PostgreSQL remains the only knowledge store. The embedding API supplies
-    # vectors only; lexical search, pgvector search, and RRF all run in PG.
     RAG_TOP_K: int = 8
     RAG_MAX_CHUNK_CHARS: int = 2400
-    RAG_EMBEDDING_MODEL: str = "text-embedding-3-small"
-    RAG_EMBEDDING_VERSION: str = "text-embedding-3-small-1536-v1"
-    RAG_EMBEDDING_DIMENSIONS: int = 1536
-    RAG_VECTOR_CANDIDATES: int = 20
-    RAG_LEXICAL_CANDIDATES: int = 20
-    RAG_RRF_K: int = 60
-    RAG_MIN_SCORE: float = 0.02
-    AGENT_MAX_TOOL_ROUNDS: int = 2
-    AGENT_MAX_TOOL_CALLS: int = 3
-
-    @property
-    def is_production(self) -> bool:
-        return self.APP_ENV.lower() in {"prod", "production"}
+    # A request may execute this many read-only tool steps, then receive one
+    # final model turn to produce a cited answer.
+    AGENT_MAX_TOOL_CALLS: int = 2
+    AGENT_TOOL_TIMEOUT_SECONDS: float = 10.0
 
     def validate_runtime(self) -> None:
-        if self.is_production and not self.INTERNAL_API_KEY:
-            raise RuntimeError("INTERNAL_API_KEY must be configured in production.")
-        if self.RAG_ENABLED and not self.RAG_DATABASE_URL:
-            raise RuntimeError("RAG_DATABASE_URL must be configured when RAG_ENABLED=true.")
-        if self.RAG_EMBEDDING_DIMENSIONS != 1536:
-            raise RuntimeError("RAG_EMBEDDING_DIMENSIONS must match rag.chunk.embedding vector(1536).")
+        if not self.INTERNAL_API_KEY or self.INTERNAL_API_KEY != self.INTERNAL_API_KEY.strip():
+            raise RuntimeError("INTERNAL_API_KEY must be configured as a non-blank value.")
+        rag_url = urlparse(self.RAG_DATABASE_URL)
+        if rag_url.scheme not in {"postgres", "postgresql"} or not rag_url.netloc:
+            raise RuntimeError("RAG_DATABASE_URL must be a PostgreSQL connection URL.")
+        if not 1 <= self.RAG_TOP_K <= 10:
+            raise RuntimeError("RAG_TOP_K must be between 1 and 10.")
+        if not 200 <= self.RAG_MAX_CHUNK_CHARS <= 10_000:
+            raise RuntimeError("RAG_MAX_CHUNK_CHARS must be between 200 and 10000.")
+        if self.LLM_TIMEOUT_SECONDS <= 0:
+            raise RuntimeError("LLM_TIMEOUT_SECONDS must be positive.")
+        if self.AGENT_MAX_TOOL_CALLS != 2:
+            raise RuntimeError("AGENT_MAX_TOOL_CALLS must be exactly 2 for the bounded agent workflow.")
+        if self.AGENT_TOOL_TIMEOUT_SECONDS <= 0:
+            raise RuntimeError("AGENT_TOOL_TIMEOUT_SECONDS must be positive.")
 
 
 settings = Settings()

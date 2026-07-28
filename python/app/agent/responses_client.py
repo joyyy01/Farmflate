@@ -3,10 +3,9 @@ from __future__ import annotations
 import json
 from typing import Any
 
-import httpx
-
 from app.agent.contracts import AgentDraft, ToolCall
 from app.core.config import settings
+from app.core.outbound_http import outbound_http_client
 
 
 FINAL_ANSWER_SCHEMA = {
@@ -56,6 +55,7 @@ class ResponsesToolCallingClient:
             "instructions": instructions,
             "tools": tool_definitions,
             "parallel_tool_calls": False,
+            "store": False,
             "text": {"format": {"type": "json_schema", "name": "grounded_answer", "strict": True, "schema": FINAL_ANSWER_SCHEMA}},
         }
         if self._previous_response_id is None:
@@ -67,23 +67,37 @@ class ResponsesToolCallingClient:
             payload["previous_response_id"] = self._previous_response_id
             payload["input"] = tool_outputs
 
-        async with httpx.AsyncClient(timeout=settings.LLM_TIMEOUT_SECONDS) as client:
-            response = await client.post(
-                f"{settings.OPENAI_BASE_URL.rstrip('/')}/responses",
-                headers={"Authorization": f"Bearer {settings.OPENAI_API_KEY}"},
-                json=payload,
-            )
-            response.raise_for_status()
+        response = await outbound_http_client.post(
+            f"{settings.OPENAI_BASE_URL.rstrip('/')}/responses",
+            headers={"Authorization": f"Bearer {settings.OPENAI_API_KEY}"},
+            json=payload,
+        )
+        response.raise_for_status()
         body = response.json()
-        self._previous_response_id = body.get("id")
+        if not isinstance(body, dict):
+            raise ValueError("Responses API returned an invalid response body.")
+        response_id = body.get("id")
+        if not isinstance(response_id, str) or not response_id.strip():
+            raise ValueError("Responses API response id is required for a bounded tool conversation.")
+        self._previous_response_id = response_id
         calls = [item for item in body.get("output", []) if isinstance(item, dict) and item.get("type") == "function_call"]
+        if len(calls) > 1:
+            raise ValueError("Responses API must return exactly one function call when parallel tool calls are disabled.")
         if calls:
             call = calls[0]
             try:
                 arguments = json.loads(call.get("arguments", "{}"))
-            except json.JSONDecodeError:
-                arguments = {"_invalid_json": True}
-            return ToolCall(call_id=str(call.get("call_id", "")), name=str(call.get("name", "")), arguments=arguments)
+            except (TypeError, json.JSONDecodeError) as error:
+                raise ValueError("Function call arguments must be valid JSON.") from error
+            call_id = call.get("call_id")
+            name = call.get("name")
+            if not isinstance(call_id, str) or not call_id.strip():
+                raise ValueError("Function call id is required.")
+            if not isinstance(name, str) or not name.strip():
+                raise ValueError("Function call name is required.")
+            if not isinstance(arguments, dict):
+                raise ValueError("Function call arguments must be a JSON object.")
+            return ToolCall(call_id=call_id, name=name, arguments=arguments)
         text = self._output_text(body)
         if not text:
             raise ValueError("Responses API returned neither a function call nor structured answer text.")

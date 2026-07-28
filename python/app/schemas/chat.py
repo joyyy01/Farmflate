@@ -88,6 +88,28 @@ class FactPackage(BaseModel):
                 sanitized.append({"role": role, "content": content[:1200]})
         return sanitized
 
+    @field_validator("sources")
+    @classmethod
+    def validate_source_provenance(cls, value: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Keep legacy sources readable while validating optional fact provenance.
+
+        A source without ``factKeyPrefixes`` is deliberately not rejected: old
+        Farmflate routes can still send it, but the Agent tool will never use
+        it as support for a completed answer.
+        """
+        normalized: list[dict[str, Any]] = []
+        for source in value:
+            if not isinstance(source, dict):
+                continue
+            copy = dict(source)
+            prefixes = copy.get("factKeyPrefixes")
+            if prefixes is not None:
+                if not isinstance(prefixes, list) or any(not isinstance(prefix, str) for prefix in prefixes):
+                    raise ValueError("source.factKeyPrefixes must be a list of strings.")
+                copy["factKeyPrefixes"] = [prefix.strip() for prefix in prefixes if prefix.strip()]
+            normalized.append(copy)
+        return normalized
+
 
 class AgentRunRequest(BaseModel):
     fact_package: FactPackage

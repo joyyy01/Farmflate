@@ -1,14 +1,31 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
+import { ApiService } from '../../services/api';
 
 interface LandingViewProps {
   errorMessage?: string | null;
 }
 
 export const LandingView: React.FC<LandingViewProps> = ({ errorMessage }) => {
-  const handleKakaoLogin = () => {
-    const base = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080/api').replace(/\/api\/?$/, '');
-    window.location.href = `${base}/oauth2/authorization/kakao`;
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [isCheckingLogin, setIsCheckingLogin] = useState(false);
+
+  const handleKakaoLogin = async () => {
+    setLoginError(null);
+    setIsCheckingLogin(true);
+    try {
+      const { configured } = await ApiService.getKakaoLoginAvailability();
+      if (!configured) {
+        setLoginError('카카오 로그인 설정을 확인해 주세요.');
+        return;
+      }
+      const base = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080/api').replace(/\/api\/?$/, '');
+      window.location.href = `${base}/oauth2/authorization/kakao`;
+    } catch {
+      setLoginError('카카오 로그인을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+    } finally {
+      setIsCheckingLogin(false);
+    }
   };
 
   return (
@@ -126,6 +143,7 @@ export const LandingView: React.FC<LandingViewProps> = ({ errorMessage }) => {
         <motion.button
           whileTap={{ scale: 0.97 }}
           onClick={handleKakaoLogin}
+          disabled={isCheckingLogin}
           style={{
             width: '100%',
             height: 54,
@@ -139,7 +157,8 @@ export const LandingView: React.FC<LandingViewProps> = ({ errorMessage }) => {
             gap: 10,
             fontSize: '1.02rem',
             fontWeight: 850,
-            cursor: 'pointer'
+            cursor: isCheckingLogin ? 'wait' : 'pointer',
+            opacity: isCheckingLogin ? 0.7 : 1
           }}
         >
           <svg style={{ width: 22, height: 22, fill: '#191F28' }} viewBox="0 0 24 24">
@@ -147,9 +166,9 @@ export const LandingView: React.FC<LandingViewProps> = ({ errorMessage }) => {
           </svg>
           카카오로 시작하기
         </motion.button>
-        {errorMessage && (
+        {(loginError ?? errorMessage) && (
           <p role="alert" style={{ margin: '10px 0 0', color: '#B54708', fontSize: '0.78rem', fontWeight: 650, textAlign: 'center' }}>
-            {errorMessage}
+            {loginError ?? errorMessage}
           </p>
         )}
       </div>

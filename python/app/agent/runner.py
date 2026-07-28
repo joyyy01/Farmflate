@@ -41,7 +41,9 @@ returned by tools. Do not reveal private reasoning; return the required JSON."""
         trace: list[str] = []
         calls = 0
         try:
-            for round_number in range(settings.AGENT_MAX_TOOL_ROUNDS + 1):
+            # One extra model turn is reserved for the final structured answer
+            # after the last permitted tool output.
+            for _ in range(settings.AGENT_MAX_TOOL_CALLS + 1):
                 turn = await model.next_turn(
                     question=fact_package.question,
                     history=fact_package.history,
@@ -51,11 +53,17 @@ returned by tools. Do not reveal private reasoning; return the required JSON."""
                 )
                 if isinstance(turn, AgentDraft):
                     return self._validated_draft(turn, citations, trace)
-                if calls >= settings.AGENT_MAX_TOOL_CALLS or round_number >= settings.AGENT_MAX_TOOL_ROUNDS:
+                if calls >= settings.AGENT_MAX_TOOL_CALLS:
                     return AgentResult(
                         answer="필요한 근거를 안전하게 확인하지 못했습니다. 질문을 조금 더 구체적으로 알려 주세요.",
                         status="needs_context",
                         trace=[*trace, "tool_limit"],
+                    )
+                if not turn.call_id.strip() or not turn.name.strip() or not isinstance(turn.arguments, dict):
+                    return AgentResult(
+                        answer="도구 요청 형식을 안전하게 확인하지 못했습니다. 질문을 다시 알려 주세요.",
+                        status="needs_context",
+                        trace=[*trace, "invalid_tool_call"],
                     )
                 result = await self._tools.execute(name=turn.name, arguments=turn.arguments, fact_package=fact_package)
                 calls += 1
