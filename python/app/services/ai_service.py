@@ -10,6 +10,7 @@ from langgraph.graph import END, START, StateGraph
 from typing_extensions import TypedDict
 
 from app.core.config import settings
+from app.rag.retriever import rag_retriever
 from app.schemas.chat import (
     AgentRunRequest,
     AgentRunResponse,
@@ -114,7 +115,7 @@ class AIService:
         response = await self.run_agent(agent_request)
         sources = [
             GroundingSource(
-                title=s.get("provider", "") + " " + s.get("service", ""),
+            title=s.get("title") or (s.get("provider", "") + " " + s.get("service", "")).strip(),
                 detail=s.get("dataDate"),
                 observed_at=s.get("dataDate"),
                 source_url=s.get("sourceUrl"),
@@ -403,10 +404,10 @@ class AIService:
             return "SEASONAL_ADVICE"
         if any(w in lowered for w in self._COMPARE_WORDS):
             return "CROP_COMPARISON"
-        if any(w in lowered for w in self._SOIL_WORDS):
-            return "SOIL_ADVICE"
         if any(w in lowered for w in self._GUIDANCE_WORDS):
             return "OFFICIAL_GUIDANCE"
+        if any(w in lowered for w in self._SOIL_WORDS):
+            return "SOIL_ADVICE"
         if any(w in lowered for w in self._RISK_WORDS):
             return "RISK_EXPLANATION"
         if any(w in lowered for w in self._CROP_WORDS):
@@ -435,7 +436,7 @@ class AIService:
             "SEASONAL_ADVICE": ["get_region_analysis", "get_seasonal_advice", "get_report_sources"],
             "WATERING_GUIDANCE": ["get_region_analysis", "get_crop_profile", "get_report_sources"],
             "SOIL_ADVICE": ["get_region_analysis", "get_crop_profile", "get_report_sources"],
-            "OFFICIAL_GUIDANCE": ["search_official_guidance", "get_report_sources"],
+            "OFFICIAL_GUIDANCE": ["search_knowledge", "get_report_sources"],
             "GENERAL_INFORMATION": ["get_region_analysis", "get_report_sources"],
             "EXPLAIN_VISIBLE_DATA": ["explain_visible_metric"],
             "COMPARE_VISIBLE_DATA": ["compare_visible_crops"],
@@ -453,7 +454,7 @@ class AIService:
             selected.append("get_field_report")
         return {"selected_tools": selected, "trace": [*state["trace"], f"도구 선택: {selected}"]}
 
-    def _execute_tools(self, state: AgentState) -> dict[str, Any]:
+    async def _execute_tools(self, state: AgentState) -> dict[str, Any]:
         fp = state["fact_package"]
         target = state.get("target_resolution")
         results: dict[str, Any] = {}
@@ -467,8 +468,11 @@ class AIService:
             elif tool_name == "explain_agricultural_term":
                 term = self._extract_term(fp.question)
                 results["term_explanation"] = explain_agricultural_term(term)
-            elif tool_name == "search_official_guidance":
-                results["official_guidance"] = search_official_guidance(fp.facts, fp.sources)
+            elif tool_name == "search_knowledge":
+                retrieval = await rag_retriever.retrieve(fp.question)
+                results["knowledge_search"] = retrieval.tool_payload()
+                if retrieval.insufficient_evidence:
+                    results["official_guidance"] = {"found": False, "reason": "insufficient approved knowledge evidence"}
             elif tool_name == "get_crop_profile":
                 crop = self._extract_crop_name(fp.question, fp.facts, fp.history)
                 results["crop_profile"] = get_crop_profile(crop) if crop else None
@@ -579,6 +583,33 @@ class AIService:
                     basisType="TERM_DEFINITION",
                 )
                 return {"structured_answer": answer, "trace": [*state["trace"], "용어 사전 응답 생성"]}
+
+        if intent == "OFFICIAL_GUIDANCE":
+            knowledge = tool_results.get("knowledge_search", {})
+            evidence = knowledge.get("evidence", []) if isinstance(knowledge, dict) else []
+            citations = knowledge.get("citations", []) if isinstance(knowledge, dict) else []
+            if not evidence:
+                answer = StructuredAnswer(
+                    answer="승인된 지식 문서에서 현재 질문을 뒷받침할 근거를 찾지 못했습니다. 지역 또는 작물 정보를 더 구체적으로 알려 주세요.",
+                    basisType="GENERAL_INFORMATION",
+                )
+                return {"structured_answer": answer, "deterministic_answer": answer, "trace": [*state["trace"], "지식 근거 부족"]}
+            excerpts = [
+                str(item.get("content", "")).strip()[:600]
+                for item in evidence[:3]
+                if isinstance(item, dict) and str(item.get("content", "")).strip()
+            ]
+            source_ids = [
+                str(item.get("sourceId", ""))
+                for item in citations
+                if isinstance(item, dict) and str(item.get("sourceId", ""))
+            ]
+            answer = StructuredAnswer(
+                answer="\n\n".join(excerpts),
+                basisType="OFFICIAL_GUIDANCE",
+                usedSourceIds=list(dict.fromkeys(source_ids)),
+            )
+            return {"structured_answer": answer, "deterministic_answer": answer, "trace": [*state["trace"], "PostgreSQL 지식 근거 응답 생성"]}
 
         region_analysis = tool_results.get("region_analysis", {})
         field_report = tool_results.get("field_report", {})
@@ -1204,6 +1235,12 @@ class AIService:
         fp = state["fact_package"]
         valid_fact_keys = set(fp.facts.keys())
         valid_source_ids = {s.get("sourceId", "") for s in fp.sources if isinstance(s, dict)}
+        knowledge = state.get("tool_results", {}).get("knowledge_search", {})
+        valid_source_ids.update(
+            citation.get("sourceId", "")
+            for citation in knowledge.get("citations", [])
+            if isinstance(citation, dict)
+        )
         known_crop_names = {profile["name"] for profile in CROP_PROFILES.values()}
 
         errors: list[str] = []
@@ -1227,10 +1264,12 @@ class AIService:
 
     def _fallback_or_return(self, state: AgentState) -> dict[str, Any]:
         fp = state["fact_package"]
+        knowledge_sources = state.get("tool_results", {}).get("knowledge_search", {}).get("citations", [])
+        final_sources = [*fp.sources, *[source for source in knowledge_sources if isinstance(source, dict)]]
         if state.get("validation_passed") and state.get("structured_answer"):
             return {
                 "final_answer": state["structured_answer"],
-                "final_sources": fp.sources,
+                "final_sources": final_sources,
                 "trace": [*state["trace"], "검증된 답변 반환"],
             }
 
@@ -1245,7 +1284,7 @@ class AIService:
         if deterministic is not None:
             return {
                 "final_answer": deterministic,
-                "final_sources": fp.sources,
+                "final_sources": final_sources,
                 "trace": [*state["trace"], "LLM 검증 실패 — 규칙 기반 답변으로 대체"],
             }
 
@@ -1255,7 +1294,7 @@ class AIService:
         )
         return {
             "final_answer": last_resort,
-            "final_sources": fp.sources,
+            "final_sources": final_sources,
             "trace": [*state["trace"], "리포트 없음 — 최종 안내 반환"],
         }
 

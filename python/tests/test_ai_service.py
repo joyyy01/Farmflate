@@ -2,6 +2,7 @@ import asyncio
 import unittest
 from unittest.mock import AsyncMock, patch
 
+from app.rag.models import RetrievedChunk, RetrievalResult
 from app.schemas.chat import AgentRunRequest, FactPackage, FieldGuidanceRequest, StructuredAnswer
 from app.services import ai_service
 from app.services.ai_service import AIService
@@ -42,6 +43,25 @@ class AIServiceSafetyAndContextTest(unittest.TestCase):
         result = self.service._select_tools({"intent": "GENERAL_INFORMATION", "fact_package": package, "trace": []})
 
         self.assertIn("get_field_report", result["selected_tools"])
+
+    def test_official_guidance_returns_approved_postgres_evidence_with_its_source(self) -> None:
+        package = FactPackage(requestId="test-request", question="농사로 공식 토양 관리 가이드를 알려주세요")
+        evidence = RetrievalResult(
+            query=package.question,
+            insufficient_evidence=False,
+            chunks=[RetrievedChunk(
+                chunk_id="chunk-1", document_id="document-1", source_id="source-1",
+                source_name="농사로", canonical_url="https://example.go.kr/guide", title="토양 관리",
+                content="토양 pH와 배수 상태를 함께 확인하세요.", score=1.0, metadata={},
+            )],
+        )
+
+        with patch.object(ai_service.rag_retriever, "retrieve", new=AsyncMock(return_value=evidence)):
+            response = asyncio.run(self.service.run_agent(AgentRunRequest(fact_package=package)))
+
+        self.assertEqual(response.status, "completed")
+        self.assertIn("토양 pH와 배수 상태", response.answer.answer)
+        self.assertEqual(response.sources[0]["sourceId"], "source-1")
 
     def test_agent_history_rejects_system_role_and_bounds_content(self) -> None:
         package = FactPackage(

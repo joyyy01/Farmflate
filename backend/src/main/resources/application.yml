@@ -85,5 +85,5 @@ app:
     crop-code-days: ${CROP_CODE_CACHE_DAYS:90}
   python-server:
     url: ${PYTHON_SERVER_URL:http://localhost:8000}
-    internal-api-key: ${PYTHON_INTERNAL_API_KEY:farmflate-local-internal-key}
+    internal-api-key: ${PYTHON_INTERNAL_API_KEY:}
     request-timeout-ms: ${AI_REQUEST_TIMEOUT_MS:15000}

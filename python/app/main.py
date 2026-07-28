@@ -8,7 +8,6 @@ app = FastAPI(
     version=settings.VERSION,
     openapi_url=f"{settings.API_V1_STR}/openapi.json"
 )
-
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
@@ -21,10 +20,20 @@ app.add_middleware(
 # Root & Health check
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "service": "Python AI Server", "version": settings.VERSION}
+    return {
+        "status": "ok",
+        "service": "Python AI Server",
+        "version": settings.VERSION,
+        "rag": "enabled" if settings.RAG_ENABLED else "disabled",
+    }
 
 # Include API v1 Router
 app.include_router(api_router, prefix=settings.API_V1_STR)
+
+
+@app.on_event("startup")
+async def validate_runtime_configuration() -> None:
+    settings.validate_runtime()
 
 if __name__ == "__main__":
     import uvicorn

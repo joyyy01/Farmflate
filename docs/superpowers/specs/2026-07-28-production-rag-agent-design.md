@@ -1,5 +1,7 @@
 # Production RAG and AI Agent Design
 
+> **Implementation decision (2026-07-28):** The deployed RAG path is deliberately simplified to PostgreSQL native full-text search over approved sources. The earlier pgvector, external embedding, Responses API function-calling, and MCP extension proposals below are deferred and are not runtime dependencies.
+
 ## Status and goal
 
 This design upgrades Farmflate's fact-grounded assistant into a production-oriented, read-only agricultural RAG and tool-using agent. It deliberately does **not** make autonomous changes to farm, user, or report data.

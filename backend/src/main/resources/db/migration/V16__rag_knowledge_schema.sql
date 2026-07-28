@@ -1,6 +1,5 @@
--- RAG knowledge is PostgreSQL system-of-record data. Flyway must run this migration
--- with a deployment role allowed to create the pgvector extension; see docs/ops/pgvector-rollout.md.
-CREATE EXTENSION IF NOT EXISTS vector;
+-- RAG knowledge is PostgreSQL system-of-record data. Retrieval uses native
+-- PostgreSQL full-text search only; no external embedding provider is required.
 CREATE SCHEMA IF NOT EXISTS rag;
 
 CREATE TABLE rag.source (
@@ -65,10 +64,6 @@ CREATE TABLE rag.chunk (
     content_sha256 char(64) NOT NULL,
     token_count integer NOT NULL CHECK (token_count >= 0),
     search_vector tsvector NOT NULL,
-    embedding_model varchar(120) NOT NULL,
-    embedding_version varchar(120) NOT NULL,
-    embedding_dimensions integer NOT NULL CHECK (embedding_dimensions = 1536),
-    embedding vector(1536) NOT NULL,
     chunk_status varchar(32) NOT NULL CHECK (chunk_status IN ('CURRENT', 'SUPERSEDED', 'EXPIRED', 'REJECTED')),
     expires_at timestamp with time zone,
     metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
@@ -111,7 +106,6 @@ CREATE INDEX rag_document_source_status_language_expiry_idx
 CREATE INDEX rag_chunk_document_status_expiry_idx
     ON rag.chunk (document_id, chunk_status, expires_at);
 CREATE INDEX rag_chunk_search_gin ON rag.chunk USING gin (search_vector);
-CREATE INDEX rag_chunk_embedding_hnsw ON rag.chunk USING hnsw (embedding vector_cosine_ops);
 CREATE INDEX rag_ingestion_run_source_status_idx
     ON rag.ingestion_run (source_id, status, created_at DESC);
 CREATE INDEX rag_eval_result_case_evaluated_idx

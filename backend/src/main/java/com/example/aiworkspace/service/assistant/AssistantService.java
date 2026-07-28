@@ -47,7 +47,7 @@ public class AssistantService {
     @Value("${app.python-server.url:http://localhost:8000}")
     private String pythonServerUrl;
 
-    @Value("${app.python-server.internal-api-key:farmflate-local-internal-key}")
+    @Value("${app.python-server.internal-api-key:}")
     private String internalApiKey;
 
     @Value("${app.python-server.request-timeout-ms:15000}")
@@ -497,7 +497,7 @@ public class AssistantService {
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("requestId", factPackage.get("requestId"));
-        result.put("status", "completed");
+        result.put("status", "fallback");
         result.put("answer", answer);
         result.put("sources", pkgSources);
         return result;
