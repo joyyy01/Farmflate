@@ -2,7 +2,7 @@ import asyncio
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from app.rag.models import RetrievedChunk, RetrievalResult
+from app.agent.contracts import AgentResult, ToolCitation
 from app.schemas.chat import AgentRunRequest, FactPackage, FieldGuidanceRequest, StructuredAnswer
 from app.services import ai_service
 from app.services.ai_service import AIService
@@ -33,6 +33,23 @@ class AIServiceSafetyAndContextTest(unittest.TestCase):
         self.assertIn("상추의 기본 재배 조건", response.answer.answer)
         self.assertNotIn("배의 기본 재배 조건", response.answer.answer)
 
+    def test_run_agent_maps_grounded_agent_citations_to_the_existing_api_contract(self) -> None:
+        package = FactPackage(requestId="test-request", question="현재 밭 상태를 알려줘")
+        self.service._grounded_agent = type("StubAgent", (), {
+            "run": AsyncMock(return_value=AgentResult(
+                answer="현재 밭은 주의 상태입니다.",
+                status="completed",
+                citation_ids=["fact:field-1"],
+                citations=[ToolCitation("fact:field-1", "Farmflate 밭 일일 리포트")],
+            ))
+        })()
+
+        response = asyncio.run(self.service.run_agent(AgentRunRequest(fact_package=package)))
+
+        self.assertEqual(response.status, "completed")
+        self.assertEqual(response.answer.answer, "현재 밭은 주의 상태입니다.")
+        self.assertEqual(response.answer.usedSourceIds, ["fact:field-1"])
+
     def test_field_context_adds_persisted_field_tool(self) -> None:
         package = FactPackage(
             requestId="test-request",
@@ -43,25 +60,6 @@ class AIServiceSafetyAndContextTest(unittest.TestCase):
         result = self.service._select_tools({"intent": "GENERAL_INFORMATION", "fact_package": package, "trace": []})
 
         self.assertIn("get_field_report", result["selected_tools"])
-
-    def test_official_guidance_returns_approved_postgres_evidence_with_its_source(self) -> None:
-        package = FactPackage(requestId="test-request", question="농사로 공식 토양 관리 가이드를 알려주세요")
-        evidence = RetrievalResult(
-            query=package.question,
-            insufficient_evidence=False,
-            chunks=[RetrievedChunk(
-                chunk_id="chunk-1", document_id="document-1", source_id="source-1",
-                source_name="농사로", canonical_url="https://example.go.kr/guide", title="토양 관리",
-                content="토양 pH와 배수 상태를 함께 확인하세요.", score=1.0, metadata={},
-            )],
-        )
-
-        with patch.object(ai_service.rag_retriever, "retrieve", new=AsyncMock(return_value=evidence)):
-            response = asyncio.run(self.service.run_agent(AgentRunRequest(fact_package=package)))
-
-        self.assertEqual(response.status, "completed")
-        self.assertIn("토양 pH와 배수 상태", response.answer.answer)
-        self.assertEqual(response.sources[0]["sourceId"], "source-1")
 
     def test_agent_history_rejects_system_role_and_bounds_content(self) -> None:
         package = FactPackage(
@@ -313,19 +311,13 @@ class AIServiceSafetyAndContextTest(unittest.TestCase):
                 "risk.1.title": "상추 고온다습 위험",
             },
         )
-        stale_region_answer = StructuredAnswer(answer="상추 재배 시기의 고온다습 위험입니다.")
-
-        with (
-            patch.object(ai_service.settings, "OPENAI_API_KEY", "test-key"),
-            patch.object(ai_service.settings, "LLM_PROVIDER", "openai"),
-            patch.object(self.service, "_call_openai", new=AsyncMock(return_value=stale_region_answer)) as llm_call,
-        ):
+        with patch.object(ai_service.settings, "OPENAI_API_KEY", ""):
             response = asyncio.run(self.service.run_agent(AgentRunRequest(fact_package=package)))
 
+        self.assertEqual(response.status, "fallback")
         self.assertIn("감자", response.answer.answer)
         self.assertIn("오후 고온 주의", response.answer.answer)
         self.assertNotIn("상추", response.answer.answer)
-        llm_call.assert_not_awaited()
 
 
 if __name__ == "__main__":

@@ -37,10 +37,19 @@ class Settings(BaseSettings):
     # provisioned the dedicated rag schema and least-privilege role.
     RAG_ENABLED: bool = False
     RAG_DATABASE_URL: str = ""
-    # The runtime RAG path deliberately uses PostgreSQL full-text search only;
-    # no embedding provider is required to operate it.
+    # PostgreSQL remains the only knowledge store. The embedding API supplies
+    # vectors only; lexical search, pgvector search, and RRF all run in PG.
     RAG_TOP_K: int = 8
     RAG_MAX_CHUNK_CHARS: int = 2400
+    RAG_EMBEDDING_MODEL: str = "text-embedding-3-small"
+    RAG_EMBEDDING_VERSION: str = "text-embedding-3-small-1536-v1"
+    RAG_EMBEDDING_DIMENSIONS: int = 1536
+    RAG_VECTOR_CANDIDATES: int = 20
+    RAG_LEXICAL_CANDIDATES: int = 20
+    RAG_RRF_K: int = 60
+    RAG_MIN_SCORE: float = 0.02
+    AGENT_MAX_TOOL_ROUNDS: int = 2
+    AGENT_MAX_TOOL_CALLS: int = 3
 
     @property
     def is_production(self) -> bool:
@@ -51,6 +60,8 @@ class Settings(BaseSettings):
             raise RuntimeError("INTERNAL_API_KEY must be configured in production.")
         if self.RAG_ENABLED and not self.RAG_DATABASE_URL:
             raise RuntimeError("RAG_DATABASE_URL must be configured when RAG_ENABLED=true.")
+        if self.RAG_EMBEDDING_DIMENSIONS != 1536:
+            raise RuntimeError("RAG_EMBEDDING_DIMENSIONS must match rag.chunk.embedding vector(1536).")
 
 
 settings = Settings()

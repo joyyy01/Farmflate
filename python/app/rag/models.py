@@ -18,6 +18,7 @@ class RetrievedChunk:
 
     def citation(self) -> dict[str, str]:
         return {
+            "citationId": f"rag:{self.chunk_id}",
             "sourceId": self.source_id,
             "title": self.title or self.source_name,
             "sourceUrl": self.canonical_url,

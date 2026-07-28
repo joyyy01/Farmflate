@@ -9,6 +9,7 @@ import httpx
 from langgraph.graph import END, START, StateGraph
 from typing_extensions import TypedDict
 
+from app.agent.runner import GroundedAgent
 from app.core.config import settings
 from app.rag.retriever import rag_retriever
 from app.schemas.chat import (
@@ -76,6 +77,7 @@ class AIService:
     _SOIL_WORDS = ("토양", "흙", "산도", "비료", "퇴비", "석회", "양분", "거름")
 
     def __init__(self) -> None:
+        self._grounded_agent = GroundedAgent()
         builder = StateGraph(AgentState)
         builder.add_node("validate_request", self._validate_request)
         builder.add_node("resolve_visible_target", self._resolve_visible_target)
@@ -98,15 +100,43 @@ class AIService:
 
     async def run_agent(self, request: AgentRunRequest) -> AgentRunResponse:
         fp = request.fact_package
-        state = await self._agent_graph.ainvoke({
-            "fact_package": fp,
-            "trace": [],
-        })
+        result = await self._grounded_agent.run(fp)
+        if result.status == "failed" and not settings.OPENAI_API_KEY:
+            return await self._run_local_fallback(fp)
+        sources = [
+            {
+                "sourceId": citation.citation_id,
+                "title": citation.title,
+                "sourceUrl": citation.source_url,
+            }
+            for citation in result.citations
+        ]
         return AgentRunResponse(
             requestId=fp.requestId,
-            status="completed" if state.get("validation_passed") else "fallback",
+            status=result.status,
+            answer=StructuredAnswer(
+                answer=result.answer,
+                basisType="CURRENT_REPORT" if result.status == "completed" else "INSUFFICIENT_EVIDENCE",
+                usedSourceIds=result.citation_ids,
+                safetyNotice=result.safety_notice,
+            ),
+            sources=sources,
+            trace=result.trace,
+        )
+
+    async def _run_local_fallback(self, fp: FactPackage) -> AgentRunResponse:
+        """Keep existing screen/report explanations usable when no LLM runtime is configured.
+
+        This is intentionally limited to local configuration absence. A model or
+        tool failure in a configured runtime remains an explicit failed status.
+        """
+        state = await self._agent_graph.ainvoke({"fact_package": fp, "trace": []})
+        return AgentRunResponse(
+            requestId=fp.requestId,
+            status="fallback",
             answer=state["final_answer"],
             sources=state.get("final_sources", []),
+            trace=state.get("trace", []),
         )
 
     async def process_chat(self, request: ChatRequest) -> ChatResponse:
@@ -127,7 +157,7 @@ class AIService:
             status="grounded" if response.status == "completed" else "needs_context",
             sources=sources,
             used_context=response.answer.usedFactIds,
-            agent_steps=[],
+            agent_steps=response.trace,
         )
 
     async def stream_chat_response(self, request: ChatRequest) -> AsyncGenerator[str, None]:

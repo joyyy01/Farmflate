@@ -109,6 +109,7 @@ class AgentRunResponse(BaseModel):
     status: str = "completed"
     answer: StructuredAnswer
     sources: list[dict[str, Any]] = Field(default_factory=list)
+    trace: list[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
