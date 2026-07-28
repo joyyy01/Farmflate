@@ -1,26 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import type { ViewStep, TabState, CommunityPost } from './types/farmflate';
 import { SplashView } from './components/farmflate/SplashView';
 import { LandingView } from './components/farmflate/LandingView';
-import { RegionExploreView } from './components/farmflate/RegionExploreView';
-import { AnalyzingView } from './components/farmflate/AnalyzingView';
-import { RegionReportSummaryView } from './components/farmflate/RegionReportSummaryView';
-import { RegionRisksView } from './components/farmflate/RegionRisksView';
-import { RegionTipsView } from './components/farmflate/RegionTipsView';
-import { RecommendedCropsView } from './components/farmflate/RecommendedCropsView';
-import { CropSuitabilityReportView } from './components/farmflate/CropSuitabilityReportView';
-import { CropConditionInputView, type CropRegistrationInput } from './components/farmflate/CropConditionInputView';
-import { MainDashboardView } from './components/farmflate/MainDashboardView';
-import { MyFieldListView } from './components/farmflate/MyFieldListView';
-import { FieldDashboardView } from './components/farmflate/FieldDashboardView';
-import { CommunityListView } from './components/farmflate/CommunityListView';
-import { CommunityCreatePostView } from './components/farmflate/CommunityCreatePostView';
-import { MyPageView } from './components/farmflate/MyPageView';
+import type { CropRegistrationInput } from './components/farmflate/CropConditionInputView';
 import { ApiError, ApiService } from './services/api';
 import type { FieldProfile, FieldSuitabilityPreview, HomeData, RegionAnalysisRequest, RegionReport } from './services/api';
 import { canOpenReport, needsFreshCropAnalysis, stateFromAnalysisStatus, type AnalysisState, type FieldPreviewState } from './services/reportLifecycle';
-import { AIChatModal } from './components/farmflate/AIChatModal';
 import { useDailyRefresh } from './hooks/useDailyRefresh';
 import type { NavigationFlow } from './types/navigation';
 import type { ChatRoute } from './types/chat';
@@ -28,6 +14,25 @@ import type { VisibleDataRef } from './types/chat';
 import { buildRegionVisibleData } from './services/visibleDataContext';
 
 type ExtendedViewStep = ViewStep | 'splash';
+
+const AIChatModal = lazy(async () => ({
+  default: (await import('./components/farmflate/AIChatModal')).AIChatModal,
+}));
+
+const RegionExploreView = lazy(async () => ({ default: (await import('./components/farmflate/RegionExploreView')).RegionExploreView }));
+const AnalyzingView = lazy(async () => ({ default: (await import('./components/farmflate/AnalyzingView')).AnalyzingView }));
+const RegionReportSummaryView = lazy(async () => ({ default: (await import('./components/farmflate/RegionReportSummaryView')).RegionReportSummaryView }));
+const RegionRisksView = lazy(async () => ({ default: (await import('./components/farmflate/RegionRisksView')).RegionRisksView }));
+const RegionTipsView = lazy(async () => ({ default: (await import('./components/farmflate/RegionTipsView')).RegionTipsView }));
+const RecommendedCropsView = lazy(async () => ({ default: (await import('./components/farmflate/RecommendedCropsView')).RecommendedCropsView }));
+const CropSuitabilityReportView = lazy(async () => ({ default: (await import('./components/farmflate/CropSuitabilityReportView')).CropSuitabilityReportView }));
+const CropConditionInputView = lazy(async () => ({ default: (await import('./components/farmflate/CropConditionInputView')).CropConditionInputView }));
+const MainDashboardView = lazy(async () => ({ default: (await import('./components/farmflate/MainDashboardView')).MainDashboardView }));
+const MyFieldListView = lazy(async () => ({ default: (await import('./components/farmflate/MyFieldListView')).MyFieldListView }));
+const FieldDashboardView = lazy(async () => ({ default: (await import('./components/farmflate/FieldDashboardView')).FieldDashboardView }));
+const CommunityListView = lazy(async () => ({ default: (await import('./components/farmflate/CommunityListView')).CommunityListView }));
+const CommunityCreatePostView = lazy(async () => ({ default: (await import('./components/farmflate/CommunityCreatePostView')).CommunityCreatePostView }));
+const MyPageView = lazy(async () => ({ default: (await import('./components/farmflate/MyPageView')).MyPageView }));
 
 /* URL for every screen except field_dashboard, which carries a :fieldId segment
    and is navigated to directly (see handleSelectField) rather than through this map. */
@@ -935,6 +940,7 @@ export function App() {
 
   return (
     <div className="mobile-wrapper min-h-screen bg-white">
+      <Suspense fallback={null}>
       <Routes>
         {/* 0. Splash Screen */}
         <Route path={VIEW_STEP_PATH.splash} element={
@@ -1200,23 +1206,28 @@ export function App() {
         {/* Unknown path: fall back to splash, which resolves to landing/dashboard once auth is known. */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </Suspense>
 
       {/* 15. Global Farmflate AI Bottom Sheet Modal */}
-      <AIChatModal
-        isOpen={isAIChatOpen}
-        onClose={() => setIsAIChatOpen(false)}
-        context={{
-          route: aiChatRouteFor(viewStep),
-          regionAnalysisId: apiReport?.analysisId ?? null,
-          fieldId: viewStep === 'field_dashboard' ? selectedField?.id ?? null : null,
-          reportDate: viewStep === 'field_dashboard' ? fieldChatReportDate : null,
-          visibleData: viewStep === 'field_dashboard'
-            ? fieldVisibleData
-            : aiChatRouteFor(viewStep) === 'region_report'
-              ? buildRegionVisibleData(apiReport)
-              : []
-        }}
-      />
+      {isAIChatOpen && (
+        <Suspense fallback={null}>
+          <AIChatModal
+            isOpen
+            onClose={() => setIsAIChatOpen(false)}
+            context={{
+              route: aiChatRouteFor(viewStep),
+              regionAnalysisId: apiReport?.analysisId ?? null,
+              fieldId: viewStep === 'field_dashboard' ? selectedField?.id ?? null : null,
+              reportDate: viewStep === 'field_dashboard' ? fieldChatReportDate : null,
+              visibleData: viewStep === 'field_dashboard'
+                ? fieldVisibleData
+                : aiChatRouteFor(viewStep) === 'region_report'
+                  ? buildRegionVisibleData(apiReport)
+                  : []
+            }}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }
