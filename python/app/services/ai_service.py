@@ -20,7 +20,7 @@ from app.schemas.chat import (
     StructuredAnswer,
 )
 from app.services.field_guidance import FieldGuidanceService
-from app.services.legacy_chat import LegacyChatWorkflow
+from app.services.local_chat_workflow import LocalChatWorkflow
 
 
 class AIService:
@@ -28,14 +28,16 @@ class AIService:
 
     def __init__(self) -> None:
         self._grounded_agent = GroundedAgent()
-        self._legacy_chat = LegacyChatWorkflow()
+        self._local_chat = LocalChatWorkflow()
         self._field_guidance = FieldGuidanceService()
 
     async def run_agent(self, request: AgentRunRequest) -> AgentRunResponse:
         fact_package = request.fact_package
-        result = await self._grounded_agent.run(fact_package)
-        if result.status == "failed" and not settings.OPENAI_API_KEY:
+        if not settings.OPENAI_API_KEY:
             return await self._run_local_fallback(fact_package)
+        result = await self._grounded_agent.run(fact_package)
+        if result.status == "failed":
+            return await self._run_local_fallback(fact_package, upstream_trace=result.trace)
         sources = [
             {
                 "sourceId": citation.citation_id,
@@ -57,14 +59,19 @@ class AIService:
             trace=result.trace,
         )
 
-    async def _run_local_fallback(self, fact_package: FactPackage) -> AgentRunResponse:
-        result = await self._legacy_chat.run(fact_package)
+    async def _run_local_fallback(
+        self,
+        fact_package: FactPackage,
+        *,
+        upstream_trace: list[str] | None = None,
+    ) -> AgentRunResponse:
+        result = await self._local_chat.run(fact_package)
         return AgentRunResponse(
             requestId=fact_package.requestId,
             status="fallback",
             answer=result.answer,
             sources=result.sources,
-            trace=result.trace,
+            trace=[*(upstream_trace or []), *result.trace],
         )
 
     async def process_chat(self, request: ChatRequest) -> ChatResponse:

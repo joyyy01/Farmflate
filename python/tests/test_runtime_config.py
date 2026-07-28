@@ -1,10 +1,29 @@
 from __future__ import annotations
 
+import os
 from unittest.mock import patch
 
 import pytest
 
-from app.core.config import settings
+from app.core.config import Settings, settings
+
+
+def test_shared_env_names_build_python_rag_configuration() -> None:
+    with patch.dict(
+        os.environ,
+        {
+            "PYTHON_INTERNAL_API_KEY": "internal-test-key",
+            "DB_HOST": "127.0.0.1",
+            "DB_PORT": "5432",
+            "DB_NAME": "farmflate",
+            "DB_USER": "farmflate",
+        },
+        clear=True,
+    ):
+        configured = Settings(_env_file=None)
+
+    assert configured.INTERNAL_API_KEY == "internal-test-key"
+    assert configured.RAG_DATABASE_URL == "postgresql://farmflate@127.0.0.1:5432/farmflate"
 
 
 def test_runtime_requires_internal_authentication_and_postgres_rag_configuration() -> None:

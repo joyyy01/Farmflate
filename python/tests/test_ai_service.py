@@ -3,31 +3,76 @@ import unittest
 from unittest.mock import AsyncMock, patch
 
 from app.agent.contracts import AgentResult, ToolCitation
-from app.schemas.chat import AgentRunRequest, AgentTaskRequest, ChatResponse, FactPackage, FieldGuidanceRequest, StructuredAnswer
+from app.schemas.chat import AgentRunRequest, AgentRunResponse, AgentTaskRequest, ChatResponse, FactPackage, FieldGuidanceRequest, StructuredAnswer
 from app.services import ai_service
 from app.services.ai_service import AIService
 from app.services.field_guidance import FieldGuidanceService
 from app.services.knowledge_catalog import get_crop_profile
-from app.services.legacy_chat import LegacyChatWorkflow
+from app.services.local_chat_workflow import LocalChatWorkflow
 
 
 class AIServiceSafetyAndContextTest(unittest.TestCase):
     def setUp(self) -> None:
         self.service = AIService()
-        self.legacy = LegacyChatWorkflow()
+        self.local_workflow = LocalChatWorkflow()
         self.field_guidance = FieldGuidanceService()
 
     def test_report_reason_precedes_crop_keyword(self) -> None:
-        self.assertEqual(self.legacy._classify("상추 점수는 왜 낮게 나왔나요?"), "REPORT_REASON")
+        self.assertEqual(self.local_workflow._classify("상추 점수는 왜 낮게 나왔나요?"), "REPORT_REASON")
 
     def test_risk_question_with_what_is_not_misclassified_as_a_term(self) -> None:
-        self.assertEqual(self.legacy._classify("오늘 무엇을 조심해야 하나요?"), "RISK_EXPLANATION")
+        self.assertEqual(self.local_workflow._classify("오늘 무엇을 조심해야 하나요?"), "RISK_EXPLANATION")
+
+    def test_risk_question_with_named_crop_keeps_crop_context_and_report_sources(self) -> None:
+        package = FactPackage(
+            requestId="test-request",
+            question="고추를 재배할 때 가뭄 위험과 이번 주 할 일을 알려줘.",
+            facts={"crop.1.name": "고추", "risk.1.code": "DROUGHT"},
+        )
+
+        selected = self.local_workflow._select_tools({"intent": "RISK_EXPLANATION", "fact_package": package, "trace": []})
+
+        self.assertEqual(
+            selected["selected_tools"],
+            ["get_region_analysis", "get_risk_guide", "get_crop_profile", "get_report_sources"],
+        )
+
+    def test_risk_answer_prioritizes_report_action_in_readable_sections(self) -> None:
+        package = FactPackage(
+            requestId="test-request",
+            question="고추를 재배할 때 가뭄 위험과 이번 주 할 일을 알려줘.",
+            facts={
+                "region.name": "전북 익산시",
+                "crop.1.name": "고추",
+                "risk.1.code": "DROUGHT",
+                "risk.1.title": "가뭄 위험",
+                "risk.1.action.1": "토양 수분을 확인하고 관수 일정을 조정하세요.",
+            },
+            sources=[{"sourceId": "region.report", "factKeyPrefixes": ["region.", "crop.", "risk."]}],
+        )
+
+        answer = self.local_workflow._build_deterministic_answer(
+            package,
+            "RISK_EXPLANATION",
+            {"region.name": "전북 익산시"},
+            {
+                "risk_guide": {"title": "가뭄", "detail": "토양 수분 부족으로 생육이 저하될 수 있습니다.", "action": "멀칭으로 수분 증발을 줄이세요."},
+                "crop_profile": {"name": "고추", "watering": "토양이 마르기 전에 아침에 관수하세요."},
+            },
+        )
+
+        self.assertIn("핵심 판단", answer.answer)
+        self.assertIn("지금 할 일", answer.answer)
+        self.assertIn("토양 수분을 확인하고 관수 일정을 조정하세요.", answer.answer)
+        self.assertIn("고추 재배", answer.answer)
+        self.assertIn("risk.1.action.1", answer.usedFactIds)
+        self.assertIn("crop.1.name", answer.usedFactIds)
 
     def test_explicit_glossary_term_wins_over_the_broader_soil_topic(self) -> None:
-        self.assertEqual(self.legacy._classify("토양 pH는 무슨 뜻인가요?"), "TERM_EXPLANATION")
+        self.assertEqual(self.local_workflow._classify("토양 pH는 무슨 뜻인가요?"), "TERM_EXPLANATION")
 
     def test_crop_name_extraction_does_not_read_the_word_cultivation_as_pear(self) -> None:
-        self.assertEqual(self.legacy._extract_crop_name("상추 재배에 필요한 환경을 알려주세요", {}), "상추")
+        self.assertEqual(self.local_workflow._extract_crop_name("상추 재배에 필요한 환경을 알려주세요", {}), "상추")
 
     def test_context_free_crop_card_uses_the_crop_named_in_the_question(self) -> None:
         package = FactPackage(requestId="test-request", question="상추 재배에 필요한 환경을 알려주세요")
@@ -37,6 +82,24 @@ class AIServiceSafetyAndContextTest(unittest.TestCase):
 
         self.assertIn("상추의 기본 재배 조건", response.answer.answer)
         self.assertNotIn("배의 기본 재배 조건", response.answer.answer)
+
+    def test_run_agent_uses_local_workflow_without_attempting_remote_model_when_key_is_missing(self) -> None:
+        package = FactPackage(requestId="test-request", question="현재 위험을 알려줘")
+        remote_run = AsyncMock(return_value=AgentResult(answer="원격 응답", status="completed"))
+        self.service._grounded_agent = type("StubAgent", (), {"run": remote_run})()
+        fallback = AgentRunResponse(
+            requestId=package.requestId,
+            status="fallback",
+            answer=StructuredAnswer(answer="로컬 근거 응답"),
+        )
+        self.service._run_local_fallback = AsyncMock(return_value=fallback)
+
+        with patch.object(ai_service.settings, "OPENAI_API_KEY", ""):
+            response = asyncio.run(self.service.run_agent(AgentRunRequest(fact_package=package)))
+
+        self.assertEqual(response, fallback)
+        remote_run.assert_not_awaited()
+        self.service._run_local_fallback.assert_awaited_once_with(package)
 
     def test_run_agent_maps_grounded_agent_citations_to_the_existing_api_contract(self) -> None:
         package = FactPackage(requestId="test-request", question="현재 밭 상태를 알려줘")
@@ -49,7 +112,8 @@ class AIServiceSafetyAndContextTest(unittest.TestCase):
             ))
         })()
 
-        response = asyncio.run(self.service.run_agent(AgentRunRequest(fact_package=package)))
+        with patch.object(ai_service.settings, "OPENAI_API_KEY", "test-key"):
+            response = asyncio.run(self.service.run_agent(AgentRunRequest(fact_package=package)))
 
         self.assertEqual(response.status, "completed")
         self.assertEqual(response.answer.answer, "현재 밭은 주의 상태입니다.")
@@ -71,7 +135,7 @@ class AIServiceSafetyAndContextTest(unittest.TestCase):
             facts={"field.name": "텃밭", "field.crop.name": "상추"},
         )
 
-        result = self.legacy._select_tools({"intent": "GENERAL_INFORMATION", "fact_package": package, "trace": []})
+        result = self.local_workflow._select_tools({"intent": "GENERAL_INFORMATION", "fact_package": package, "trace": []})
 
         self.assertIn("get_field_report", result["selected_tools"])
 
@@ -88,7 +152,7 @@ class AIServiceSafetyAndContextTest(unittest.TestCase):
 
         self.assertEqual([message["role"] for message in package.history], ["user", "assistant"])
         self.assertEqual(len(package.history[0]["content"]), 1200)
-        self.assertEqual(self.legacy._safe_history(package.history), package.history)
+        self.assertEqual(self.local_workflow._safe_history(package.history), package.history)
 
     def test_field_fallback_remains_primary_when_region_analysis_is_also_present(self) -> None:
         package = FactPackage(
@@ -99,11 +163,11 @@ class AIServiceSafetyAndContextTest(unittest.TestCase):
         field_answer = StructuredAnswer(answer="밭의 토양 수분을 먼저 확인하세요.", basisType="FIELD_DASHBOARD")
 
         with (
-            patch.object(self.legacy, "_build_field_deterministic_answer", return_value=field_answer) as field_builder,
-            patch.object(self.legacy, "_build_deterministic_answer") as region_builder,
+            patch.object(self.local_workflow, "_build_field_deterministic_answer", return_value=field_answer) as field_builder,
+            patch.object(self.local_workflow, "_build_deterministic_answer") as region_builder,
             patch.object(ai_service.settings, "OPENAI_API_KEY", ""),
         ):
-            result = asyncio.run(self.legacy._compose_structured_answer({
+            result = asyncio.run(self.local_workflow._compose_structured_answer({
                 "fact_package": package,
                 "intent": "GENERAL_INFORMATION",
                 "tool_results": {"region_analysis": {"score": 70}, "field_report": {"score": 12}},
@@ -129,9 +193,9 @@ class AIServiceSafetyAndContextTest(unittest.TestCase):
         with (
             patch.object(ai_service.settings, "OPENAI_API_KEY", "test-key"),
             patch.object(ai_service.settings, "LLM_PROVIDER", "openai"),
-            patch.object(self.legacy, "_call_openai", new=AsyncMock(return_value=llm_answer)) as llm_call,
+            patch.object(self.local_workflow, "_call_openai", new=AsyncMock(return_value=llm_answer)) as llm_call,
         ):
-            result = asyncio.run(self.legacy._compose_structured_answer({
+            result = asyncio.run(self.local_workflow._compose_structured_answer({
                 "fact_package": package,
                 "intent": "WATERING_GUIDANCE",
                 "tool_results": {"field_report": {"field.name": "텃밭"}},
@@ -147,8 +211,8 @@ class AIServiceSafetyAndContextTest(unittest.TestCase):
             {"role": "assistant", "content": "오이는 20~25℃ 환경을 참고하세요."},
         ]
 
-        self.assertEqual(self.legacy._classify("그럼 물은요?"), "WATERING_GUIDANCE")
-        self.assertEqual(self.legacy._extract_crop_name("그럼 물은요?", {}, history), "오이")
+        self.assertEqual(self.local_workflow._classify("그럼 물은요?"), "WATERING_GUIDANCE")
+        self.assertEqual(self.local_workflow._extract_crop_name("그럼 물은요?", {}, history), "오이")
 
     def test_field_fallback_answers_change_with_the_question_intent(self) -> None:
         package = FactPackage(
@@ -171,9 +235,9 @@ class AIServiceSafetyAndContextTest(unittest.TestCase):
             },
         )
 
-        risk_answer = self.legacy._build_field_deterministic_answer(package, {"score": 62}, "RISK_EXPLANATION")
-        reason_answer = self.legacy._build_field_deterministic_answer(package, {"score": 62}, "REPORT_REASON")
-        water_answer = self.legacy._build_field_deterministic_answer(package, {"score": 62}, "WATERING_GUIDANCE")
+        risk_answer = self.local_workflow._build_field_deterministic_answer(package, {"score": 62}, "RISK_EXPLANATION")
+        reason_answer = self.local_workflow._build_field_deterministic_answer(package, {"score": 62}, "REPORT_REASON")
+        water_answer = self.local_workflow._build_field_deterministic_answer(package, {"score": 62}, "WATERING_GUIDANCE")
 
         self.assertIn("가장 먼저 살필 위험", risk_answer.answer)
         self.assertIn("분석 근거", reason_answer.answer)
@@ -184,7 +248,7 @@ class AIServiceSafetyAndContextTest(unittest.TestCase):
     def test_context_free_crop_question_returns_a_useful_profile(self) -> None:
         package = FactPackage(requestId="test-request", question="상추 재배에 필요한 환경을 알려주세요")
 
-        answer = self.legacy._build_context_free_answer(
+        answer = self.local_workflow._build_context_free_answer(
             package,
             "CROP_RECOMMENDATION",
             {"crop_profile": get_crop_profile("상추")},

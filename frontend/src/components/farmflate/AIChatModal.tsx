@@ -313,7 +313,24 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
                         border: msg.sender === 'assistant' ? '1px solid #E2E8F0' : 'none'
                       }}
                     >
-                      <div>{msg.content}</div>
+                      <div style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                        {msg.content.split('\n').map((line, index) => {
+                          const trimmed = line.trim();
+                          const isHeading = ['핵심 판단', '근거', '지금 할 일'].includes(trimmed);
+                          const isAction = /^\d+\.\s/.test(trimmed);
+                          if (isHeading) {
+                            return (
+                              <strong key={`${msg.id}-line-${index}`} style={{ display: 'block', marginTop: index === 0 ? 0 : 12, color: '#1E7A43', fontSize: '0.84rem' }}>
+                                {trimmed}
+                              </strong>
+                            );
+                          }
+                          if (isAction) {
+                            return <div key={`${msg.id}-line-${index}`} style={{ marginTop: 6, paddingLeft: 2 }}>{trimmed}</div>;
+                          }
+                          return <p key={`${msg.id}-line-${index}`} style={{ margin: trimmed ? '5px 0 0' : '5px 0', whiteSpace: 'pre-wrap' }}>{trimmed || '\u00A0'}</p>;
+                        })}
+                      </div>
                       {msg.sender === 'assistant' && msg.sources && msg.sources.length > 0 && (
                         <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #E2E8F0', fontSize: '0.7rem', color: '#667085', lineHeight: 1.45 }}>
                           <strong style={{ color: '#2e9f5b' }}>답변 근거</strong>

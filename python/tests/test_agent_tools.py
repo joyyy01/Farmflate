@@ -44,7 +44,7 @@ def test_authorized_context_cites_only_sources_proven_for_the_selected_facts() -
                 sources=[
                     {"sourceId": "field-report", "factKeyPrefixes": ["field."], "provider": "Farmflate"},
                     {"sourceId": "risk-report", "factKeyPrefixes": ["risk."], "provider": "Farmflate"},
-                    {"sourceId": "legacy-report", "provider": "Farmflate"},
+                    {"sourceId": "report-source", "provider": "Farmflate"},
                 ],
             ),
         )

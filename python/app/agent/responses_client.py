@@ -11,7 +11,11 @@ from app.core.outbound_http import outbound_http_client
 FINAL_ANSWER_SCHEMA = {
     "type": "object",
     "properties": {
-        "answer": {"type": "string", "minLength": 1},
+        "answer": {
+            "type": "string",
+            "minLength": 240,
+            "pattern": "^핵심 판단[\\s\\S]*근거[\\s\\S]*지금 할 일[\\s\\S]*",
+        },
         "claims": {
             "type": "array",
             "items": {
@@ -55,7 +59,6 @@ class ResponsesToolCallingClient:
             "instructions": instructions,
             "tools": tool_definitions,
             "parallel_tool_calls": False,
-            "store": False,
             "text": {"format": {"type": "json_schema", "name": "grounded_answer", "strict": True, "schema": FINAL_ANSWER_SCHEMA}},
         }
         if self._previous_response_id is None:
@@ -101,7 +104,18 @@ class ResponsesToolCallingClient:
         text = self._output_text(body)
         if not text:
             raise ValueError("Responses API returned neither a function call nor structured answer text.")
-        return AgentDraft(**json.loads(text))
+        draft = json.loads(text)
+        if not isinstance(draft, dict):
+            raise ValueError("Responses API structured answer must be a JSON object.")
+        if draft.get("status") == "needs_context":
+            return AgentDraft(
+                answer=str(draft.get("answer") or "현재 저장된 근거만으로는 충분한 판단을 내리기 어렵습니다. 추가 분석 결과를 확인해 주세요."),
+                claims=[],
+                citation_ids=[],
+                status="needs_context",
+                safety_notice=draft.get("safety_notice") if isinstance(draft.get("safety_notice"), str) else None,
+            )
+        return AgentDraft(**draft)
 
     @staticmethod
     def _initial_input(question: str, history: list[dict[str, str]]) -> str:

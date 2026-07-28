@@ -14,6 +14,9 @@ spring:
   jackson:
     default-property-inclusion: non_null
 
+  jpa:
+    open-in-view: false
+
   servlet:
     multipart:
       max-file-size: 10MB

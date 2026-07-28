@@ -1,5 +1,6 @@
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -28,7 +29,10 @@ class Settings(BaseSettings):
     ]
 
     # Internal API authentication (Spring Boot → Python)
-    INTERNAL_API_KEY: str = ""
+    INTERNAL_API_KEY: str = Field(
+        default="",
+        validation_alias=AliasChoices("INTERNAL_API_KEY", "PYTHON_INTERNAL_API_KEY"),
+    )
 
     # AI Model Keys
     LLM_PROVIDER: str = "openai"
@@ -39,12 +43,31 @@ class Settings(BaseSettings):
 
     # PostgreSQL is the RAG system of record and retrieval engine.
     RAG_DATABASE_URL: str = ""
+    DB_HOST: str = ""
+    DB_PORT: int = 5432
+    DB_NAME: str = ""
+    DB_USER: str = ""
+    DB_PASS: str = ""
     RAG_TOP_K: int = 8
     RAG_MAX_CHUNK_CHARS: int = 2400
     # A request may execute this many read-only tool steps, then receive one
     # final model turn to produce a cited answer.
     AGENT_MAX_TOOL_CALLS: int = 2
     AGENT_TOOL_TIMEOUT_SECONDS: float = 10.0
+
+    @model_validator(mode="after")
+    def derive_rag_database_url(self) -> "Settings":
+        if self.RAG_DATABASE_URL:
+            return self
+        if not all((self.DB_HOST, self.DB_NAME, self.DB_USER)):
+            return self
+
+        username = quote(self.DB_USER, safe="")
+        authority = f"{username}@{self.DB_HOST}:{self.DB_PORT}"
+        if self.DB_PASS:
+            authority = f"{username}:{quote(self.DB_PASS, safe='')}@{self.DB_HOST}:{self.DB_PORT}"
+        self.RAG_DATABASE_URL = f"postgresql://{authority}/{self.DB_NAME}"
+        return self
 
     def validate_runtime(self) -> None:
         if not self.INTERNAL_API_KEY or self.INTERNAL_API_KEY != self.INTERNAL_API_KEY.strip():

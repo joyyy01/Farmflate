@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, field_validator
 
 
 # ---------------------------------------------------------------------------
-# Legacy chat models (kept for backward-compatible /chat/ endpoint)
+# Chat models kept for the existing /chat endpoint contract.
 # ---------------------------------------------------------------------------
 
 class ChatMessage(BaseModel):
@@ -91,7 +91,7 @@ class FactPackage(BaseModel):
     @field_validator("sources")
     @classmethod
     def validate_source_provenance(cls, value: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Keep legacy sources readable while validating optional fact provenance.
+        """Keep existing sources readable while validating optional fact provenance.
 
         A source without ``factKeyPrefixes`` is deliberately not rejected: old
         Farmflate routes can still send it, but the Agent tool will never use
@@ -135,7 +135,7 @@ class AgentRunResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Legacy agent models (kept for backward compat)
+# Task-agent models for the existing endpoint contract.
 # ---------------------------------------------------------------------------
 
 class AgentTaskRequest(BaseModel):

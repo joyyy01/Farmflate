@@ -56,13 +56,13 @@ class AgentState(TypedDict, total=False):
 
 
 @dataclass(frozen=True)
-class LegacyChatResult:
+class LocalChatResult:
     answer: StructuredAnswer
     sources: list[dict[str, Any]]
     trace: list[str]
 
 
-class LegacyChatWorkflow:
+class LocalChatWorkflow:
     _RISK_WORDS = ("위험", "주의", "조심", "병", "피해", "재해", "호우", "폭염", "강풍", "저온", "서리", "가뭄", "태풍", "역병", "노균")
     _CROP_WORDS = ("작물", "심", "재배", "추천", "감자", "배", "오이", "상추", "사과", "적합", "뭘", "어떤")
     _WHY_WORDS = ("왜", "이유", "근거", "분석", "점수", "어떻게", "판정", "산출")
@@ -95,9 +95,9 @@ class LegacyChatWorkflow:
         builder.add_edge("fallback_or_return", END)
         self._agent_graph = builder.compile()
 
-    async def run(self, fact_package: FactPackage) -> LegacyChatResult:
+    async def run(self, fact_package: FactPackage) -> LocalChatResult:
         state = await self._agent_graph.ainvoke({"fact_package": fact_package, "trace": []})
-        return LegacyChatResult(
+        return LocalChatResult(
             answer=state["final_answer"],
             sources=state.get("final_sources", []),
             trace=state.get("trace", []),
@@ -234,7 +234,14 @@ class LegacyChatWorkflow:
             "SCREEN_CLARIFICATION": [],
             "UNSUPPORTED_ACTION": [],
         }
-        selected = list(tool_map.get(intent, ["get_region_analysis", "get_report_sources"]))[:2]
+        selected = list(tool_map.get(intent, ["get_region_analysis", "get_report_sources"]))
+        if (
+            intent == "RISK_EXPLANATION"
+            and self._extract_crop_name(state["fact_package"].question, state["fact_package"].facts, state["fact_package"].history)
+            and "get_crop_profile" not in selected
+        ):
+            source_index = selected.index("get_report_sources") if "get_report_sources" in selected else len(selected)
+            selected.insert(source_index, "get_crop_profile")
         # A field dashboard conversation should have access to the persisted
         # snapshot too. It is scoped by the Spring service before it reaches
         # the agent, so this adds context without granting data access.
@@ -769,27 +776,42 @@ class LegacyChatWorkflow:
             )
 
         if intent == "RISK_EXPLANATION":
-            parts = []
+            parts = ["핵심 판단"]
             if region_name:
-                parts.append(f"📍 {region_name} 분석 기준입니다.")
                 used_fact_ids.append("region.name")
+            crop_name = self._extract_crop_name(fp.question, facts, fp.history) or facts.get("crop.1.name", "")
+            if crop_name:
+                parts.append(f"{region_name or '현재 리포트'}에서 {crop_name} 재배 시 우선 확인할 위험입니다.")
+                used_fact_ids.append("crop.1.name")
+                mentioned_crops.append(str(crop_name))
+            elif region_name:
+                parts.append(f"{region_name} 분석 기준으로 우선 확인할 위험입니다.")
             risk_title = facts.get("risk.1.title", "")
-            risk_code = facts.get("risk.1.code", "")
             risk_guide = tool_results.get("risk_guide")
             if risk_title:
-                parts.append(f"가장 큰 위험은 '{risk_title}'입니다.")
+                parts.append(f"현재 가장 큰 위험은 {risk_title}입니다.")
                 used_fact_ids.append("risk.1.title")
                 mentioned_risks.append(str(risk_title))
                 if risk_guide and isinstance(risk_guide, dict):
-                    parts.append(f"\n⚠️ {risk_guide.get('title', '')} 상세: {risk_guide.get('detail', '')}")
-                    parts.append(f"\n✅ 권장 대응: {risk_guide.get('action', '')}")
+                    detail = str(risk_guide.get("detail", "")).strip()
+                    if detail:
+                        parts.extend(["", "근거", detail])
             else:
-                parts.append("현재 기상 예보에서 확인된 주요 위험은 없습니다. 🟢")
-                parts.append("다만, 일기예보는 수시로 변동되므로 정기적으로 확인하세요.")
+                parts.append("현재 리포트에서 우선순위 위험을 확인하지 못했습니다.")
             risk_action = facts.get("risk.1.action.1", "")
-            if risk_action and not risk_guide:
-                parts.append(f"권장 행동: {risk_action}")
+            guide_action = risk_guide.get("action", "") if isinstance(risk_guide, dict) else ""
+            crop_profile = tool_results.get("crop_profile")
+            actions: list[str] = []
+            if risk_action:
+                actions.append(str(risk_action))
                 used_fact_ids.append("risk.1.action.1")
+            if guide_action and guide_action not in actions:
+                actions.append(str(guide_action))
+            if isinstance(crop_profile, dict) and crop_profile.get("watering"):
+                actions.append(f"{crop_profile.get('name', crop_name)} 재배 시 {crop_profile['watering']}")
+            if actions:
+                parts.extend(["", "지금 할 일"])
+                parts.extend(f"{index}. {action}" for index, action in enumerate(actions, 1))
             answer_text = "\n".join(parts)
 
         elif intent == "CROP_RECOMMENDATION":

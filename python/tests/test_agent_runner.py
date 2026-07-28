@@ -188,3 +188,22 @@ def test_runtime_rejects_any_tool_step_limit_other_than_two() -> None:
     ):
         with pytest.raises(RuntimeError, match="AGENT_MAX_TOOL_CALLS"):
             settings.validate_runtime()
+
+
+def test_remote_agent_presentation_expands_short_grounded_answers_in_korean() -> None:
+    package = FactPackage(
+        requestId="presentation",
+        question="상추 재배의 가뭄 위험을 알려줘",
+        facts={
+            "region.name": "전북 익산시",
+            "crop.1.name": "상추",
+            "risk.1.title": "가뭄 위험",
+            "risk.1.action.1": "토양 수분을 확인하고 관수 일정을 조정하세요.",
+        },
+    )
+
+    answer = GroundedAgent._present_remote_answer("상추 재배에서는 가뭄 위험을 우선 확인해야 합니다.", package)
+
+    assert len(answer) >= 240
+    assert all(heading in answer for heading in ("핵심 판단", "근거", "지금 할 일"))
+    assert "토양 수분을 확인하고 관수 일정을 조정하세요." in answer
