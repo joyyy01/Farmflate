@@ -48,6 +48,13 @@ brain/
 /docs/superpowers/plans/
 /docs/superpowers/specs/
 
+# Keep linked worktrees out of the repository while allowing reviewed design specs.
+/.worktrees/
+!/docs/
+!/docs/superpowers/
+!/docs/superpowers/specs/
+!/docs/superpowers/specs/*.md
+
 # Keep local Windows launchers and notes out of the repository.
 *.bat
 *.md
