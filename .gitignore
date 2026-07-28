@@ -59,3 +59,8 @@ brain/
 *.bat
 *.md
 
+# Design specifications are reviewed project artifacts, not local notes.
+!/docs/
+!/docs/superpowers/
+!/docs/superpowers/specs/
+!/docs/superpowers/specs/*.md
