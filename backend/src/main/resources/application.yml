@@ -61,7 +61,7 @@ app:
       address-url: ${VWORLD_ADDRESS_URL:https://api.vworld.kr/req/address}
     parcel:
       identifier-url: ${PARCEL_IDENTIFIER_URL:}
-      api-key: ${PARCEL_IDENTIFIER_API_KEY}
+      api-key: ${PARCEL_IDENTIFIER_API_KEY:}
     nongsaro:
       api-key: ${NONGSARO_API_KEY}
   external-api:
