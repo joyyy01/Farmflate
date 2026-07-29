@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.agent.responses_client import FINAL_ANSWER_SCHEMA, ResponsesToolCallingClient
+from app.agent.responses_client import FINAL_ANSWER_SCHEMA, ResponseContractError, ResponsesToolCallingClient
 from app.core.config import settings
 
 
@@ -124,16 +125,88 @@ def test_responses_client_keeps_state_for_function_call_continuation() -> None:
         ))
 
     assert "store" not in payloads[0]
+    assert payloads[0]["max_output_tokens"] == 800
     assert payloads[1]["previous_response_id"] == "resp-tool"
 
 
-def test_final_answer_schema_requires_a_detailed_korean_response_structure() -> None:
-    answer_schema = FINAL_ANSWER_SCHEMA["properties"]["answer"]
+def test_final_answer_schema_requires_sectioned_cited_response_structure() -> None:
+    answer_block_schema = FINAL_ANSWER_SCHEMA["properties"]["answer_blocks"]["items"]
+    answer_schema = answer_block_schema["properties"]["text"]
 
-    assert answer_schema["minLength"] >= 240
-    assert "핵심 판단" in answer_schema["pattern"]
-    assert "근거" in answer_schema["pattern"]
-    assert "지금 할 일" in answer_schema["pattern"]
+    assert answer_block_schema["properties"]["section"]["enum"] == ["judgment", "evidence", "actions"]
+    assert "section" in answer_block_schema["required"]
+    assert answer_schema["minLength"] == 1
+    assert FINAL_ANSWER_SCHEMA["properties"]["answer_blocks"]["minItems"] == 0
+    assert answer_block_schema["properties"]["citation_ids"]["minItems"] == 0
+
+
+def test_responses_client_accepts_an_empty_block_list_for_needs_context() -> None:
+    _, _, result = _next_turn({
+        "id": "resp-needs-context",
+        "output_text": json.dumps({
+            "answer_blocks": [],
+            "status": "needs_context",
+            "safety_notice": None,
+        }),
+        "output": [],
+    })
+
+    assert result.status == "needs_context"
+    assert result.citation_ids == []
+
+
+def test_responses_client_wraps_invalid_structured_json_as_a_contract_error() -> None:
+    with pytest.raises(ResponseContractError, match="structured answer"):
+        _next_turn({
+            "id": "resp-invalid-json",
+            "output_text": "{invalid-json",
+            "output": [],
+        })
+
+
+def test_responses_client_renders_sectioned_cited_answer_blocks_deterministically() -> None:
+    judgment = "장마철에는 병해충 발생 조건을 먼저 확인해야 합니다. 습도가 높고 잎이 오래 젖어 있으면 병해 확산 가능성이 커질 수 있습니다."
+    evidence = "승인된 주간 농사정보에는 강우 뒤 포장 습도와 작물 잎의 이상 증상을 함께 점검하라고 안내합니다."
+    actions = "1. 포장 배수와 고인 물을 확인하세요.\n2. 잎 뒷면과 줄기의 반점·변색을 관찰하세요.\n3. 이상 증상이 보이면 작물과 지역을 추가로 알려 주세요."
+
+    _, _, result = _next_turn({
+        "id": "resp-blocks",
+        "output_text": json.dumps({
+            "answer_blocks": [
+                {"section": "actions", "text": actions, "citation_ids": ["rag:chunk-1"]},
+                {"section": "judgment", "text": judgment, "citation_ids": ["rag:chunk-1"]},
+                {"section": "evidence", "text": evidence, "citation_ids": ["rag:chunk-1"]},
+            ],
+            "status": "completed",
+            "safety_notice": None,
+        }),
+        "output": [],
+    })
+
+    assert result.answer == f"핵심 판단\n{judgment}\n\n근거\n{evidence}\n\n지금 할 일\n{actions}"
+    assert result.claims == [
+        {"text": actions, "citation_ids": ["rag:chunk-1"]},
+        {"text": judgment, "citation_ids": ["rag:chunk-1"]},
+        {"text": evidence, "citation_ids": ["rag:chunk-1"]},
+    ]
+    assert result.citation_ids == ["rag:chunk-1"]
+
+
+def test_responses_client_rejects_completed_answer_without_all_visible_sections() -> None:
+    with pytest.raises(ValueError, match="all visible sections"):
+        _next_turn({
+            "id": "resp-incomplete-sections",
+            "output_text": json.dumps({
+                "answer_blocks": [{
+                    "section": "actions",
+                    "text": "1. 포장 배수를 확인하세요.",
+                    "citation_ids": ["rag:chunk-1"],
+                }],
+                "status": "completed",
+                "safety_notice": None,
+            }),
+            "output": [],
+        })
 
 
 def test_responses_client_normalizes_an_incomplete_needs_context_draft() -> None:

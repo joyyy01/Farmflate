@@ -1,33 +1,14 @@
 from contextlib import asynccontextmanager
-import warnings
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from langchain_core._api.deprecation import LangChainPendingDeprecationWarning
 
 from app.core.config import settings
 from app.core.outbound_http import outbound_http_client
 from app.rag.retriever import rag_retriever
 
 
-_LANGGRAPH_CACHE_WARNING = "The default value of `allowed_objects` will change in a future version."
-_default_showwarning = warnings.showwarning
-
-
-def _show_startup_warning(message, category, filename, lineno, file=None, line=None):
-    if (
-        issubclass(category, LangChainPendingDeprecationWarning)
-        and str(message).startswith(_LANGGRAPH_CACHE_WARNING)
-    ):
-        return
-    _default_showwarning(message, category, filename, lineno, file, line)
-
-
-warnings.showwarning = _show_startup_warning
-try:
-    from app.api.v1.router import api_router
-finally:
-    warnings.showwarning = _default_showwarning
+from app.api.v1.router import api_router
 
 
 @asynccontextmanager

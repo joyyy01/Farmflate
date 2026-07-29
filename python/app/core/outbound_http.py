@@ -9,7 +9,7 @@ from app.core.config import settings
 
 
 class OutboundHttpClient:
-    """Process-lifetime HTTP client for bounded LLM model calls."""
+    """Process-lifetime HTTP client for bounded AI integration calls."""
 
     def __init__(self) -> None:
         self._client: httpx.AsyncClient | None = None
@@ -27,6 +27,10 @@ class OutboundHttpClient:
     async def post(self, url: str, **kwargs: Any) -> httpx.Response:
         client = await self.start()
         return await client.post(url, **kwargs)
+
+    async def get(self, url: str, **kwargs: Any) -> httpx.Response:
+        client = await self.start()
+        return await client.get(url, **kwargs)
 
     async def close(self) -> None:
         async with self._lock:

@@ -15,6 +15,7 @@ class RetrievedChunk:
     content: str
     score: float
     metadata: dict[str, Any]
+    retrieval_paths: tuple[str, ...] = ()
 
     def citation(self) -> dict[str, str]:
         return {
@@ -31,14 +32,25 @@ class RetrievalResult:
     chunks: list[RetrievedChunk]
     query: str
     insufficient_evidence: bool
+    mode: str = "lexical"
+    latency_ms: int = 0
+    candidate_count: int = 0
 
     def tool_payload(self) -> dict[str, Any]:
         return {
             "query": self.query,
             "insufficientEvidence": self.insufficient_evidence,
+            "retrievalMode": self.mode,
+            "latencyMs": self.latency_ms,
+            "candidateCount": self.candidate_count,
             "citations": [chunk.citation() for chunk in self.chunks],
             "evidence": [
-                {"chunkId": chunk.chunk_id, "content": chunk.content, "score": round(chunk.score, 6)}
+                {
+                    "chunkId": chunk.chunk_id,
+                    "content": chunk.content,
+                    "score": round(chunk.score, 6),
+                    "retrievalPaths": list(chunk.retrieval_paths),
+                }
                 for chunk in self.chunks
             ],
         }

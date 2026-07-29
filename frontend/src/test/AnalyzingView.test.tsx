@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { AnalyzingView, deriveAnalysisStepDisplay } from '../components/farmflate/AnalyzingView';
+import { AnalyzingView } from '../components/farmflate/AnalyzingView';
+import { deriveAnalysisStepDisplay } from '../services/analysisProgress';
 import type { AnalysisState } from '../services/reportLifecycle';
 
 const regionSteps = [

@@ -64,3 +64,17 @@ brain/
 !/docs/superpowers/
 !/docs/superpowers/specs/
 !/docs/superpowers/specs/*.md
+
+# Decision records and operational runbooks preserve the rationale and evidence
+# for production-facing RAG/Agent changes.
+!/docs/adr/
+!/docs/adr/*.md
+!/docs/plans/
+!/docs/plans/2026-07-29-postgresql-rag-agent.md
+!/docs/rag-agent-architecture.md
+!/docs/rag-agent-operations.md
+!/docs/evidence/
+!/docs/evidence/*.md
+
+# Share the contract, never the populated local secret file.
+!.env.example

@@ -44,7 +44,6 @@ public class FieldDailyReportService {
     private final FieldActivityLogRepository activityLogRepository;
     private final FieldWeatherService fieldWeatherService;
     private final FieldGuidanceRuleEngine ruleEngine;
-    private final FieldGuidanceNarrator narrator;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
@@ -98,21 +97,6 @@ public class FieldDailyReportService {
         String headlineDescription = validated.headlineDescription();
         List<FieldTaskDto> tasks = validated.tasks();
         String reasoningSummary = validated.reasoningPoints().isEmpty() ? headlineDescription : validated.reasoningPoints().get(0);
-        boolean llmFallback = false;
-
-        try {
-            FieldGuidanceNarrator.NarratedGuidance narrated = narrator.narrate(
-                    field.getCropCode(), field.getCropName(), field.getStage(), reportDate, weather, validated);
-            headline = narrated.headline();
-            headlineDescription = narrated.headlineDescription();
-            tasks = narrated.tasks();
-            reasoningSummary = narrated.reasoningSummary();
-        } catch (Exception exception) {
-            llmFallback = true;
-            log.info("field_daily_report.llm_fallback fieldId={} reportDate={} reason={}",
-                    field.getId(), reportDate, exception.getMessage());
-        }
-
         LocalDateTime generatedAt = LocalDateTime.now(clock);
         FieldDailyReportDto dto = FieldDailyReportDto.builder()
                 .id(UUID.randomUUID().toString())
@@ -140,9 +124,9 @@ public class FieldDailyReportService {
                 .reportDate(reportDate).generationReason(GENERATION_REASON)
                 .generatedAt(generatedAt).payloadJson(write(dto)).build());
 
-        log.info("field_daily_report.generated fieldId={} reportDate={} status={} taskCount={} alertCount={} durationMs={} llmFallback={}",
+        log.info("field_daily_report.generated fieldId={} reportDate={} status={} taskCount={} alertCount={} durationMs={}",
                 field.getId(), reportDate, validated.status(), tasks.size(), validated.alerts().size(),
-                System.currentTimeMillis() - startedAt, llmFallback);
+                System.currentTimeMillis() - startedAt);
         return dto;
     }
 

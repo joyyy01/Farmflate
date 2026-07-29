@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ChevronDown, MapPin } from 'lucide-react';
 import { ApiError, ApiService } from '../../services/api';
@@ -34,7 +34,7 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
   const selectedProvince = provinces.find(region => region.sidoCode === selectedProvinceCode);
   const selectedDistrict = districts.find(region => region.sigunguCode === selectedDistrictCode);
 
-  const loadProvinces = async (force = false) => {
+  const loadProvinces = useCallback(async (force = false) => {
     setIsLoading(true);
     setLoadError(null);
     try {
@@ -51,9 +51,9 @@ export const RegionExploreView: React.FC<RegionExploreViewProps> = ({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [mode]);
 
-  useEffect(() => { void loadProvinces(); }, []);
+  useEffect(() => { void loadProvinces(); }, [loadProvinces]);
 
   useEffect(() => {
     if (!selectedProvinceCode) {

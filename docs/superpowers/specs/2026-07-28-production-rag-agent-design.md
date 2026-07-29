@@ -1,6 +1,6 @@
 # Production RAG and AI Agent Design
 
-> **Implementation decision (2026-07-28):** The deployed RAG path is deliberately simplified to PostgreSQL native full-text search over approved sources. The earlier pgvector, external embedding, Responses API function-calling, and MCP extension proposals below are deferred and are not runtime dependencies.
+> **Historical design note (superseded 2026-07-29):** This is an earlier exploration, not a statement of the current runtime. The implemented service defaults to PostgreSQL lexical FTS over approved sources; pgvector/RRF is an explicit, evaluation-gated option. The chat Agent uses a bounded Responses API tool path, while Chat Completions, LangGraph, and content-generating fallback paths have been removed. For the current decision and verification evidence, see `2026-07-29-agent-trust-boundary-hardening-design.md` and `../../evidence/2026-07-29-rag-agent-local-verification.md`.
 
 ## Status and goal
 

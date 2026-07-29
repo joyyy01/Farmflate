@@ -35,6 +35,7 @@ public class AssistantService {
     private static final int MAX_HISTORY_CONTENT_LENGTH = 1_200;
     private static final int MAX_VISIBLE_DATA_REFS = 12;
     private static final int MAX_VISIBLE_LABEL_LENGTH = 80;
+    private static final String AGENT_UNAVAILABLE_MESSAGE = "현재 검증 가능한 답변을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.";
     private static final Set<String> ALLOWED_VISIBLE_SECTIONS = Set.of(
             "summary", "climate", "soil", "hazard", "crop", "field");
     private static final List<String> REGION_FACT_KEY_PREFIXES = List.of(
@@ -95,52 +96,44 @@ public class AssistantService {
             Map<String, Object> pythonResponse = callPythonAgent(factPackage);
             return validateAndReshape(pythonResponse, factPackage);
         } catch (Exception e) {
-            log.warn("Python AI call failed, returning fallback", e);
-            return buildFallbackResponse(factPackage);
+            log.warn("python_agent_unavailable requestId={} errorType={}",
+                    factPackage.get("requestId"), e.getClass().getSimpleName());
+            return buildAgentUnavailableResponse(factPackage);
         }
     }
 
-    @SuppressWarnings("unchecked")
     private Map<String, Object> validateAndReshape(Map<String, Object> response, Map<String, Object> factPackage) {
-        if (response == null || !response.containsKey("answer")) {
-            return buildFallbackResponse(factPackage);
+        if (response == null) return buildAgentUnavailableResponse(factPackage);
+
+        Map<String, Object> answer = objectMap(response.get("answer"));
+        Object rawStatus = response.get("status");
+        String status = rawStatus instanceof String value ? value : "";
+        if (!Set.of("completed", "needs_context").contains(status)
+                || !(answer.get("answer") instanceof String text) || text.isBlank()) {
+            return buildAgentUnavailableResponse(factPackage);
         }
-        Object answerObj = response.get("answer");
-        if (answerObj instanceof String) {
-            Map<String, Object> reshaped = new LinkedHashMap<>(response);
-            Map<String, Object> structured = new LinkedHashMap<>();
-            structured.put("answer", answerObj);
-            structured.put("basisType", "CURRENT_REPORT");
-            structured.put("usedFactIds", List.of());
-            structured.put("usedSourceIds", List.of());
-            structured.put("mentionedNumbers", List.of());
-            structured.put("mentionedCrops", List.of());
-            structured.put("mentionedRisks", List.of());
-            structured.put("safetyNotice", null);
-            reshaped.put("answer", structured);
-            reshaped.putIfAbsent("requestId", factPackage.get("requestId"));
-            reshaped.putIfAbsent("sources", factPackage.getOrDefault("sources", List.of()));
-            return reshaped;
+        if ("completed".equals(status)
+                && (!hasEntries(response.get("sources")) || !hasNonBlankStrings(answer.get("usedSourceIds")))) {
+            return buildAgentUnavailableResponse(factPackage);
         }
-        if (answerObj instanceof Map) {
-            Map<String, Object> answer = (Map<String, Object>) answerObj;
-            if (!answer.containsKey("answer") || answer.get("answer") == null) {
-                return buildFallbackResponse(factPackage);
-            }
-            // JSON clients currently return mutable maps, but keeping that as
-            // an implicit contract turns an otherwise valid agent response
-            // into a fallback when an immutable map is returned later.
-            Map<String, Object> reshaped = new LinkedHashMap<>(response);
-            reshaped.putIfAbsent("requestId", factPackage.get("requestId"));
-            reshaped.putIfAbsent("sources", factPackage.getOrDefault("sources", List.of()));
-            // Pass the agent's real status through instead of forcing
-            // "completed" -- "fallback" means the LLM answer failed grounding
-            // validation and a rule-based answer was substituted; masking
-            // that made a degraded response indistinguishable from a normal one.
-            reshaped.putIfAbsent("status", "completed");
-            return reshaped;
+
+        Map<String, Object> reshaped = new LinkedHashMap<>(response);
+        reshaped.put("requestId", factPackage.get("requestId"));
+        reshaped.put("answer", answer);
+        if ("needs_context".equals(status)) {
+            reshaped.put("sources", List.of());
+            answer.put("usedSourceIds", List.of());
         }
-        return buildFallbackResponse(factPackage);
+        return reshaped;
+    }
+
+    private boolean hasEntries(Object value) {
+        return value instanceof List<?> entries && !entries.isEmpty();
+    }
+
+    private boolean hasNonBlankStrings(Object value) {
+        return value instanceof List<?> values
+                && values.stream().anyMatch(entry -> entry instanceof String text && !text.isBlank());
     }
 
     private Map<String, Object> buildFactPackage(String email, AssistantRequestDto request, Map<String, Object> payload) {
@@ -450,83 +443,23 @@ public class AssistantService {
         throw new RuntimeException("Python AI returned " + response.getStatusCode());
     }
 
-    private Map<String, Object> buildFallbackResponse(Map<String, Object> factPackage) {
-        Map<String, Object> facts = (Map<String, Object>) factPackage.getOrDefault("facts", Map.of());
-        StringBuilder sb = new StringBuilder();
-        List<String> usedFacts = new ArrayList<>();
-
-        Object score = facts.get("region.score");
-        Object grade = facts.get("region.grade");
-        if (score != null) {
-            sb.append("현재 리포트의 지역 점수는 ").append(score).append("점");
-            if (grade != null) sb.append("(").append(grade).append(")");
-            sb.append("입니다.\n");
-            usedFacts.add("region.score");
-        }
-
-        Object crop1Name = facts.get("crop.1.name");
-        Object crop1Score = facts.get("crop.1.score");
-        if (crop1Name != null) {
-            sb.append("추천 작물 1순위는 ").append(crop1Name);
-            if (crop1Score != null) sb.append("(").append(crop1Score).append("점)");
-            sb.append("입니다.\n");
-            usedFacts.add("crop.1.name");
-        }
-        Object crop2Name = facts.get("crop.2.name");
-        Object crop2Score = facts.get("crop.2.score");
-        if (crop2Name != null) {
-            sb.append("2순위는 ").append(crop2Name);
-            if (crop2Score != null) sb.append("(").append(crop2Score).append("점)");
-            sb.append(", ");
-            Object crop3Name = facts.get("crop.3.name");
-            Object crop3Score = facts.get("crop.3.score");
-            if (crop3Name != null) {
-                sb.append("3순위는 ").append(crop3Name);
-                if (crop3Score != null) sb.append("(").append(crop3Score).append("점)");
-            }
-            sb.append("입니다.\n");
-            usedFacts.add("crop.2.name");
-        }
-
-        Object riskTitle = facts.get("risk.1.title");
-        if (riskTitle != null) {
-            sb.append("가장 큰 위험은 ").append(riskTitle).append("입니다.\n");
-            usedFacts.add("risk.1.title");
-            Object action = facts.get("risk.1.action.1");
-            if (action != null) {
-                sb.append("권장 행동은 ").append(action).append("입니다.\n");
-                usedFacts.add("risk.1.action.1");
-            }
-        } else {
-            sb.append("현재 기상 예보에서 확인된 주요 위험은 없습니다.\n");
-        }
-
-        if (score == null && crop1Name == null) {
-            sb.setLength(0);
-            sb.append("현재 분석 데이터가 부족합니다. 지역 분석을 먼저 완료해주세요.");
-        }
-
+    private Map<String, Object> buildAgentUnavailableResponse(Map<String, Object> factPackage) {
         Map<String, Object> answer = new LinkedHashMap<>();
-        answer.put("answer", sb.toString().trim());
-        answer.put("basisType", "CURRENT_REPORT");
-        answer.put("usedFactIds", usedFacts);
-        List<Map<String, Object>> pkgSources = (List<Map<String, Object>>) factPackage.getOrDefault("sources", List.of());
-        List<String> sourceIds = pkgSources.stream()
-                .map(s -> String.valueOf(s.getOrDefault("sourceId", "")))
-                .filter(id -> !id.isEmpty())
-                .toList();
-
-        answer.put("usedSourceIds", sourceIds);
+        answer.put("answer", AGENT_UNAVAILABLE_MESSAGE);
+        answer.put("basisType", "INSUFFICIENT_EVIDENCE");
+        answer.put("usedFactIds", List.of());
+        answer.put("usedSourceIds", List.of());
         answer.put("mentionedNumbers", List.of());
         answer.put("mentionedCrops", List.of());
-        answer.put("mentionedRisks", riskTitle != null ? List.of(riskTitle) : List.of());
+        answer.put("mentionedRisks", List.of());
         answer.put("safetyNotice", null);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("requestId", factPackage.get("requestId"));
-        result.put("status", "fallback");
+        result.put("status", "needs_context");
         result.put("answer", answer);
-        result.put("sources", pkgSources);
+        result.put("sources", List.of());
+        result.put("trace", List.of("현재 AI 응답을 완료하지 못했습니다."));
         return result;
     }
 

@@ -46,7 +46,7 @@ class _RecordingRepository:
         return uuid4()
 
 
-def test_operator_ingestion_stores_fts_chunks_without_embedding_requests() -> None:
+def test_operator_ingestion_stays_lexical_without_hybrid_opt_in_or_an_embedding_key() -> None:
     repository = _RecordingRepository()
     ingestor = OperatorIngestor(repository)
     content = "\n\n".join("a" for _ in range(65))
@@ -67,5 +67,6 @@ def test_operator_ingestion_stores_fts_chunks_without_embedding_requests() -> No
     assert repository.arguments is not None
     chunks = repository.arguments["chunks"]
     assert len(chunks) == 65
-    assert all(not hasattr(chunk, "embedding") for chunk in chunks)
-    assert "embedding_model" not in repository.arguments
+    assert all(chunk.embedding is None for chunk in chunks)
+    assert repository.arguments["embedding_status"] == "NOT_REQUESTED"
+    assert repository.arguments["embedding_model"] is None

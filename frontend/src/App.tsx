@@ -165,9 +165,9 @@ export function App() {
   // below. Parse the id straight from the pathname instead.
   const fieldIdFromPath = useMemo(() => location.pathname.match(/^\/field\/([^/]+)/)?.[1], [location.pathname]);
   const viewStep = useMemo(() => pathToViewStep(location.pathname), [location.pathname]);
-  const setViewStep = (step: ExtendedViewStep, options?: { replace?: boolean }) => {
+  const setViewStep = useCallback((step: ExtendedViewStep, options?: { replace?: boolean }) => {
     navigate(VIEW_STEP_PATH[step as Exclude<ExtendedViewStep, 'field_dashboard'>] ?? '/', { replace: options?.replace });
-  };
+  }, [navigate]);
   const [activeTab, setActiveTab] = useState<TabState>('home');
   const [isAIChatOpen, setIsAIChatOpen] = useState(false);
 
@@ -454,7 +454,7 @@ export function App() {
       if (pollTimerRef.current !== null) window.clearTimeout(pollTimerRef.current);
       activeAnalysisRunRef.current += 1;
     };
-  }, []);
+  }, [setViewStep]);
 
   /* Refreshes the home summary (weather, today's action, latest analysis) in the
      background without touching viewStep/routing. Used by the daily 6am refresh
@@ -897,7 +897,7 @@ export function App() {
         ? await ApiService.likeCommunityPost(postId)
         : await ApiService.unlikeCommunityPost(postId);
       setPosts(current => current.map(p => p.id === postId ? normalizeCommunityPosts([result])[0] : p));
-    } catch (err) {
+    } catch {
       setPosts(previous);
       setCommunityLoadError('좋아요 처리에 실패했습니다. 다시 시도해 주세요.');
     }
@@ -919,7 +919,7 @@ export function App() {
       });
       const postsFromServer = await ApiService.getCommunityPosts();
       setPosts(normalizeCommunityPosts(postsFromServer));
-    } catch (err) {
+    } catch {
       setCommunityLoadError('댓글 등록에 실패했습니다. 다시 시도해 주세요.');
     }
   };

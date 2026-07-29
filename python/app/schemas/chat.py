@@ -5,6 +5,51 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator
 
 
+_MODEL_INPUT_MAX_DEPTH = 4
+_MODEL_INPUT_MAX_ITEMS = 64
+_MODEL_INPUT_MAX_STRING_CHARS = 4_000
+_MODEL_INPUT_MAX_TOTAL_CHARS = 16_000
+
+
+def _validate_model_input_budget(value: object, *, field_name: str) -> object:
+    """Reject oversized JSON-like internal payloads before they reach an LLM."""
+    item_count = 0
+    total_chars = 0
+
+    def visit(current: object, depth: int) -> None:
+        nonlocal item_count, total_chars
+        if depth > _MODEL_INPUT_MAX_DEPTH:
+            raise ValueError(f"{field_name} exceeds the maximum nesting depth.")
+        if isinstance(current, dict):
+            for key, child in current.items():
+                item_count += 1
+                if item_count > _MODEL_INPUT_MAX_ITEMS:
+                    raise ValueError(f"{field_name} exceeds the maximum item count.")
+                visit(str(key), depth + 1)
+                visit(child, depth + 1)
+            return
+        if isinstance(current, list):
+            for child in current:
+                item_count += 1
+                if item_count > _MODEL_INPUT_MAX_ITEMS:
+                    raise ValueError(f"{field_name} exceeds the maximum item count.")
+                visit(child, depth + 1)
+            return
+        if isinstance(current, str):
+            if len(current) > _MODEL_INPUT_MAX_STRING_CHARS:
+                raise ValueError(f"{field_name} contains an oversized string.")
+            total_chars += len(current)
+            if total_chars > _MODEL_INPUT_MAX_TOTAL_CHARS:
+                raise ValueError(f"{field_name} exceeds the total character budget.")
+            return
+        if current is None or isinstance(current, (bool, int, float)):
+            return
+        raise ValueError(f"{field_name} must contain JSON-compatible values.")
+
+    visit(value, depth=0)
+    return value
+
+
 # ---------------------------------------------------------------------------
 # Chat models kept for the existing /chat endpoint contract.
 # ---------------------------------------------------------------------------
@@ -35,12 +80,20 @@ class ChatRequest(BaseModel):
             raise ValueError("질문을 입력해 주세요.")
         return value
 
+    @field_validator("context")
+    @classmethod
+    def validate_context_budget(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        if value is None:
+            return value
+        return _validate_model_input_budget(value, field_name="context")
+
 
 class GroundingSource(BaseModel):
     title: str
     detail: str | None = None
     observed_at: str | None = None
     source_url: str | None = None
+    evidence_count: int = Field(default=1, ge=1, serialization_alias="evidenceCount")
 
 
 class ChatResponse(BaseModel):
@@ -87,6 +140,12 @@ class FactPackage(BaseModel):
             if content:
                 sanitized.append({"role": role, "content": content[:1200]})
         return sanitized
+
+    @field_validator("userScope", "context", "facts", "sources")
+    @classmethod
+    def validate_model_input_budget(cls, value: object, info: object) -> object:
+        field_name = getattr(info, "field_name", "model input")
+        return _validate_model_input_budget(value, field_name=field_name)
 
     @field_validator("sources")
     @classmethod
@@ -158,20 +217,3 @@ class AgentTaskResponse(BaseModel):
     result: str
     steps_taken: list[str]
     sources: list[GroundingSource] = Field(default_factory=list)
-
-
-class FieldGuidanceTask(BaseModel):
-    key: str
-    title: str
-    description: str
-
-
-class FieldGuidanceRequest(BaseModel):
-    facts: dict[str, Any] = Field(default_factory=dict)
-
-
-class FieldGuidanceResponse(BaseModel):
-    headline: str
-    headlineDescription: str
-    tasks: list[FieldGuidanceTask] = Field(default_factory=list)
-    reasoningSummary: str

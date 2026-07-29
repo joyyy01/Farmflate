@@ -4,8 +4,10 @@ import json
 from typing import Any, AsyncGenerator
 from uuid import uuid4
 
+from app.agent.contracts import ToolCitation
 from app.agent.runner import GroundedAgent
 from app.core.config import settings
+from app.rag.retriever import rag_retriever
 from app.schemas.chat import (
     AgentRunRequest,
     AgentRunResponse,
@@ -13,39 +15,49 @@ from app.schemas.chat import (
     AgentTaskResponse,
     ChatRequest,
     ChatResponse,
-    FieldGuidanceRequest,
-    FieldGuidanceResponse,
     FactPackage,
     GroundingSource,
     StructuredAnswer,
 )
-from app.services.field_guidance import FieldGuidanceService
-from app.services.local_chat_workflow import LocalChatWorkflow
+
+
+def aggregate_grounding_sources(citations: list[ToolCitation]) -> list[dict[str, Any]]:
+    """Present one source per document while retaining chunk-level evidence IDs."""
+    grouped: dict[tuple[str, str | None], dict[str, Any]] = {}
+    for citation in citations:
+        key = (citation.title, citation.source_url)
+        source = grouped.setdefault(key, {
+            "sourceId": citation.citation_id,
+            "title": citation.title,
+            "sourceUrl": citation.source_url,
+            "citationIds": [],
+            "evidenceCount": 0,
+        })
+        source["citationIds"].append(citation.citation_id)
+        source["evidenceCount"] += 1
+    return list(grouped.values())
 
 
 class AIService:
-    """HTTP-facing facade for the grounded Agent and backward-compatible chat contracts."""
+    """HTTP-facing facade for one grounded Agent path."""
 
     def __init__(self) -> None:
         self._grounded_agent = GroundedAgent()
-        self._local_chat = LocalChatWorkflow()
-        self._field_guidance = FieldGuidanceService()
 
     async def run_agent(self, request: AgentRunRequest) -> AgentRunResponse:
         fact_package = request.fact_package
         if not settings.OPENAI_API_KEY:
-            return await self._run_local_fallback(fact_package)
+            return self._agent_unavailable(fact_package)
         result = await self._grounded_agent.run(fact_package)
+        if result.telemetry is not None:
+            await rag_retriever.record_agent_execution(
+                request_id=fact_package.requestId,
+                telemetry=result.telemetry,
+                measurement_scope="runtime_local",
+            )
         if result.status == "failed":
-            return await self._run_local_fallback(fact_package, upstream_trace=result.trace)
-        sources = [
-            {
-                "sourceId": citation.citation_id,
-                "title": citation.title,
-                "sourceUrl": citation.source_url,
-            }
-            for citation in result.citations
-        ]
+            return self._agent_unavailable(fact_package)
+        sources = aggregate_grounding_sources(result.citations)
         return AgentRunResponse(
             requestId=fact_package.requestId,
             status=result.status,
@@ -56,22 +68,20 @@ class AIService:
                 safetyNotice=result.safety_notice,
             ),
             sources=sources,
-            trace=result.trace,
+            trace=["승인된 근거를 확인했습니다."] if result.status == "completed" else ["근거가 부족해 답변을 보류했습니다."],
         )
 
-    async def _run_local_fallback(
-        self,
-        fact_package: FactPackage,
-        *,
-        upstream_trace: list[str] | None = None,
-    ) -> AgentRunResponse:
-        result = await self._local_chat.run(fact_package)
+    @staticmethod
+    def _agent_unavailable(fact_package: FactPackage) -> AgentRunResponse:
         return AgentRunResponse(
             requestId=fact_package.requestId,
-            status="fallback",
-            answer=result.answer,
-            sources=result.sources,
-            trace=[*(upstream_trace or []), *result.trace],
+            status="needs_context",
+            answer=StructuredAnswer(
+                answer="현재 검증 가능한 답변을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+                basisType="INSUFFICIENT_EVIDENCE",
+            ),
+            sources=[],
+            trace=["현재 AI 응답을 완료하지 못했습니다."],
         )
 
     async def process_chat(self, request: ChatRequest) -> ChatResponse:
@@ -82,13 +92,17 @@ class AIService:
                 detail=source.get("dataDate"),
                 observed_at=source.get("dataDate"),
                 source_url=source.get("sourceUrl"),
+                evidence_count=int(source.get("evidenceCount") or 1),
             )
             for source in response.sources
         ]
         grounded = response.status == "completed" and bool(sources) and bool(response.answer.usedSourceIds)
-        steps = list(response.trace)
-        if response.status == "completed" and not grounded:
-            steps.append("인용 가능한 근거 출처가 없습니다.")
+        if grounded:
+            steps = ["승인된 근거를 확인해 답변을 만들었습니다."]
+        elif response.status == "completed":
+            steps = ["인용 가능한 근거 출처가 없어 답변을 보류했습니다."]
+        else:
+            steps = list(response.trace)
         return ChatResponse(
             reply=response.answer.answer,
             status="grounded" if grounded else "needs_context",
@@ -116,9 +130,6 @@ class AIService:
             steps_taken=response.agent_steps,
             sources=response.sources,
         )
-
-    async def generate_field_guidance(self, request: FieldGuidanceRequest) -> FieldGuidanceResponse:
-        return await self._field_guidance.generate(request)
 
     @staticmethod
     def _chat_request_to_fact_package(request: ChatRequest) -> FactPackage:
@@ -153,13 +164,19 @@ class AIService:
                             action = risk.get("recommendedAction", risk.get("description", ""))
                             if action:
                                 facts[f"risk.{index}.action.1"] = action
+        prefixes = sorted({f"{fact_key.split('.', 1)[0]}." for fact_key in facts})
+        sources = [{
+            "sourceId": "farmflate:current-report",
+            "provider": "Farmflate 현재 분석 리포트",
+            "factKeyPrefixes": prefixes,
+        }] if prefixes else []
         return FactPackage(
             requestId=str(uuid4()),
             question=request.message,
             history=[{"role": message.role, "content": message.content} for message in request.history],
             context=context if isinstance(context, dict) else {},
             facts=facts,
-            sources=[],
+            sources=sources,
         )
 
 

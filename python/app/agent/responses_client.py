@@ -8,31 +8,57 @@ from app.core.config import settings
 from app.core.outbound_http import outbound_http_client
 
 
+SECTION_LABELS = {
+    "judgment": "핵심 판단",
+    "evidence": "근거",
+    "actions": "지금 할 일",
+}
+
+
+class ResponseContractError(ValueError):
+    """The model response cannot be rendered as a verified Farmflate answer."""
+
+
+ANSWER_TEXT_SCHEMA = {
+    "type": "string",
+    "minLength": 1,
+    "description": "Korean content for one user-visible answer section, without a heading.",
+}
+
+
 FINAL_ANSWER_SCHEMA = {
     "type": "object",
     "properties": {
-        "answer": {
-            "type": "string",
-            "minLength": 240,
-            "pattern": "^핵심 판단[\\s\\S]*근거[\\s\\S]*지금 할 일[\\s\\S]*",
-        },
-        "claims": {
+        "answer_blocks": {
             "type": "array",
+            "minItems": 0,
+            "maxItems": 3,
             "items": {
                 "type": "object",
                 "properties": {
-                    "text": {"type": "string", "minLength": 1},
-                    "citation_ids": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+                    "section": {
+                        "type": "string",
+                        "enum": list(SECTION_LABELS),
+                        "description": "Semantic section. Do not put the Korean heading in text; the server renders it.",
+                    },
+                    "text": {
+                        **ANSWER_TEXT_SCHEMA,
+                    },
+                        "citation_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "minItems": 0,
+                            "description": "Only citation IDs returned by tools that support this visible answer block. Empty only when status is needs_context.",
+                    },
                 },
-                "required": ["text", "citation_ids"],
+                "required": ["section", "text", "citation_ids"],
                 "additionalProperties": False,
             },
         },
-        "citation_ids": {"type": "array", "items": {"type": "string"}},
         "status": {"type": "string", "enum": ["completed", "needs_context"]},
         "safety_notice": {"type": ["string", "null"]},
     },
-    "required": ["answer", "claims", "citation_ids", "status", "safety_notice"],
+    "required": ["answer_blocks", "status", "safety_notice"],
     "additionalProperties": False,
 }
 
@@ -59,6 +85,7 @@ class ResponsesToolCallingClient:
             "instructions": instructions,
             "tools": tool_definitions,
             "parallel_tool_calls": False,
+            "max_output_tokens": settings.AGENT_MAX_OUTPUT_TOKENS,
             "text": {"format": {"type": "json_schema", "name": "grounded_answer", "strict": True, "schema": FINAL_ANSWER_SCHEMA}},
         }
         if self._previous_response_id is None:
@@ -78,44 +105,95 @@ class ResponsesToolCallingClient:
         response.raise_for_status()
         body = response.json()
         if not isinstance(body, dict):
-            raise ValueError("Responses API returned an invalid response body.")
-        response_id = body.get("id")
-        if not isinstance(response_id, str) or not response_id.strip():
-            raise ValueError("Responses API response id is required for a bounded tool conversation.")
-        self._previous_response_id = response_id
+            raise ResponseContractError("Responses API returned an invalid response body.")
+        self._remember_response_id(body)
         calls = [item for item in body.get("output", []) if isinstance(item, dict) and item.get("type") == "function_call"]
         if len(calls) > 1:
-            raise ValueError("Responses API must return exactly one function call when parallel tool calls are disabled.")
+            raise ResponseContractError("Responses API must return exactly one function call when parallel tool calls are disabled.")
         if calls:
             call = calls[0]
             try:
                 arguments = json.loads(call.get("arguments", "{}"))
             except (TypeError, json.JSONDecodeError) as error:
-                raise ValueError("Function call arguments must be valid JSON.") from error
+                raise ResponseContractError("Function call arguments must be valid JSON.") from error
             call_id = call.get("call_id")
             name = call.get("name")
             if not isinstance(call_id, str) or not call_id.strip():
-                raise ValueError("Function call id is required.")
+                raise ResponseContractError("Function call id is required.")
             if not isinstance(name, str) or not name.strip():
-                raise ValueError("Function call name is required.")
+                raise ResponseContractError("Function call name is required.")
             if not isinstance(arguments, dict):
-                raise ValueError("Function call arguments must be a JSON object.")
+                raise ResponseContractError("Function call arguments must be a JSON object.")
             return ToolCall(call_id=call_id, name=name, arguments=arguments)
-        text = self._output_text(body)
+        return self._parse_final_draft(body)
+
+    def _remember_response_id(self, body: dict[str, Any]) -> None:
+        response_id = body.get("id")
+        if not isinstance(response_id, str) or not response_id.strip():
+            raise ResponseContractError("Responses API response id is required for a bounded tool conversation.")
+        self._previous_response_id = response_id
+
+    @staticmethod
+    def _parse_final_draft(body: dict[str, Any]) -> AgentDraft:
+        text = ResponsesToolCallingClient._output_text(body)
         if not text:
-            raise ValueError("Responses API returned neither a function call nor structured answer text.")
-        draft = json.loads(text)
+            raise ResponseContractError("Responses API returned neither a function call nor structured answer text.")
+        try:
+            draft = json.loads(text)
+        except json.JSONDecodeError as error:
+            raise ResponseContractError("Responses API structured answer must be valid JSON.") from error
         if not isinstance(draft, dict):
-            raise ValueError("Responses API structured answer must be a JSON object.")
+            raise ResponseContractError("Responses API structured answer must be a JSON object.")
         if draft.get("status") == "needs_context":
             return AgentDraft(
-                answer=str(draft.get("answer") or "현재 저장된 근거만으로는 충분한 판단을 내리기 어렵습니다. 추가 분석 결과를 확인해 주세요."),
+                answer="현재 저장된 근거만으로는 충분한 판단을 내리기 어렵습니다. 추가 분석 결과를 확인해 주세요.",
                 claims=[],
                 citation_ids=[],
                 status="needs_context",
                 safety_notice=draft.get("safety_notice") if isinstance(draft.get("safety_notice"), str) else None,
             )
-        return AgentDraft(**draft)
+        answer_blocks = draft.get("answer_blocks")
+        if not isinstance(answer_blocks, list) or not answer_blocks:
+            raise ResponseContractError("Responses API completed answer requires at least one answer block.")
+        claims: list[dict[str, Any]] = []
+        citation_ids: list[str] = []
+        rendered_sections: dict[str, str] = {}
+        for block in answer_blocks:
+            if not isinstance(block, dict):
+                raise ResponseContractError("Responses API answer blocks must be objects.")
+            section = block.get("section")
+            text = block.get("text")
+            block_citation_ids = block.get("citation_ids")
+            if section not in SECTION_LABELS:
+                raise ResponseContractError("Responses API answer blocks have an unsupported section.")
+            if section in rendered_sections:
+                raise ResponseContractError("Responses API answer blocks cannot repeat a section.")
+            if not isinstance(text, str) or not text.strip():
+                raise ResponseContractError("Responses API answer blocks require text.")
+            if (
+                not isinstance(block_citation_ids, list)
+                or not block_citation_ids
+                or any(not isinstance(citation_id, str) or not citation_id.strip() for citation_id in block_citation_ids)
+            ):
+                raise ResponseContractError("Responses API answer blocks require citation IDs.")
+            normalized_citation_ids = [citation_id.strip() for citation_id in block_citation_ids]
+            normalized_text = text.strip()
+            claims.append({"text": normalized_text, "citation_ids": normalized_citation_ids})
+            rendered_sections[section] = normalized_text
+            citation_ids.extend(normalized_citation_ids)
+        if set(rendered_sections) != set(SECTION_LABELS):
+            raise ResponseContractError("Responses API completed answers require all visible sections.")
+        return AgentDraft(
+            answer="\n\n".join(
+                f"{SECTION_LABELS[section]}\n{rendered_sections[section]}"
+                for section in SECTION_LABELS
+                if section in rendered_sections
+            ),
+            claims=claims,
+            citation_ids=list(dict.fromkeys(citation_ids)),
+            status="completed",
+            safety_notice=draft.get("safety_notice") if isinstance(draft.get("safety_notice"), str) else None,
+        )
 
     @staticmethod
     def _initial_input(question: str, history: list[dict[str, str]]) -> str:

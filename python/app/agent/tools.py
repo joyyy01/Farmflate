@@ -4,6 +4,7 @@ import asyncio
 from typing import Any
 
 from app.agent.contracts import ToolCitation, ToolResult
+from app.agent.evidence import prepare_retrieved_evidence
 from app.core.config import settings
 from app.rag.retriever import PostgresRagRetriever, rag_retriever
 from app.schemas.chat import FactPackage
@@ -54,13 +55,13 @@ class AgentToolExecutor:
         if name == "read_authorized_context":
             return self._read_authorized_context(arguments, fact_package)
         if name == "search_approved_knowledge":
-            return await self._execute_knowledge_search(arguments)
+            return await self._execute_knowledge_search(arguments, fact_package)
         return ToolResult(status="tool_not_allowed")
 
-    async def _execute_knowledge_search(self, arguments: dict[str, Any]) -> ToolResult:
+    async def _execute_knowledge_search(self, arguments: dict[str, Any], fact_package: FactPackage) -> ToolResult:
         try:
             return await asyncio.wait_for(
-                self._search_approved_knowledge(arguments), timeout=settings.AGENT_TOOL_TIMEOUT_SECONDS
+                self._search_approved_knowledge(arguments, fact_package), timeout=settings.AGENT_TOOL_TIMEOUT_SECONDS
             )
         except TimeoutError:
             return ToolResult(status="tool_timeout")
@@ -100,26 +101,23 @@ class AgentToolExecutor:
         ]
         return ToolResult(status="ok", payload={"section": section, "facts": facts}, citations=citations)
 
-    async def _search_approved_knowledge(self, arguments: dict[str, Any]) -> ToolResult:
+    async def _search_approved_knowledge(self, arguments: dict[str, Any], fact_package: FactPackage) -> ToolResult:
         query = arguments.get("query")
         if not isinstance(query, str) or not query.strip() or len(query) > 500:
             return ToolResult(status="invalid_arguments")
-        result = await self._retriever.retrieve(query)
-        citations = [
-            ToolCitation(
-                citation_id=str(item["citationId"]), title=str(item["title"]), source_url=item.get("sourceUrl")
-            )
-            for chunk in result.chunks
-            for item in [chunk.citation()]
-        ]
+        result = await self._retriever.retrieve(query, request_id=fact_package.requestId)
+        evidence = prepare_retrieved_evidence(result.chunks)
         return ToolResult(
-            status="insufficient_evidence" if result.insufficient_evidence else "ok",
+            status="insufficient_evidence" if result.insufficient_evidence or not evidence.payload else "ok",
             payload={
                 "query": result.query,
-                "evidence": [
-                    {"citationId": chunk.citation()["citationId"], "content": chunk.content[:1200], "score": round(chunk.score, 6)}
-                    for chunk in result.chunks
-                ],
+                "retrievalMode": result.mode,
+                "evidence": evidence.payload,
+                "excludedUntrustedEvidenceCount": evidence.excluded_count,
             },
-            citations=citations,
+            citations=evidence.citations,
+            trace=[
+                f"retrieval:{result.mode}:{result.latency_ms}ms:candidates={result.candidate_count}",
+                f"retrieval_untrusted_excluded:{evidence.excluded_count}",
+            ],
         )

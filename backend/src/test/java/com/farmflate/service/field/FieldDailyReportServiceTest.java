@@ -30,7 +30,6 @@ class FieldDailyReportServiceTest {
     @Mock private FieldActivityLogRepository activityLogRepository;
     @Mock private FieldWeatherService fieldWeatherService;
     @Mock private FieldGuidanceRuleEngine ruleEngine;
-    @Mock private FieldGuidanceNarrator narrator;
 
     @Test
     void continues_with_the_next_field_when_one_daily_report_fails() {
@@ -39,7 +38,7 @@ class FieldDailyReportServiceTest {
         LocalDate reportDate = LocalDate.of(2026, 7, 28);
         FieldDailyReportService service = new FieldDailyReportService(
                 farmRepository, dailyReportRepository, dailyReportStore, activityLogRepository,
-                fieldWeatherService, ruleEngine, narrator, new ObjectMapper(), Clock.system(ZoneOffset.UTC));
+                fieldWeatherService, ruleEngine, new ObjectMapper(), Clock.system(ZoneOffset.UTC));
 
         when(farmRepository.findByActiveTrue()).thenReturn(List.of(first, second));
         when(dailyReportStore.findExisting(1L, "first@example.com", reportDate, FieldDailyReportService.GENERATION_REASON))

@@ -5,7 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from app.agent.contracts import AgentDraft, ToolCall, ToolResult
+from app.agent.contracts import AgentDraft, ToolCall, ToolCitation, ToolResult
+from app.agent.responses_client import ResponseContractError
 from app.agent.runner import GroundedAgent
 from app.core.config import settings
 from app.schemas.chat import FactPackage
@@ -83,6 +84,16 @@ class RepeatingToolCallModel:
         return ToolCall(call_id="call", name="read_authorized_context", arguments={"section": "all"})
 
 
+class FailingModel:
+    async def next_turn(self, **_: object) -> AgentDraft:
+        raise TimeoutError("upstream response timed out")
+
+
+class ContractViolatingModel:
+    async def next_turn(self, **_: object) -> AgentDraft:
+        raise ResponseContractError("model output did not satisfy the response contract")
+
+
 class RecordingToolExecutor:
     def __init__(self) -> None:
         self.calls = 0
@@ -108,6 +119,33 @@ def test_agent_returns_only_citations_supplied_by_its_executed_tools() -> None:
     assert result.status == "completed"
     assert result.citation_ids == ["fact:field-report-1"]
     assert result.answer == "현재 밭 상태는 주의입니다."
+    assert result.telemetry is not None
+    assert result.telemetry.model_turn_count == 2
+    assert result.telemetry.tool_call_count == 1
+    assert result.telemetry.tool_non_success_count == 0
+    assert result.telemetry.citation_count == 1
+    assert result.telemetry.terminal_status == "completed"
+    assert result.telemetry.terminal_reason == "completed"
+
+
+def test_agent_records_the_failure_type_in_terminal_telemetry() -> None:
+    result = asyncio.run(GroundedAgent(model=FailingModel()).run(
+        FactPackage(requestId="request-timeout", question="현재 상태를 알려줘"),
+    ))
+
+    assert result.status == "failed"
+    assert result.telemetry is not None
+    assert result.telemetry.terminal_reason == "agent_error:TimeoutError"
+
+
+def test_agent_turns_a_model_contract_violation_into_safe_needs_context() -> None:
+    result = asyncio.run(GroundedAgent(model=ContractViolatingModel()).run(
+        FactPackage(requestId="request-contract", question="현재 상태를 알려줘"),
+    ))
+
+    assert result.status == "needs_context"
+    assert result.telemetry is not None
+    assert result.telemetry.terminal_reason == "model_contract_violation"
 
 
 def test_agent_completes_with_component_climate_facts_and_their_provenance_source() -> None:
@@ -190,7 +228,7 @@ def test_runtime_rejects_any_tool_step_limit_other_than_two() -> None:
             settings.validate_runtime()
 
 
-def test_remote_agent_presentation_expands_short_grounded_answers_in_korean() -> None:
+def test_remote_agent_presentation_does_not_append_uncited_screen_facts() -> None:
     package = FactPackage(
         requestId="presentation",
         question="상추 재배의 가뭄 위험을 알려줘",
@@ -202,8 +240,41 @@ def test_remote_agent_presentation_expands_short_grounded_answers_in_korean() ->
         },
     )
 
-    answer = GroundedAgent._present_remote_answer("상추 재배에서는 가뭄 위험을 우선 확인해야 합니다.", package)
+    draft = AgentDraft(
+        answer="상추 재배에서는 가뭄 위험을 우선 확인해야 합니다.",
+        claims=[{
+            "text": "상추 재배에서는 가뭄 위험을 우선 확인해야 합니다.",
+            "citation_ids": ["fact:report-1"],
+        }],
+        citation_ids=["fact:report-1"],
+        status="completed",
+    )
+    result = GroundedAgent._validated_draft(
+        draft,
+        {"fact:report-1": ToolCitation("fact:report-1", "분석 리포트")},
+        [],
+    )
 
-    assert len(answer) >= 240
-    assert all(heading in answer for heading in ("핵심 판단", "근거", "지금 할 일"))
-    assert "토양 수분을 확인하고 관수 일정을 조정하세요." in answer
+    assert result.status == "completed"
+    assert result.answer == draft.answer
+
+
+def test_agent_refuses_a_completed_draft_when_its_claim_is_not_rendered_in_the_answer() -> None:
+    draft = AgentDraft(
+        answer="검증된 첫 문장입니다.",
+        claims=[{
+            "text": "답변에 없는 주장입니다.",
+            "citation_ids": ["rag:chunk-1"],
+        }],
+        citation_ids=["rag:chunk-1"],
+        status="completed",
+    )
+
+    result = GroundedAgent._validated_draft(
+        draft,
+        {"rag:chunk-1": ToolCitation("rag:chunk-1", "공식 농업 자료")},
+        [],
+    )
+
+    assert result.status == "needs_context"
+    assert result.trace[-1] == "citation_validation_failed"

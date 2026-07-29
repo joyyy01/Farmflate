@@ -16,6 +16,7 @@ class ToolResult:
     status: str
     payload: dict[str, Any] = field(default_factory=dict)
     citations: list[ToolCitation] = field(default_factory=list)
+    trace: list[str] = field(default_factory=list)
 
     def model_output(self) -> str:
         import json
@@ -44,6 +45,23 @@ class AgentDraft:
 
 
 @dataclass(frozen=True)
+class AgentExecutionTelemetry:
+    """Privacy-safe aggregate measurements for one bounded Agent run."""
+
+    terminal_status: Literal["completed", "needs_context", "failed"]
+    terminal_reason: str
+    model_turn_count: int
+    tool_call_count: int
+    tool_non_success_count: int
+    citation_count: int
+    answer_char_count: int
+    total_latency_ms: int
+    model_latency_ms: int
+    tool_latency_ms: int
+    tool_statuses: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class AgentResult:
     answer: str
     status: Literal["completed", "needs_context", "failed"]
@@ -51,3 +69,4 @@ class AgentResult:
     citations: list[ToolCitation] = field(default_factory=list)
     safety_notice: str | None = None
     trace: list[str] = field(default_factory=list)
+    telemetry: AgentExecutionTelemetry | None = None
