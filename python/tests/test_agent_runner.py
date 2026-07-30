@@ -89,6 +89,12 @@ class FailingModel:
         raise TimeoutError("upstream response timed out")
 
 
+class SlowFailingModel:
+    async def next_turn(self, **_: object) -> AgentDraft:
+        await asyncio.sleep(0.05)
+        raise TimeoutError("upstream response timed out")
+
+
 class ContractViolatingModel:
     async def next_turn(self, **_: object) -> AgentDraft:
         raise ResponseContractError("model output did not satisfy the response contract")
@@ -136,6 +142,18 @@ def test_agent_records_the_failure_type_in_terminal_telemetry() -> None:
     assert result.status == "failed"
     assert result.telemetry is not None
     assert result.telemetry.terminal_reason == "agent_error:TimeoutError"
+
+
+def test_agent_stops_at_the_total_time_budget_before_a_slow_model_failure() -> None:
+    result = asyncio.run(GroundedAgent(model=SlowFailingModel()).run(
+        FactPackage(requestId="request-total-timeout", question="현재 상태를 알려줘"),
+        total_timeout_seconds=0.01,
+    ))
+
+    assert result.status == "needs_context"
+    assert result.trace[-1] == "agent_total_timeout"
+    assert result.telemetry is not None
+    assert result.telemetry.terminal_reason == "agent_total_timeout"
 
 
 def test_agent_turns_a_model_contract_violation_into_safe_needs_context() -> None:

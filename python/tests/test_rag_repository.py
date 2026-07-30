@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock, patch
 
 from app.rag.repository import ChunkInsert, RagRepository
 
@@ -40,6 +41,17 @@ class RecordingPool:
 
     def acquire(self) -> AcquiredConnection:
         return AcquiredConnection(self._connection)
+
+
+def test_repository_bounds_initial_postgres_connection_creation() -> None:
+    repository = RagRepository("postgresql://rag")
+    pool = object()
+
+    with patch("app.rag.repository.asyncpg.create_pool", new=AsyncMock(return_value=pool)) as create_pool:
+        result = asyncio.run(repository._connection_pool())
+
+    assert result is pool
+    assert create_pool.await_args.kwargs["timeout"] == 8
 
 
 def test_full_text_search_uses_only_postgresql_fts_on_current_approved_chunks() -> None:

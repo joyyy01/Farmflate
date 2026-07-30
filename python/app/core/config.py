@@ -43,8 +43,10 @@ class Settings(BaseSettings):
     AGENT_PIPELINE_VERSION: str = "sectioned-citations-v3"
     # Responses tool-calling may require an initial tool-selection turn and a
     # final cited-answer turn. Twelve seconds caused local ReadTimeout fallback
-    # before a valid answer could be returned; keep a bounded 20-second default.
+    # before a valid answer could be returned; keep a bounded 45-second default.
     LLM_TIMEOUT_SECONDS: float = 45.0
+    # Bounds the whole multi-turn Agent request, not each individual model call.
+    AGENT_TOTAL_TIMEOUT_SECONDS: float = 60.0
 
     # PostgreSQL is the RAG system of record and retrieval engine.
     RAG_DATABASE_URL: str = ""
@@ -128,6 +130,8 @@ class Settings(BaseSettings):
             raise RuntimeError("RAG_HYBRID_MAX_P95_LATENCY_RATIO must be between 1 and 10.")
         if not 1 <= self.LLM_TIMEOUT_SECONDS <= 60:
             raise RuntimeError("LLM_TIMEOUT_SECONDS must be between 1 and 60.")
+        if not 10 <= self.AGENT_TOTAL_TIMEOUT_SECONDS <= 120:
+            raise RuntimeError("AGENT_TOTAL_TIMEOUT_SECONDS must be between 10 and 120.")
         if not self.AGENT_PIPELINE_VERSION or self.AGENT_PIPELINE_VERSION != self.AGENT_PIPELINE_VERSION.strip() or len(self.AGENT_PIPELINE_VERSION) > 64:
             raise RuntimeError("AGENT_PIPELINE_VERSION must be a non-blank value up to 64 characters.")
         if self.AGENT_MAX_TOOL_CALLS != 2:

@@ -120,7 +120,7 @@ class RagRepository:
             async with self._pool_lock:
                 if self._pool is None:
                     self._pool = await asyncpg.create_pool(
-                        self._database_url, min_size=1, max_size=4, command_timeout=8
+                        self._database_url, min_size=1, max_size=4, timeout=8, command_timeout=8
                     )
         return self._pool
 

@@ -89,6 +89,6 @@ app:
   python-server:
     url: ${PYTHON_SERVER_URL:http://localhost:8000}
     internal-api-key: ${PYTHON_INTERNAL_API_KEY}
-    request-timeout-ms: ${AI_REQUEST_TIMEOUT_MS:15000}
+    request-timeout-ms: ${AI_REQUEST_TIMEOUT_MS:70000}
   internal-api:
     mcp-token: ${MCP_SPRING_INTERNAL_TOKEN:}

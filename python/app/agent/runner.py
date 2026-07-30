@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import replace
 from time import perf_counter
@@ -14,6 +15,10 @@ from app.schemas.chat import FactPackage
 
 
 logger = logging.getLogger(__name__)
+
+
+class AgentTotalTimeoutError(TimeoutError):
+    """Raised only when the bounded Agent request exhausts its total budget."""
 
 
 class ToolCallingModel(Protocol):
@@ -59,7 +64,12 @@ Return only the required JSON."""
         self._model = model
         self._tools = tools or AgentToolExecutor()
 
-    async def run(self, fact_package: FactPackage) -> AgentResult:
+    async def run(
+        self,
+        fact_package: FactPackage,
+        *,
+        total_timeout_seconds: float | None = None,
+    ) -> AgentResult:
         model = self._model or ResponsesToolCallingClient()
         tool_outputs: list[dict[str, Any]] = []
         citations: dict[str, ToolCitation] = {}
@@ -71,6 +81,19 @@ Return only the required JSON."""
         tool_latency_ms = 0
         tool_statuses: list[str] = []
         started_at = perf_counter()
+        total_budget_seconds = total_timeout_seconds if total_timeout_seconds is not None else settings.AGENT_TOTAL_TIMEOUT_SECONDS
+        deadline = started_at + total_budget_seconds
+
+        async def within_total_budget(awaitable: Any) -> Any:
+            remaining_seconds = deadline - perf_counter()
+            if remaining_seconds <= 0:
+                raise AgentTotalTimeoutError()
+            try:
+                return await asyncio.wait_for(awaitable, timeout=remaining_seconds)
+            except TimeoutError as error:
+                if perf_counter() >= deadline:
+                    raise AgentTotalTimeoutError() from error
+                raise
 
         def finish(result: AgentResult, terminal_reason: str) -> AgentResult:
             telemetry = AgentExecutionTelemetry(
@@ -94,12 +117,14 @@ Return only the required JSON."""
             for _ in range(settings.AGENT_MAX_TOOL_CALLS + 1):
                 model_started_at = perf_counter()
                 try:
-                    turn = await model.next_turn(
-                        question=fact_package.question,
-                        history=fact_package.history,
-                        instructions=self._INSTRUCTIONS,
-                        tool_definitions=TOOL_DEFINITIONS,
-                        tool_outputs=tool_outputs,
+                    turn = await within_total_budget(
+                        model.next_turn(
+                            question=fact_package.question,
+                            history=fact_package.history,
+                            instructions=self._INSTRUCTIONS,
+                            tool_definitions=TOOL_DEFINITIONS,
+                            tool_outputs=tool_outputs,
+                        )
                     )
                 finally:
                     model_turn_count += 1
@@ -140,7 +165,9 @@ Return only the required JSON."""
                 tool_call_count += 1
                 tool_started_at = perf_counter()
                 try:
-                    result = await self._tools.execute(name=turn.name, arguments=turn.arguments, fact_package=fact_package)
+                    result = await within_total_budget(
+                        self._tools.execute(name=turn.name, arguments=turn.arguments, fact_package=fact_package)
+                    )
                 except Exception:
                     tool_statuses.append("exception")
                     raise
@@ -155,6 +182,15 @@ Return only the required JSON."""
                     "output": result.model_output(),
                 })
                 trace.append(f"tool:{turn.name}:{result.status}")
+        except AgentTotalTimeoutError:
+            return finish(
+                AgentResult(
+                    answer="검증 가능한 근거를 정해진 시간 안에 모두 확인하지 못했습니다. 질문을 조금 더 구체적으로 알려 주세요.",
+                    status="needs_context",
+                    trace=[*trace, "agent_total_timeout"],
+                ),
+                "agent_total_timeout",
+            )
         except ResponseContractError:
             return finish(
                 AgentResult(
