@@ -1,0 +1,17 @@
+{
+  "sample_size": 30,
+  "completed_count": 26,
+  "needs_context_count": 4,
+  "failed_count": 0,
+  "structural_completion_rate": 0.86667,
+  "p50_latency_ms": 14917.0,
+  "p95_latency_ms": 29753.0,
+  "execution_profile": "agent-c57b1d9c4557c476",
+  "terminal_reason_counts": {
+    "citation_contract": 2,
+    "completed": 26,
+    "model_needs_context": 2
+  },
+  "max_concurrency": 3,
+  "measurement_scope": "controlled_local"
+}

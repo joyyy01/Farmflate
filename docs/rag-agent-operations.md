@@ -65,6 +65,8 @@ python -m app.rag.compare_evaluation_runs_cli --baseline-run <lexical-run-id> --
 
 3. 비교기는 동일 세트·버전·평가 origin·코퍼스 SHA-256 지문, 최소 20건, 사례 완료, 오류 없음, recall@k·precision@k·MRR·p95 측정을 검사한다. `MANUAL_REVIEW`는 사람이 환경 변경을 검토하라는 뜻이며 자동 활성화가 아니다.
 
+2026-07-30의 재현 가능한 current-profile 기준은 [통제 벤치마크](evidence/2026-07-30-current-profile-controlled-benchmark.md)에 보관한다. 이 벤치마크는 공식 PDF 3건·청크 28개·자동 생성 질의 56개로 lexical FTS와 Agent 계약을 측정한 `controlled_local` 근거이며, 운영 성능이나 사람 검토 품질로 확대하지 않는다.
+
 ### 자동 실버 세트
 
 공개·승인된 출처이면서 외부 임베딩 반출이 명시 허용된 경우에만, 현재 청크에서 회귀 감시용 질문을 자동 생성할 수 있다.

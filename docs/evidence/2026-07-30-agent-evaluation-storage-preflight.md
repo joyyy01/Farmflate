@@ -25,3 +25,5 @@
 ## 다음 조건
 
 프로젝트 전용 PostgreSQL을 5432에서 정상 기동하고, Flyway `V1`~`V30`, `farmflate` 역할, 승인 코퍼스를 확인한 뒤 동일한 30건 통제 평가를 다시 실행한다. 새 실행 프로필은 전체 시간 예산을 해시에 포함하므로 이전 v3 수치와 직접 비교하지 않는다. 이 문서는 로컬 사전 점검 기록이며 운영 성과나 사용자 품질을 의미하지 않는다.
+
+프로젝트 DB를 대체하지 않는 별도 임시 PostgreSQL에서 공식 공개 문서·현재 실행 프로필을 사용한 통제 벤치마크는 [2026-07-30-current-profile-controlled-benchmark.md](2026-07-30-current-profile-controlled-benchmark.md)에 남겼다. 임시 DB는 측정 후 제거했으며, 이 결과도 `controlled_local` 범위를 벗어나지 않는다.
