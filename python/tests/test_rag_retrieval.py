@@ -144,11 +144,12 @@ def test_postgres_retriever_records_only_aggregate_agent_execution_metrics() -> 
         patch.object(settings, "OPENAI_MODEL", "test-grounded-model"),
         patch.object(settings, "AGENT_PIPELINE_VERSION", "sectioned-citations-v1", create=True),
     ):
-        asyncio.run(HybridRetriever(repository=repository).record_agent_execution(
+        recorded = asyncio.run(HybridRetriever(repository=repository).record_agent_execution(
             request_id="agent-request-123",
             telemetry=telemetry,
         ))
 
+    assert recorded is True
     assert repository.agent_execution is not None
     assert repository.agent_execution["request_id"] == "agent-request-123"
     assert repository.agent_execution["terminal_status"] == "completed"
@@ -158,3 +159,25 @@ def test_postgres_retriever_records_only_aggregate_agent_execution_metrics() -> 
     assert repository.agent_execution["measurement_scope"] == "runtime_local"
     assert "answer" not in repository.agent_execution
     assert "question" not in repository.agent_execution
+
+
+def test_postgres_retriever_reports_when_agent_execution_metrics_cannot_be_persisted() -> None:
+    telemetry = AgentExecutionTelemetry(
+        terminal_status="needs_context",
+        terminal_reason="model_needs_context",
+        model_turn_count=1,
+        tool_call_count=0,
+        tool_non_success_count=0,
+        citation_count=0,
+        answer_char_count=20,
+        total_latency_ms=120,
+        model_latency_ms=120,
+        tool_latency_ms=0,
+    )
+
+    recorded = asyncio.run(HybridRetriever(repository=RecordingRepository()).record_agent_execution(
+        request_id="agent-request-123",
+        telemetry=telemetry,
+    ))
+
+    assert recorded is False

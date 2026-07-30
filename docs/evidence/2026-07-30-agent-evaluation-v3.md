@@ -2,7 +2,7 @@
 
 ## 목적과 범위
 
-응답 계약을 완료/보류 상태에 맞게 분리한 `sectioned-citations-v3` Agent가 승인된 PostgreSQL 근거만으로 안전하게 답하는지 확인했다. 이 기록은 로컬 통제 평가이며, 실제 사용자 트래픽이나 상용 운영 성과를 의미하지 않는다.
+응답 계약을 완료/보류 상태에 맞게 분리한 `sectioned-citations-v3` Agent가 승인된 PostgreSQL 근거만으로 안전하게 답하는지 확인했다. 이 기록은 로컬 통제 평가이며, 실제 사용자 트래픽이나 상용 운영 성과를 의미하지 않는다. 전체 시간 예산을 실행 프로필에 추가한 뒤의 재측정은 프로젝트 전용 PostgreSQL이 준비된 환경에서 다시 해야 한다. 현재 로컬 저장소 사전 점검과 보류 사유는 [2026-07-30-agent-evaluation-storage-preflight.md](2026-07-30-agent-evaluation-storage-preflight.md)에 기록한다.
 
 ## 고정 조건
 

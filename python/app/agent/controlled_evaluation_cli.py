@@ -34,6 +34,23 @@ class _DryRunAgent:
         )
 
 
+async def _record_controlled_agent_execution(
+    recorder: PostgresRagRetriever,
+    case: ControlledAgentCase,
+    result: AgentResult,
+) -> None:
+    """Fail the live evaluation when its aggregate evidence cannot be retained."""
+    if result.telemetry is None:
+        raise RuntimeError("controlled evaluation telemetry is missing")
+    recorded = await recorder.record_agent_execution(
+        request_id=case.fact_package.requestId,
+        telemetry=result.telemetry,
+        measurement_scope="controlled_local",
+    )
+    if not recorded:
+        raise RuntimeError("controlled evaluation telemetry could not be persisted")
+
+
 def _arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run a fixed, privacy-safe Farmflate Agent evaluation set.")
     parser.add_argument("--cases", type=int, default=30)
@@ -58,12 +75,8 @@ async def _run(*, cases: list[ControlledAgentCase], live: bool, concurrency: int
     recorder = PostgresRagRetriever() if live else None
 
     async def record_case(case: ControlledAgentCase, result: AgentResult) -> None:
-        if recorder is not None and result.telemetry is not None:
-            await recorder.record_agent_execution(
-                request_id=case.fact_package.requestId,
-                telemetry=result.telemetry,
-                measurement_scope="controlled_local",
-            )
+        if recorder is not None:
+            await _record_controlled_agent_execution(recorder, case, result)
 
     try:
         summary = await ControlledAgentEvaluator(agent=agent).evaluate(

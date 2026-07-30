@@ -9,7 +9,7 @@
 
 ## 활성화 전 확인
 
-1. Flyway V16~V23가 적용된 PostgreSQL인지 확인한다.
+1. 프로젝트 전용 PostgreSQL에 Flyway `V1`~`V30`이 적용됐고, 설정한 호스트·포트·DB·전용 역할로 실제 접속되는지 먼저 확인한다. 다른 제품이 소유한 로컬 PostgreSQL 인스턴스를 포트만 바꿔 재사용하지 않는다.
 2. 운영 환경에서는 데이터베이스 이미지·패키지에서 PostgreSQL 버전과 같은 pgvector를 설치한 뒤 `CREATE EXTENSION vector`를 실행한다. 애플리케이션 배포물에 DB 바이너리를 넣지 않는다.
 3. 로컬 Windows 개발 환경은 PostgreSQL 18.4용으로 빌드한 pgvector 0.8.5을 사용자 쓰기 가능 extension-control/dynamic-library 경로에 둘 수 있다. 이 우회 경로는 로컬 검증용이며 운영 표준이 아니다.
 4. 확장 설치가 V17 이후였다면 다음 명령으로 컬럼·제약·HNSW 인덱스를 활성화한다.
@@ -88,7 +88,7 @@ python -m app.rag.auto_evaluation_seed_cli --source-url <approved-source-url> --
 | p50/p95 지연 시간 | 측정 기간, 요청 수, 검색 모드 |
 | 적재 상태 | 문서 수, 청크 수, `READY`/`UNAVAILABLE` 비율, 코퍼스 지문 |
 
-예: “대표 질의 N건과 문서 버전 V에서 lexical/hybrid를 비교해 recall@k와 p95를 측정했고, 인용 정확도를 유지한 경우에만 hybrid를 활성화했다.” 실제 N·V·결과 값은 `metrics_cli` 출력과 평가 결과에서 확인한 뒤 채운다.
+예: “대표 질의 N건과 문서 버전 V에서 lexical/hybrid를 비교해 recall@k와 p95를 측정했고, 인용 정확도를 유지한 경우에만 hybrid를 활성화했다.” 실제 N·V·결과 값은 `metrics_cli` 출력과 PostgreSQL 실행 지표가 일치하는 것을 확인한 뒤 채운다. DB 연결 또는 지표 저장이 실패한 실행은 수치 근거로 사용하지 않는다.
 
 ## 의도적으로 처리한 예외
 

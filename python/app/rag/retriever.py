@@ -14,16 +14,25 @@ from app.rag.repository import RagRepository
 logger = logging.getLogger(__name__)
 
 
+class _UseConfiguredRepository:
+    pass
+
+
+_USE_CONFIGURED_REPOSITORY = _UseConfiguredRepository()
+
+
 class PostgresRagRetriever:
     """Approved-knowledge retrieval backed by PostgreSQL FTS and optional pgvector."""
 
     def __init__(
         self,
-        repository: RagRepository | None = None,
+        repository: RagRepository | None | _UseConfiguredRepository = _USE_CONFIGURED_REPOSITORY,
         embedding_provider: EmbeddingProvider | None = None,
         use_configured_embedding_provider: bool = True,
     ) -> None:
-        self._repository = repository or (RagRepository(settings.RAG_DATABASE_URL) if settings.RAG_DATABASE_URL else None)
+        self._repository = (
+            RagRepository(settings.RAG_DATABASE_URL) if settings.RAG_DATABASE_URL else None
+        ) if repository is _USE_CONFIGURED_REPOSITORY else repository
         self._embedding_provider = (
             embedding_provider
             if embedding_provider is not None
@@ -110,11 +119,11 @@ class PostgresRagRetriever:
         request_id: str,
         telemetry: AgentExecutionTelemetry,
         measurement_scope: str = "runtime_local",
-    ) -> None:
-        """Persist aggregates only; telemetry must never alter the user response."""
+    ) -> bool:
+        """Persist aggregates only and report whether the write reached PostgreSQL."""
         recorder = getattr(self._repository, "record_agent_execution", None)
         if not request_id or not callable(recorder):
-            return
+            return False
         try:
             await recorder(
                 request_id=request_id,
@@ -134,6 +143,7 @@ class PostgresRagRetriever:
                 tool_latency_ms=telemetry.tool_latency_ms,
                 tool_statuses=list(telemetry.tool_statuses),
             )
+            return True
         except Exception as error:
             logger.warning(
                 "agent_execution_metric_record_failed",
@@ -142,6 +152,7 @@ class PostgresRagRetriever:
                     "error_type": type(error).__name__,
                 },
             )
+            return False
 
     async def close(self) -> None:
         if self._repository is not None:
